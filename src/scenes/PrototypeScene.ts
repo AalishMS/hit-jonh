@@ -47,6 +47,9 @@ export class PrototypeScene extends Phaser.Scene {
   private currentPowerPercent = 50;
   private lastProjectileState: ProjectileState | null = null;
   private groundFeedbackShown = false;
+  private hatReactionTriggered = false;
+  private overheadReactionTriggered = false;
+  private activeReactionQuote: string | null = null;
   private isDebugEnabled = false;
 
   private cleanupHandlers: Array<() => void> = [];
@@ -236,6 +239,9 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.trailRenderer.startNewShot();
     this.groundFeedbackShown = false;
+    this.hatReactionTriggered = false;
+    this.overheadReactionTriggered = false;
+    this.activeReactionQuote = null;
     this.jonhRenderer.resetToIdle();
 
     // Calculate spawn outside barrel
@@ -264,6 +270,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.classifier.reset();
     this.lastProjectileState = null;
     this.groundFeedbackShown = false;
+    this.hatReactionTriggered = false;
+    this.overheadReactionTriggered = false;
+    this.activeReactionQuote = null;
 
     // 2. Reset attempt state machine (preserves angle & power)
     this.attemptMachine.reset();
@@ -311,6 +320,25 @@ export class PrototypeScene extends Phaser.Scene {
             const landing = state.firstGroundContact;
             this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
             this.audioManager.playImpact('ground');
+          }
+
+          // Trigger mid-flight cosmetic reactions once at actual contact/pass
+          if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
+            this.hatReactionTriggered = true;
+            const quote = this.reactionSelector.selectReaction('hat');
+            this.activeReactionQuote = quote;
+            this.jonhRenderer.triggerHatHit(quote);
+          } else if (
+            state.passedOverhead &&
+            !state.hitJonh &&
+            !state.hitHat &&
+            !this.overheadReactionTriggered &&
+            !this.hatReactionTriggered
+          ) {
+            this.overheadReactionTriggered = true;
+            const quote = this.reactionSelector.selectReaction('overhead');
+            this.activeReactionQuote = quote;
+            this.jonhRenderer.triggerOverhead(quote);
           }
 
           const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
@@ -411,7 +439,11 @@ export class PrototypeScene extends Phaser.Scene {
         obstacleContacts: state.obstacleContacts,
       },
     );
-    const quote = this.reactionSelector.selectReaction(feedback.category);
+    // For body hits, always select fresh dialogue to react to the impact (overriding any earlier mid-flight reaction).
+    // For hat-only or overhead, reuse the mid-flight quote so dialogue does not re-roll or repeat.
+    const quote = isBodyHit
+      ? this.reactionSelector.selectReaction(feedback.category)
+      : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category));
 
     // 4. Terminal landing position feedback
     const landing = !isBodyHit ? state.firstGroundContact : null;
@@ -430,13 +462,17 @@ export class PrototypeScene extends Phaser.Scene {
         'hit',
       );
     } else if (classification.outcome === 'hat_only') {
-      this.jonhRenderer.triggerHatHit(quote);
+      if (!this.hatReactionTriggered) {
+        this.jonhRenderer.triggerHatHit(quote);
+      }
       this.htmlControls.setFeedback(
         `${feedback.label} (${classification.points} pts) · ${feedback.detail} Jonh: “${quote}”`,
         'hit',
       );
     } else if (feedback.category === 'overhead') {
-      this.jonhRenderer.triggerOverhead(quote);
+      if (!this.overheadReactionTriggered) {
+        this.jonhRenderer.triggerOverhead(quote);
+      }
       this.htmlControls.setFeedback(
         `${feedback.label} · ${feedback.detail} Jonh: “${quote}”`,
         'miss',

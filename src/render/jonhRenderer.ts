@@ -64,6 +64,14 @@ export class JonhRenderer {
     return this.reactionMode === 'hit';
   }
 
+  get mode(): JonhReactionMode {
+    return this.reactionMode;
+  }
+
+  get quote(): string {
+    return this.reactionQuote;
+  }
+
   update(deltaSeconds: number): void {
     if (this.reactionMode === 'idle') {
       this.idleTimerSeconds += deltaSeconds;

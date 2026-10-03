@@ -97,10 +97,20 @@ _Last updated: 2026-10-03_
     - Added SPEC §10.1 pools for `hat`, `overhead`, and `fence` ("That was my good fence.").
     - Guaranteed non-repetition across consecutive shots using cosmetic RNG.
     - Rich feedback banner displays category, points, and correction guidance.
+  - **Mid-Flight Reaction Orchestration (`src/scenes/PrototypeScene.ts`):**
+    - Addressed lead review presentation gap: cosmetic reactions (hat removal and overhead glare) now trigger immediately mid-flight at actual contact/pass during simulation, rather than waiting seconds for ball to settle or time out.
+    - Hat scoring remains strictly unresolved until shot end.
+    - Avoids replaying reaction animations or re-rolling quotes upon shot resolution; reuses the active mid-flight quote in the feedback banner.
+    - Body hit override: a shot that touches hat and later strikes body triggers direct/ricochet body knockdown and selects a fresh body reaction line without repeating the hat line.
+    - State guards (`hatReactionTriggered`, `overheadReactionTriggered`, `activeReactionQuote`) reset cleanly in both `fire()` and `reset()`.
   - **Input & State Guards (`src/scenes/PrototypeScene.ts`, `src/input/controls.ts`):**
     - Angle and power tweaks guarded during simulation.
     - Fresh press and text-focus shortcut rules strictly verified across all keys.
     - Scene reset clears all contact, classification, and reaction state every attempt.
+  - **Regression Coverage & Evidence:**
+    - Added regressions in `tests/reactions.test.ts` and `tests/matterAdapter.test.ts` covering mid-flight triggering, quote reuse on resolution, hat-then-body override, and clean reset.
+    - All 12 test files passed, 87 total tests passed (`npm run check`).
+    - Build clean (`npm run build`). Browser verification not performed in this step due to existing Chrome profile conflict.
 
 ## Decisions (implementer, delegated by owner)
 

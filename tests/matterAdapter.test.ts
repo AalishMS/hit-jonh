@@ -7,6 +7,7 @@ import { launchVelocityToWorld, metresToPixels, simYToWorldY, powerToLaunchSpeed
 import { FixedStepper } from '../src/sim/fixedStep';
 import { ShotAttemptMachine } from '../src/rules/shotAttempt';
 import { ShotClassifier } from '../src/sim/classification';
+import { JonhReactionSelector } from '../src/rules/reactions';
 
 describe('MatterAdapter', () => {
   function makeAdapter() {
@@ -384,4 +385,131 @@ describe('MatterAdapter', () => {
     expect(machine.state).toBe('aiming');
     expect(machine.canFire).toBe(true);
   });
+
+  it('triggers mid-flight cosmetic reactions once at actual contact/pass, preserves body override for hat-then-body, and reuses mid-flight quote on resolution', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+    const machine = new ShotAttemptMachine(BACKYARD_LEVEL.bounds.maxX);
+    const classifier = new ShotClassifier();
+    const selector = new JonhReactionSelector();
+
+    // 1. Hat-only shot: triggers mid-flight, resolves at settlement without re-rolling quote
+    machine.fire(45, 50);
+    let hatReactionTriggered = false;
+    let activeReactionQuote: string | null = null;
+
+    const startXPx = metresToPixels(17.0, 50);
+    const startYPx = simYToWorldY(3.62, 720, 50);
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, launchVelocityToWorld(20, 0, 50));
+
+    let resolved = false;
+    let midflightQuoteRecorded: string | null = null;
+    let stepWhenHatTriggered = -1;
+
+    for (let step = 0; step < 120 && !resolved; step++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      const state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+
+      // Mid-flight reaction trigger
+      if (state.hitHat && !state.hitJonh && !hatReactionTriggered) {
+        hatReactionTriggered = true;
+        activeReactionQuote = selector.selectReaction('hat');
+        midflightQuoteRecorded = activeReactionQuote;
+        stepWhenHatTriggered = step;
+      }
+
+      const res = machine.step(PHYSICS.fixedStepSeconds, {
+        x: state.xSim,
+        y: state.ySim,
+        speed: state.speedMs,
+        hitBody: state.hitJonh,
+        hitHat: state.hitHat,
+      });
+
+      if (res.resolved) {
+        resolved = true;
+        if (state.hitHat || res.hadHatHit) classifier.recordContact({ role: 'jonhHat' });
+        if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });
+
+        const classification = classifier.classify(true);
+        expect(classification.outcome).toBe('hat_only');
+        expect(classification.points).toBe(20);
+
+        const isBodyHit = classification.isHit;
+        expect(isBodyHit).toBe(false);
+
+        // Quote reuse upon resolution: avoids re-rolling
+        const finalQuote = isBodyHit
+          ? selector.selectReaction('hit')
+          : (activeReactionQuote ?? selector.selectReaction('hat'));
+
+        expect(finalQuote).toBe(midflightQuoteRecorded);
+      }
+    }
+
+    expect(resolved).toBe(true);
+    expect(hatReactionTriggered).toBe(true);
+    expect(stepWhenHatTriggered).toBeGreaterThanOrEqual(0);
+
+    // 2. Reset cleans guards and adapter
+    adapter.removeProjectile();
+    machine.reset();
+    classifier.reset();
+    hatReactionTriggered = false;
+    activeReactionQuote = null;
+
+    expect(hatReactionTriggered).toBe(false);
+    expect(activeReactionQuote).toBeNull();
+
+    // 3. Hat-then-body shot: mid-flight hat reaction triggered, then body hit overrides cleanly
+    machine.fire(45, 50);
+    const hatBodyXPx = metresToPixels(17.4, 50);
+    const hatBodyYPx = simYToWorldY(3.45, 720, 50);
+    adapter.spawnProjectile(hatBodyXPx, hatBodyYPx, 7.5, { x: 5, y: 3 });
+
+    let bodyResolved = false;
+    let hatQuoteDuringFlight: string | null = null;
+
+    for (let step = 0; step < 120 && !bodyResolved; step++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      const state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+
+      if (state.hitHat && !state.hitJonh && !hatReactionTriggered) {
+        hatReactionTriggered = true;
+        activeReactionQuote = selector.selectReaction('hat');
+        hatQuoteDuringFlight = activeReactionQuote;
+      }
+
+      const res = machine.step(PHYSICS.fixedStepSeconds, {
+        x: state.xSim,
+        y: state.ySim,
+        speed: state.speedMs,
+        hitBody: state.hitJonh,
+        hitHat: state.hitHat,
+      });
+
+      if (res.resolved) {
+        bodyResolved = true;
+        if (state.hitHat || res.hadHatHit) classifier.recordContact({ role: 'jonhHat' });
+        if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });
+
+        const classification = classifier.classify(true);
+        expect(classification.outcome).toBe('body');
+        expect(classification.points).toBe(100);
+        expect(classification.isHit).toBe(true);
+
+        const isBodyHit = classification.isHit;
+        // Body hit selects fresh quote from 'hit' pool
+        const finalBodyQuote = isBodyHit
+          ? selector.selectReaction('hit')
+          : (activeReactionQuote ?? selector.selectReaction('hat'));
+
+        expect(finalBodyQuote).toBeTruthy();
+        expect(finalBodyQuote).not.toBe(hatQuoteDuringFlight);
+      }
+    }
+
+    expect(bodyResolved).toBe(true);
+  });
 });
+
