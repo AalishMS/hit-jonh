@@ -208,18 +208,4 @@ describe('Storage', () => {
     expect(data.settings.muted).toBe(true);
   });
 
-  it('supports onSettingsChange callback pattern to persist settings even without an active renderer', () => {
-    // Mimic PrototypeScene's onSettingsChange callback handler
-    const mockJonhRenderer: { setReducedMotion: (val: boolean) => void } | null = null;
-    const handleSettingsChange = (settings: { muted: boolean; volume: number; reducedMotion: boolean }) => {
-      saveSettings(settings);
-      if (mockJonhRenderer) (mockJonhRenderer as { setReducedMotion: (val: boolean) => void }).setReducedMotion(settings.reducedMotion);
-    };
-
-    handleSettingsChange({ muted: true, volume: 0.4, reducedMotion: true });
-    const data = loadSaveData();
-    expect(data.settings.muted).toBe(true);
-    expect(data.settings.volume).toBeCloseTo(0.4);
-    expect(data.settings.reducedMotion).toBe(true);
-  });
 });

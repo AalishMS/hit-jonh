@@ -490,7 +490,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
-      this.htmlControls.setFeedback(`Map: ${this.currentLevel.name}. ${this.soloMachine.attemptsLeft} attempts left.`, 'info');
+      this.htmlControls.setFeedback(`Map: ${this.currentLevel.name}. ${this.soloMachine.attemptsLeft} attempt${this.soloMachine.attemptsLeft === 1 ? '' : 's'} left.`, 'info');
     }
   }
 
