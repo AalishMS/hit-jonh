@@ -4,7 +4,9 @@
  * Enforces accidental-action rules (SPEC §3.2):
  * - Fire is accepted only in aiming state.
  * - Fire requires a fresh press (no repeat, must release space after entering aiming).
- * - Shortcuts are ignored while a text/form element has focus.
+ * - Shortcuts are ignored while a text/form element has focus (range sliders are not text fields).
+ * - Key releases are tracked unconditionally across menus, pauses, and text focus.
+ * - Native menu button activation is preserved; game shortcuts do not fire behind overlays.
  */
 
 export interface InputCallbacks {
@@ -16,13 +18,36 @@ export interface InputCallbacks {
   onEscape?: () => void;
 }
 
+/**
+ * Detects whether an element is an actual text input/form control where typing must be preserved.
+ * Range sliders (<input type="range">) are explicitly NOT text fields (SPEC §3.2).
+ */
+export function isTextInputElement(el: unknown): boolean {
+  if (!el || typeof el !== 'object') return false;
+  const element = el as HTMLElement;
+  if (element.isContentEditable) return true;
+  const tagName = element.tagName?.toLowerCase();
+  if (tagName === 'textarea' || tagName === 'select') return true;
+  if (tagName === 'input') {
+    const inputType = (element as HTMLInputElement).type?.toLowerCase() || 'text';
+    const nonTextTypes = ['range', 'button', 'submit', 'reset', 'checkbox', 'radio', 'color', 'file', 'image'];
+    return !nonTextTypes.includes(inputType);
+  }
+  return false;
+}
+
 export class InputCoordinator {
   private canFire = false;
   private isSpaceDown = false;
   private spaceReleasedSinceAiming = true;
   private isPaused = false;
+  private isOverlayVisible = false;
 
   constructor(private readonly callbacks: InputCallbacks) {}
+
+  get isPhysicalSpaceDown(): boolean {
+    return this.isSpaceDown;
+  }
 
   setCanFire(allowed: boolean): void {
     if (this.canFire !== allowed) {
@@ -39,59 +64,83 @@ export class InputCoordinator {
     this.isPaused = paused;
   }
 
-  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean): void {
+  setOverlayVisible(visible: boolean): void {
+    this.isOverlayVisible = visible;
+  }
+
+  /**
+   * Processes keydown events. Returns true if the game handled the shortcut and
+   * requests preventDefault(), false otherwise.
+   */
+  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean): boolean {
+    // Physical state is ALWAYS tracked, even during text focus, pause, or overlays.
     if (code === 'Space') {
       this.isSpaceDown = true;
     }
 
-    if (this.isPaused || isTextInputFocused) return;
+    // Escape toggles/resumes pause even when paused or in game, but ignores repeats and text inputs.
+    if (code === 'Escape') {
+      if (repeat || isTextInputFocused) return false;
+      this.callbacks.onEscape?.();
+      return true;
+    }
 
+    // Text inputs retain full typing access for all keys.
+    if (isTextInputFocused) return false;
+
+    // When an overlay is visible or the game is paused, gameplay shortcuts must NOT fire.
+    // Native keyboard activation (e.g. Enter or Space on focused menu buttons) must work.
+    if (this.isPaused || this.isOverlayVisible) {
+      return false;
+    }
+
+    // Active gameplay controls
     if (code === 'Space') {
       if (!repeat && this.canFire && this.spaceReleasedSinceAiming) {
         this.spaceReleasedSinceAiming = false;
         this.callbacks.onFire();
       }
-      return;
-    }
-
-    if (code === 'Escape') {
-      this.callbacks.onEscape?.();
-      return;
+      // Consumed in gameplay so native button focus doesn't bypass coordinator
+      return true;
     }
 
     if (code === 'Enter') {
-      if (this.callbacks.onContinue) {
-        this.callbacks.onContinue();
-      } else {
-        this.callbacks.onReset();
+      if (!repeat) {
+        if (this.callbacks.onContinue) {
+          this.callbacks.onContinue();
+        } else {
+          this.callbacks.onReset();
+        }
       }
-      return;
+      return true;
     }
 
     if (code === 'KeyM') {
-      this.callbacks.onToggleMute?.();
-      return;
+      if (!repeat) this.callbacks.onToggleMute?.();
+      return true;
     }
 
-    if (!this.canFire) return;
+    if (!this.canFire) return false;
 
     switch (code) {
       case 'ArrowLeft':
         this.callbacks.onAimChange(-1, 0);
-        break;
+        return true;
       case 'ArrowRight':
         this.callbacks.onAimChange(1, 0);
-        break;
+        return true;
       case 'ArrowDown':
         this.callbacks.onAimChange(0, -1);
-        break;
+        return true;
       case 'ArrowUp':
         this.callbacks.onAimChange(0, 1);
-        break;
+        return true;
       case 'KeyR':
-        this.callbacks.onReset();
-        break;
+        if (!repeat) this.callbacks.onReset();
+        return true;
     }
+
+    return false;
   }
 
   handleKeyUp(code: string): void {
@@ -101,3 +150,4 @@ export class InputCoordinator {
     }
   }
 }
+

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { AIM, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
-import { InputCoordinator } from '../input/controls';
+import { InputCoordinator, isTextInputElement } from '../input/controls';
 import { MAPS } from '../levels';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
@@ -76,6 +76,7 @@ export class PrototypeScene extends Phaser.Scene {
   private overheadReactionTriggered = false;
   private activeReactionQuote: string | null = null;
   private isDebugEnabled = false;
+  private isDevOptIn = false;
 
   private cleanupHandlers: Array<() => void> = [];
 
@@ -93,40 +94,31 @@ export class PrototypeScene extends Phaser.Scene {
 
     const gameContainer = document.getElementById('game')?.parentElement ?? document.body;
     
-    // Check URL param ?debug
-    if (new URLSearchParams(window.location.search).has('debug')) {
-      this.isDebugEnabled = true;
-    }
+    // Check URL param ?debug - explicitly gated dev opt-in
+    const hasDebugParam = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
+    this.isDevOptIn = hasDebugParam;
+    this.isDebugEnabled = hasDebugParam;
 
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
         this.inputCoordinator.setPaused(true);
+        this.htmlControls.setControlsInert(true);
         this.menuOverlay.showPauseMenu();
       },
       onResume: () => {
         this.inputCoordinator.setPaused(false);
-        this.stepper.reset();
+        this.htmlControls.setControlsInert(false);
+        if (this.activeMode === 'solo') {
+          this.updateUIPerSoloState();
+        } else if (this.activeMode === 'multi') {
+          this.updateUIPerMultiState();
+        }
+        this.menuOverlay.hide();
       },
       onQuit: () => {
-        this.inputCoordinator.setPaused(false);
-        this.activeMode = 'none';
-        this.stepper.reset();
-        this.classifier.reset();
-        this.physicsAdapter.clear();
-        this.trailHistory.clear();
-        this.lastProjectileState = null;
-        this.htmlControls.setCanFire(false);
-        this.htmlControls.setFeedback('Jonh is reading. Set your angle and power.', 'info');
-        this.menuOverlay.showMainMenu();
-        if (this.sceneryRenderer) this.sceneryRenderer.destroy();
-        if (this.cannonRenderer) this.cannonRenderer.destroy();
-        if (this.slotsRenderer) { this.slotsRenderer.destroy(); this.slotsRenderer = null; }
-        if (this.jonhRenderer) this.jonhRenderer.destroy();
-        if (this.ballRenderer) this.ballRenderer.destroy();
-        if (this.trailRenderer) this.trailRenderer.destroy();
-        if (this.debugRenderer) this.debugRenderer.destroy();
+        this.performQuit();
       }
-    });
+    }, this.stepper);
 
     this.htmlControls = new HTMLControls(
       gameContainer,
@@ -136,10 +128,14 @@ export class PrototypeScene extends Phaser.Scene {
         onFire: () => this.fire(),
         onReset: () => this.reset(),
         onToggleDebug: (enabled) => {
+          if (!this.isDevOptIn) return;
           this.isDebugEnabled = enabled;
           if (this.debugRenderer) this.debugRenderer.setVisible(enabled);
         },
-        onToggleMute: () => this.audioManager.toggleMute(),
+        onToggleMute: () => {
+          const muted = this.audioManager.toggleMute();
+          return muted;
+        },
         onPause: () => this.togglePause(),
       },
       this.currentAngleDeg,
@@ -147,6 +143,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.isDebugEnabled,
       this.audioManager.isMuted,
     );
+    this.htmlControls.setDebugOptIn(this.isDevOptIn);
 
     this.menuOverlay = new MenuOverlay(gameContainer, {
       onMapSelected: (mapId) => this.loadMap(mapId),
@@ -155,8 +152,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.reset();
       },
       onReturnToMenu: () => {
-        this.htmlControls.setCanFire(false);
-        this.menuOverlay.showMapSelect();
+        this.performQuit();
       },
       onStartMultiplayer: (players) => this.startMultiplayer(players),
       onMultiplayerHandoverContinue: () => {
@@ -177,7 +173,13 @@ export class PrototypeScene extends Phaser.Scene {
         this.updateUIPerMultiState();
       },
       onPauseResume: () => this.sessionCoordinator.resume(),
-      onPauseQuit: () => this.sessionCoordinator.quit()
+      onPauseQuit: () => this.sessionCoordinator.quit(),
+      onSettingsChange: (settings) => {
+        this.audioManager.setMuted(settings.muted);
+        this.audioManager.setVolume(settings.volume);
+        this.htmlControls.setMuted(settings.muted);
+        if (this.jonhRenderer) this.jonhRenderer.setReducedMotion(settings.reducedMotion);
+      }
     });
 
     this.inputCoordinator = new InputCoordinator({
@@ -219,23 +221,20 @@ export class PrototypeScene extends Phaser.Scene {
 
     // Keyboard bindings
     const onKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      const isInput = activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLSelectElement;
-      
-      // Prevent native interactions for game keys unless in an input field
-      if (!isInput) {
-        if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
-          e.preventDefault();
-        }
-      }
+      const isInput = isTextInputElement(e.target || document.activeElement);
 
-      if (e.code === 'KeyD' && !isInput) {
+      if (e.code === 'KeyD' && !isInput && this.isDevOptIn) {
         if (this.debugRenderer) this.isDebugEnabled = this.debugRenderer.toggle();
         return;
       }
       
-      // We process inputs regardless of view to catch global pause actions and maintain space tracking
-      this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput);
+      const isOverlayOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
+      this.inputCoordinator.setOverlayVisible(isOverlayOpen);
+
+      const handled = this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput);
+      if (handled) {
+        e.preventDefault();
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       this.inputCoordinator.handleKeyUp(e.code);
@@ -256,8 +255,10 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
 
-    // Show Main Menu initially
+    // Show Main Menu initially, hide and disable gameplay controls
     this.htmlControls.setCanFire(false);
+    this.htmlControls.setControlsInert(true);
+    this.htmlControls.setVisible(false);
     this.menuOverlay.showMainMenu();
   }
 
@@ -266,17 +267,43 @@ export class PrototypeScene extends Phaser.Scene {
       this.sessionCoordinator.resume();
     } else {
       if (this.activeMode === 'none') return;
-      let pausable = false;
-      if (this.activeMode === 'solo') {
-        const s = this.soloMachine.state;
-        pausable = s === 'aiming' || s === 'simulating' || s === 'result';
-      } else if (this.activeMode === 'multi') {
-        const s = this.multiMachine.state;
-        pausable = s === 'aiming' || s === 'simulating' || s === 'result';
+      const isModalOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
+      const shotState = this.attemptMachine?.state ?? 'aiming';
+      const canPause = this.sessionCoordinator.canPause(this.activeMode, shotState, isModalOpen);
+      if (canPause) {
+        this.sessionCoordinator.requestPause(true);
       }
-      this.sessionCoordinator.togglePause(pausable);
     }
   }
+
+  private performQuit(): void {
+    this.inputCoordinator.setPaused(false);
+    this.inputCoordinator.setCanFire(false);
+    this.activeMode = 'none';
+    this.stepper.reset();
+    this.classifier.reset();
+    this.physicsAdapter.clear();
+    this.trailHistory.clear();
+    this.lastProjectileState = null;
+    this.currentLevel = null as unknown as LevelData;
+    this.attemptMachine = null as unknown as ShotAttemptMachine;
+    this.shotShooterIndex = null;
+
+    if (this.sceneryRenderer) { this.sceneryRenderer.destroy(); this.sceneryRenderer = null as unknown as SceneryRenderer; }
+    if (this.cannonRenderer) { this.cannonRenderer.destroy(); this.cannonRenderer = null as unknown as CannonRenderer; }
+    if (this.slotsRenderer) { this.slotsRenderer.destroy(); this.slotsRenderer = null; }
+    if (this.jonhRenderer) { this.jonhRenderer.destroy(); this.jonhRenderer = null as unknown as JonhRenderer; }
+    if (this.ballRenderer) { this.ballRenderer.destroy(); this.ballRenderer = null as unknown as BallRenderer; }
+    if (this.trailRenderer) { this.trailRenderer.destroy(); this.trailRenderer = null as unknown as TrailRenderer; }
+    if (this.debugRenderer) { this.debugRenderer.destroy(); this.debugRenderer = null as unknown as DebugRenderer; }
+
+    this.htmlControls.setCanFire(false);
+    this.htmlControls.setControlsInert(true);
+    this.htmlControls.setVisible(false);
+    this.htmlControls.setFeedback('Jonh is reading. Set your angle and power.', 'info');
+    this.menuOverlay.showMainMenu();
+  }
+
 
   private loadMap(mapId: string): void {
     this.activeMode = 'solo';
@@ -355,7 +382,10 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
     this.cannonRenderer.draw(this.currentAngleDeg);
+    this.htmlControls.setVisible(true);
+    this.htmlControls.setControlsInert(false);
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
+    this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
 
     this.reset();
     if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
@@ -363,7 +393,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setAngle(angle: number): void {
-    if (!this.activeCoordinator) return;
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() || !this.activeCoordinator) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
     if (res) {
       this.currentAngleDeg = res.angle;
@@ -373,7 +403,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setPower(power: number): void {
-    if (!this.activeCoordinator) return;
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() || !this.activeCoordinator) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, 0, power - this.currentPowerPercent);
     if (res) {
       this.currentPowerPercent = res.power;
@@ -382,7 +412,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private fire(): void {
-    if (!this.activeCoordinator || !this.activeCoordinator.canFire()) return;
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() || !this.activeCoordinator || !this.activeCoordinator.canFire()) return;
 
     this.audioManager.unlock();
     this.audioManager.playCannonFire();
@@ -411,7 +441,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   reset(): void {
-    if (!this.physicsAdapter || !this.activeCoordinator) return;
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || !this.physicsAdapter || !this.activeCoordinator) return;
 
     if (!this.activeCoordinator.canReset()) return;
     this.activeCoordinator.reset(this.currentAngleDeg, this.currentPowerPercent);
@@ -446,6 +476,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   private updateUIPerSoloState(): void {
     if (this.soloMachine.state === 'aiming') {
+      this.htmlControls.setControlsInert(false);
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
@@ -454,8 +485,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   override update(_time: number, deltaMs: number): void {
-    if (this.sessionCoordinator?.isPaused) return;
-    if (!this.currentLevel || !this.attemptMachine) return;
+    if (this.sessionCoordinator?.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine) return;
     const dtSeconds = deltaMs / MS_PER_SECOND;
 
     this.jonhRenderer.update(dtSeconds);
@@ -682,6 +712,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.slotsRenderer = new CannonSlotsRenderer(this);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h);
     this.jonhRenderer.draw(false);
+    const data = loadSaveData();
+    this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
     if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
@@ -689,6 +721,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.trailRenderer = new TrailRenderer(this);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
+
+    this.htmlControls.setVisible(true);
 
     // Nothing from the previous map may leak into this one.
     this.stepper.reset();
@@ -720,21 +754,25 @@ export class PrototypeScene extends Phaser.Scene {
       this.trailRenderer.importData(history ? asPreviousTrail(history) : null);
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
       
+      this.htmlControls.setControlsInert(true);
       this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     } else if (match.state === 'aiming') {
+      this.htmlControls.setControlsInert(false);
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
       this.htmlControls.setFeedback(`${match.activePlayer.name}'s turn (Shot ${match.activePlayerShotNumber + 1}/${MULTIPLAYER.shotsPerRound})`, 'info');
     } else if (match.state === 'round_result') {
+      this.htmlControls.setControlsInert(true);
       this.menuOverlay.showMPRoundResult(match.players, match.roundIndex);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     } else if (match.state === 'match_result') {
+      this.htmlControls.setControlsInert(true);
       this.menuOverlay.showMPMatchResult(match.getWinners(), match.players);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');

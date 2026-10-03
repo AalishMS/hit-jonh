@@ -16,6 +16,7 @@ export class JonhRenderer {
   private hitImpactSpeed = 0;
   private reactionQuote = '';
   private idleTimerSeconds = 0;
+  private reducedMotion = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -60,6 +61,18 @@ export class JonhRenderer {
     this.speechText.setVisible(false);
   }
 
+  setReducedMotion(enabled: boolean): void {
+    this.reducedMotion = enabled;
+  }
+
+  isReducedMotionActive(): boolean {
+    if (this.reducedMotion) return true;
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      return true;
+    }
+    return false;
+  }
+
   get isHit(): boolean {
     return this.reactionMode === 'hit';
   }
@@ -88,7 +101,7 @@ export class JonhRenderer {
   triggerHit(impactSpeedMs: number, quote: string): void {
     this.reactionMode = 'hit';
     this.reactionTimerSeconds = 0;
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+    if (this.isReducedMotionActive()) {
       this.reactionTimerSeconds = LOOK.paperFlightSeconds + LOOK.impactFlashSeconds;
     }
     this.hitImpactSpeed = impactSpeedMs;
@@ -101,7 +114,7 @@ export class JonhRenderer {
   triggerHatHit(quote: string): void {
     this.reactionMode = 'hat';
     this.reactionTimerSeconds = 0;
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+    if (this.isReducedMotionActive()) {
       this.reactionTimerSeconds = LOOK.hatFlightSeconds;
     }
     this.reactionQuote = quote;
@@ -113,7 +126,7 @@ export class JonhRenderer {
   triggerOverhead(quote: string): void {
     this.reactionMode = 'overhead';
     this.reactionTimerSeconds = 0;
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+    if (this.isReducedMotionActive()) {
       this.reactionTimerSeconds = LOOK.overheadGlareSeconds;
     }
     this.reactionQuote = quote;
@@ -121,6 +134,7 @@ export class JonhRenderer {
     this.speechText.setVisible(true);
     this.draw();
   }
+
 
   resetToIdle(): void {
     this.reactionMode = 'idle';

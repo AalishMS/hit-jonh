@@ -14,12 +14,16 @@ export interface MenuCallbacks {
   onMultiplayerRematch?: () => void;
   onPauseResume?: () => void;
   onPauseQuit?: () => void;
+  onSettingsChange?: (settings: { muted: boolean; volume: number; reducedMotion: boolean }) => void;
 }
+
+export type MenuOverlayView = 'none' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause';
 
 export class MenuOverlay {
   private container: HTMLElement;
   private content: HTMLElement;
   private clickAbortController: AbortController | null = null;
+  private currentView: MenuOverlayView = 'none';
   
   constructor(private parentElement: HTMLElement, private callbacks: MenuCallbacks) {
     this.container = document.createElement('div');
@@ -40,7 +44,16 @@ export class MenuOverlay {
     this.content.innerHTML = '';
   }
 
+  getView(): MenuOverlayView {
+    return this.currentView;
+  }
+
+  isPauseMenuVisible(): boolean {
+    return this.currentView === 'pause' && this.isVisible();
+  }
+
   showMainMenu(): void {
+    this.currentView = 'main';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -60,9 +73,118 @@ export class MenuOverlay {
     btnMulti.textContent = 'Local Multiplayer';
     btnMulti.addEventListener('click', () => this.showMultiSetup(), { signal: this.clickAbortController.signal });
     this.content.appendChild(btnMulti);
+
+    const btnSettings = document.createElement('button');
+    btnSettings.className = 'btn btn-menu';
+    btnSettings.textContent = 'Settings';
+    btnSettings.style.marginTop = '10px';
+    btnSettings.addEventListener('click', () => this.showSettings(), { signal: this.clickAbortController.signal });
+    this.content.appendChild(btnSettings);
+
+    btnSolo.focus();
   }
 
+  showSettings(): void {
+    this.currentView = 'settings';
+    this.container.style.display = 'flex';
+    this.clear();
+    this.clickAbortController = new AbortController();
+
+    const data = loadSaveData();
+    let { muted, volume, reducedMotion } = data.settings;
+
+    const title = document.createElement('h2');
+    title.textContent = 'Settings';
+    this.content.appendChild(title);
+
+    const settingsList = document.createElement('div');
+    settingsList.style.display = 'flex';
+    settingsList.style.flexDirection = 'column';
+    settingsList.style.gap = '16px';
+    settingsList.style.marginBottom = '20px';
+    settingsList.style.width = '100%';
+    settingsList.style.maxWidth = '320px';
+
+    // Mute row
+    const muteRow = document.createElement('label');
+    muteRow.style.display = 'flex';
+    muteRow.style.alignItems = 'center';
+    muteRow.style.justifyContent = 'space-between';
+    muteRow.style.cursor = 'pointer';
+    const muteText = document.createElement('span');
+    muteText.textContent = 'Mute Audio';
+    const muteCheck = document.createElement('input');
+    muteCheck.type = 'checkbox';
+    muteCheck.checked = muted;
+    muteCheck.addEventListener('change', () => {
+      muted = muteCheck.checked;
+      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+    }, { signal: this.clickAbortController.signal });
+    muteRow.append(muteText, muteCheck);
+    settingsList.appendChild(muteRow);
+
+    // Volume row
+    const volumeRow = document.createElement('div');
+    volumeRow.style.display = 'flex';
+    volumeRow.style.flexDirection = 'column';
+    volumeRow.style.gap = '6px';
+    const volLabelRow = document.createElement('div');
+    volLabelRow.style.display = 'flex';
+    volLabelRow.style.justifyContent = 'space-between';
+    const volText = document.createElement('span');
+    volText.textContent = 'Master Volume';
+    const volValue = document.createElement('span');
+    volValue.textContent = `${Math.round(volume * 100)}%`;
+    volLabelRow.append(volText, volValue);
+
+    const volSlider = document.createElement('input');
+    volSlider.type = 'range';
+    volSlider.min = '0';
+    volSlider.max = '100';
+    volSlider.step = '5';
+    volSlider.value = String(Math.round(volume * 100));
+    volSlider.addEventListener('input', () => {
+      const val = Number.parseInt(volSlider.value, 10);
+      volume = val / 100;
+      volValue.textContent = `${val}%`;
+      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+    }, { signal: this.clickAbortController.signal });
+    volumeRow.append(volLabelRow, volSlider);
+    settingsList.appendChild(volumeRow);
+
+    // Reduced Motion row
+    const motionRow = document.createElement('label');
+    motionRow.style.display = 'flex';
+    motionRow.style.alignItems = 'center';
+    motionRow.style.justifyContent = 'space-between';
+    motionRow.style.cursor = 'pointer';
+    const motionText = document.createElement('span');
+    motionText.textContent = 'Reduced Motion';
+    const motionCheck = document.createElement('input');
+    motionCheck.type = 'checkbox';
+    motionCheck.checked = reducedMotion;
+    motionCheck.addEventListener('change', () => {
+      reducedMotion = motionCheck.checked;
+      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+    }, { signal: this.clickAbortController.signal });
+    motionRow.append(motionText, motionCheck);
+    settingsList.appendChild(motionRow);
+
+    this.content.appendChild(settingsList);
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn btn-menu';
+    backBtn.textContent = 'Back';
+    backBtn.addEventListener('click', () => {
+      this.showMainMenu();
+    }, { signal: this.clickAbortController.signal });
+    this.content.appendChild(backBtn);
+    backBtn.focus();
+  }
+
+
   showMapSelect(): void {
+    this.currentView = 'map_select';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -111,11 +233,16 @@ export class MenuOverlay {
     backBtn.className = 'btn btn-menu';
     backBtn.textContent = 'Back';
     backBtn.style.marginTop = '20px';
-    backBtn.addEventListener('click', () => this.showMainMenu(), { signal: this.clickAbortController.signal });
+    backBtn.addEventListener('click', () => {
+      this.callbacks.onReturnToMenu();
+      this.showMainMenu();
+    }, { signal: this.clickAbortController.signal });
     this.content.appendChild(backBtn);
+    (list.firstElementChild as HTMLElement | null)?.focus();
   }
 
   showMultiSetup(): void {
+    this.currentView = 'multi_setup';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -202,11 +329,17 @@ export class MenuOverlay {
     backBtn.className = 'btn btn-menu';
     backBtn.textContent = 'Back';
     backBtn.style.marginTop = '20px';
-    backBtn.addEventListener('click', () => { this.hide(); this.showMainMenu(); }, { signal: this.clickAbortController.signal });
+    backBtn.addEventListener('click', () => {
+      this.hide();
+      this.callbacks.onReturnToMenu();
+      this.showMainMenu();
+    }, { signal: this.clickAbortController.signal });
     this.content.appendChild(backBtn);
+    startBtn.focus();
   }
 
   showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number): void {
+    this.currentView = 'handover';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -231,6 +364,7 @@ export class MenuOverlay {
   }
 
   showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number): void {
+    this.currentView = 'round_result';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -259,6 +393,7 @@ export class MenuOverlay {
   }
 
   showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[]): void {
+    this.currentView = 'match_result';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -289,11 +424,16 @@ export class MenuOverlay {
     menuBtn.className = 'btn btn-menu';
     menuBtn.textContent = 'Main Menu';
     menuBtn.style.marginTop = '10px';
-    menuBtn.addEventListener('click', () => { this.hide(); this.showMainMenu(); }, { signal: this.clickAbortController.signal });
+    menuBtn.addEventListener('click', () => {
+      this.hide();
+      this.callbacks.onReturnToMenu();
+      this.showMainMenu();
+    }, { signal: this.clickAbortController.signal });
     this.content.appendChild(menuBtn);
   }
 
   showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean): void {
+    this.currentView = 'solo_result';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -348,9 +488,11 @@ export class MenuOverlay {
     actions.appendChild(menuBtn);
 
     this.content.appendChild(actions);
+    retryBtn.focus();
   }
 
   showPauseMenu(): void {
+    this.currentView = 'pause';
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -382,6 +524,7 @@ export class MenuOverlay {
   }
 
   hide(): void {
+    this.currentView = 'none';
     this.container.style.display = 'none';
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -391,6 +534,7 @@ export class MenuOverlay {
   isVisible(): boolean {
     return this.container.style.display !== 'none';
   }
+
 
   destroy(): void {
     if (this.clickAbortController) {

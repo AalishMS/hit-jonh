@@ -4,20 +4,27 @@
  * Handles browser user-gesture autoplay unlock and mute state persistence.
  */
 
-const STORAGE_KEY = 'hitJonh.v1';
+import { loadSaveData, saveSettings } from '../storage/storage';
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private _isMuted = false;
+  private _volume = 1.0;
   private isUnlocked = false;
 
   constructor() {
-    this._isMuted = this.loadMuteState();
+    const settings = this.loadAudioSettings();
+    this._isMuted = settings.muted;
+    this._volume = settings.volume;
   }
 
   get isMuted(): boolean {
     return this._isMuted;
+  }
+
+  get volume(): number {
+    return this._volume;
   }
 
   /**
@@ -40,7 +47,8 @@ export class AudioManager {
     if (!this.ctx) {
       this.ctx = new AudioContextClass();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(this._isMuted ? 0 : 1, this.ctx.currentTime);
+      const targetGain = this._isMuted ? 0 : this._volume;
+      this.masterGain.gain.setValueAtTime(targetGain, this.ctx.currentTime);
       this.masterGain.connect(this.ctx.destination);
     }
 
@@ -51,12 +59,26 @@ export class AudioManager {
     this.isUnlocked = true;
   }
 
-  setMuted(muted: boolean): void {
-    this._isMuted = muted;
-    this.saveMuteState(muted);
+  setVolume(volume: number): void {
+    const clamped = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1.0));
+    this._volume = clamped;
+    saveSettings({ volume: clamped });
 
     if (this.masterGain && this.ctx) {
-      const target = muted ? 0 : 1;
+      const target = this._isMuted ? 0 : clamped;
+      const now = this.ctx.currentTime;
+      this.masterGain.gain.cancelScheduledValues(now);
+      this.masterGain.gain.setValueAtTime(target, now);
+      this.masterGain.gain.value = target;
+    }
+  }
+
+  setMuted(muted: boolean): void {
+    this._isMuted = muted;
+    saveSettings({ muted });
+
+    if (this.masterGain && this.ctx) {
+      const target = muted ? 0 : this._volume;
       const now = this.ctx.currentTime;
       this.masterGain.gain.cancelScheduledValues(now);
       this.masterGain.gain.setValueAtTime(target, now);
@@ -199,29 +221,15 @@ export class AudioManager {
     noise.stop(startTime + duration + 0.05);
   }
 
-  private loadMuteState(): boolean {
-    if (typeof window === 'undefined' || !window.localStorage) return false;
+  private loadAudioSettings(): { muted: boolean; volume: number } {
     try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { muted?: boolean };
-        return Boolean(parsed.muted);
-      }
+      const data = loadSaveData();
+      return {
+        muted: Boolean(data.settings.muted),
+        volume: typeof data.settings.volume === 'number' ? data.settings.volume : 1.0,
+      };
     } catch {
-      // Ignore parse failure
-    }
-    return false;
-  }
-
-  private saveMuteState(muted: boolean): void {
-    if (typeof window === 'undefined' || !window.localStorage) return;
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      const data = saved ? (JSON.parse(saved) as Record<string, unknown>) : {};
-      data.muted = muted;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch {
-      // Ignore storage errors
+      return { muted: false, volume: 1.0 };
     }
   }
 

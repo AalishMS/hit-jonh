@@ -20,6 +20,18 @@ describe('AudioManager', () => {
     expect(audio.isMuted).toBe(true);
   });
 
+  it('adjusts and clamps volume correctly', () => {
+    const audio = new AudioManager();
+    audio.setVolume(0.4);
+    expect(audio.volume).toBeCloseTo(0.4);
+
+    audio.setVolume(1.5);
+    expect(audio.volume).toBe(1.0);
+
+    audio.setVolume(-0.2);
+    expect(audio.volume).toBe(0.0);
+  });
+
   it('safely handles play calls when AudioContext is absent or uninitialized', () => {
     const audio = new AudioManager();
     expect(() => {

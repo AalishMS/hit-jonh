@@ -4,9 +4,17 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Phase 4 / M5 (Pause and input lifecycle) IN PROGRESS.** Implemented strict pause/resume/quit state machine via pure `SessionCoordinator`. Pause freezes Matter physics fixed steps and cosmetic/reaction timers by pausing `PrototypeScene` updates. Input coordination rewritten to handle `Escape` overlay transitions while preserving `Space` keyup tracking out of bounds and over native HTML controls. Verified logic across text field bounds. Built and checked successfully (19 files, 123 tests). Pending: Settings, audio sliders, loading/performance/accessibility polish.
+**Current: Phase 4 / M5 (Polish and readiness) implementation complete; automated acceptance passing, awaiting Codex browser acceptance.** All Phase 4 requirements (pause/resume/quit state machine, accumulator reset at both boundaries, input lifecycle and accidental-action rules, held Space tracking across handover/pause/text boundaries, Settings menu with persisted mute/volume/reducedMotion, reduced motion suppression in renderer, idempotent cleanup, dev-only opt-in debug gate) verified via `npm run check` (19 test files, 128 tests passing) and `npm run build` (686ms). Automated evidence and explicit NOT VERIFIED entries for browser/sensory inspection documented in `docs/release-verification.md`.
 
 ## Completed
+
+- **M5 (2026-10-03): Polish and readiness.**
+  - **Pure Session Coordinator (`src/rules/sessionCoordinator.ts`):** Framework-agnostic state machine managing pause/resume/quit states, pausable evaluation per SPEC §12 (Aiming, Simulating, in-game Result; disallowed in menus/modals), FixedStepper advancement gating, and accumulator resets at both pause entry and resume exit to eliminate catch-up bursts.
+  - **Input Lifecycle & Accidental-Action Rules (`src/input/controls.ts`):** Space release tracked unconditionally across pauses/menus/text focus; fresh press required for firing; Escape resumes from pause (repeat ignored); gameplay shortcuts blocked when typing in text/select/textarea controls (range sliders treated as native sliders); native menu buttons activated without bypass.
+  - **Settings & Audio (`src/audio/audioManager.ts`, `src/storage/storage.ts`, `src/ui/menuOverlay.ts`):** Settings menu reachable from Main Menu with persisted mute toggle, master volume slider (0–100%), and reduced motion toggle; AudioContext master gain and first-gesture unlock.
+  - **Reduced Motion Support (`src/render/jonhRenderer.ts`):** Suppresses screen shake, rapid fluttering, blinding flashes, and impact dust/stars while keeping clear, satisfying slapstick hit pose and speech bubble reaction.
+  - **Idempotent Scene Cleanup & Inert Controls (`src/scenes/PrototypeScene.ts`, `src/ui/htmlControls.ts`):** Quit returns cleanly to Main Menu, clearing physics bodies and destroying renderers; controls made inert/disabled under menus and handover modals; developer debug HUD and `KeyD` shortcut gated strictly to explicit dev opt-in (`?debug`).
+
 
 - **M0 (2026-10-03):** Vite + TypeScript + Phaser 4 project; strict tsconfig; ESLint; Vitest; `.gitignore`; lockfile.
   - Minimal page: title + empty Phaser scene (`src/scenes/EmptyGameScene.ts`) with Matter initialised (`autoUpdate: false`) and stepped by `FixedStepper` at 1/120 s.

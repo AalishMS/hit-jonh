@@ -87,6 +87,14 @@ describe('Storage', () => {
     expect(consoleWarn).toHaveBeenCalled();
   });
 
+  it('saves and loads settings including volume and reduced motion', () => {
+    saveSettings({ muted: true, volume: 0.65, reducedMotion: true });
+    const data = loadSaveData();
+    expect(data.settings.muted).toBe(true);
+    expect(data.settings.volume).toBeCloseTo(0.65);
+    expect(data.settings.reducedMotion).toBe(true);
+  });
+
   it('validates against bad data shapes safely', () => {
     localStorage.setItem('hitJonh.v1', JSON.stringify({
       version: 'hitJonh.v1',

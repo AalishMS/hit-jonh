@@ -166,6 +166,8 @@ export class HTMLControls {
     ).toFixed(1);
   }
 
+  private previousCanFire = false;
+
   setValues(angle: number, power: number): void {
     this.angleSlider.value = String(angle);
     this.angleValueLabel.textContent = `${angle}°`;
@@ -175,9 +177,40 @@ export class HTMLControls {
   }
 
   setCanFire(allowed: boolean): void {
+    this.previousCanFire = allowed;
     this.fireButton.disabled = !allowed;
     this.angleSlider.disabled = !allowed;
     this.powerSlider.disabled = !allowed;
+  }
+
+  setControlsInert(inert: boolean): void {
+    (this.container as HTMLElement & { inert?: boolean }).inert = inert;
+    if (inert) {
+      this.fireButton.disabled = true;
+      this.resetButton.disabled = true;
+      this.angleSlider.disabled = true;
+      this.powerSlider.disabled = true;
+      this.pauseButton.disabled = true;
+    } else {
+      this.resetButton.disabled = false;
+      this.pauseButton.disabled = false;
+      this.setCanFire(this.previousCanFire);
+    }
+  }
+
+  setVisible(visible: boolean): void {
+    this.container.style.display = visible ? '' : 'none';
+  }
+
+  setDebugOptIn(optIn: boolean): void {
+    const debugGroup = this.container.querySelector('.debug-group') as HTMLElement | null;
+    if (debugGroup) {
+      if (optIn) {
+        debugGroup.removeAttribute('hidden');
+      } else {
+        debugGroup.setAttribute('hidden', '');
+      }
+    }
   }
 
   setResetLabel(label: string): void {
