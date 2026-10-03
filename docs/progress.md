@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Phase 3 / M4 focused integration correction complete; automated acceptance passing, awaiting Codex browser acceptance.** All integration corrections (per-player shooter trail history, decorative inactive cannon slots, final round map reload guard, pure machine invariants, domain validation, and comprehensive headless test coverage) verified via `npm run check` (18 test files, 117 tests passing) and `npm run build`. Interactive browser playthrough and visual/sound balance are explicitly **NOT VERIFIED** (delegated to Codex due to Chrome profile conflict). Next milestone: Phase 4 / M5 (Pause, settings, audio sliders) once M4 acceptance is signed off.
+**Current: Phase 4 / M5 (Pause and input lifecycle) IN PROGRESS.** Implemented strict pause/resume/quit state machine via pure `SessionCoordinator`. Pause freezes Matter physics fixed steps and cosmetic/reaction timers by pausing `PrototypeScene` updates. Input coordination rewritten to handle `Escape` overlay transitions while preserving `Space` keyup tracking out of bounds and over native HTML controls. Verified logic across text field bounds. Built and checked successfully (19 files, 123 tests). Pending: Settings, audio sliders, loading/performance/accessibility polish.
 
 ## Completed
 

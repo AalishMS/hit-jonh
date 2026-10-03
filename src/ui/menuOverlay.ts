@@ -12,6 +12,8 @@ export interface MenuCallbacks {
   onMultiplayerHandoverContinue?: () => void;
   onMultiplayerNextRound?: () => void;
   onMultiplayerRematch?: () => void;
+  onPauseResume?: () => void;
+  onPauseQuit?: () => void;
 }
 
 export class MenuOverlay {
@@ -348,8 +350,42 @@ export class MenuOverlay {
     this.content.appendChild(actions);
   }
 
+  showPauseMenu(): void {
+    this.container.style.display = 'flex';
+    this.clear();
+    this.clickAbortController = new AbortController();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Paused';
+    this.content.appendChild(title);
+
+    const resumeBtn = document.createElement('button');
+    resumeBtn.className = 'btn';
+    resumeBtn.textContent = 'Resume';
+    resumeBtn.addEventListener('click', () => {
+      this.hide();
+      this.callbacks.onPauseResume?.();
+    }, { signal: this.clickAbortController.signal });
+    this.content.appendChild(resumeBtn);
+
+    const quitBtn = document.createElement('button');
+    quitBtn.className = 'btn btn-menu';
+    quitBtn.textContent = 'Quit to Menu';
+    quitBtn.style.marginTop = '10px';
+    quitBtn.addEventListener('click', () => {
+      this.hide();
+      this.callbacks.onPauseQuit?.();
+    }, { signal: this.clickAbortController.signal });
+    this.content.appendChild(quitBtn);
+
+    resumeBtn.focus();
+  }
+
   hide(): void {
     this.container.style.display = 'none';
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   }
 
   isVisible(): boolean {

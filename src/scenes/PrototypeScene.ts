@@ -13,6 +13,7 @@ import { SceneryRenderer } from '../render/sceneryRenderer';
 import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
 import { PlayerHistory } from '../rules/playerHistory';
 import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
+import { SessionCoordinator } from '../rules/sessionCoordinator';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { SoloChallengeMachine } from '../rules/soloChallenge';
 import { SoloCoordinator } from '../rules/soloCoordinator';
@@ -39,6 +40,7 @@ export class PrototypeScene extends Phaser.Scene {
   
   private multiMachine!: MultiplayerMatchMachine;
   private multiCoordinator!: MultiCoordinator;
+  private sessionCoordinator!: SessionCoordinator;
   
   private activeMode: 'none' | 'solo' | 'multi' = 'none';
 
@@ -96,6 +98,36 @@ export class PrototypeScene extends Phaser.Scene {
       this.isDebugEnabled = true;
     }
 
+    this.sessionCoordinator = new SessionCoordinator({
+      onPause: () => {
+        this.inputCoordinator.setPaused(true);
+        this.menuOverlay.showPauseMenu();
+      },
+      onResume: () => {
+        this.inputCoordinator.setPaused(false);
+        this.stepper.reset();
+      },
+      onQuit: () => {
+        this.inputCoordinator.setPaused(false);
+        this.activeMode = 'none';
+        this.stepper.reset();
+        this.classifier.reset();
+        this.physicsAdapter.clear();
+        this.trailHistory.clear();
+        this.lastProjectileState = null;
+        this.htmlControls.setCanFire(false);
+        this.htmlControls.setFeedback('Jonh is reading. Set your angle and power.', 'info');
+        this.menuOverlay.showMainMenu();
+        if (this.sceneryRenderer) this.sceneryRenderer.destroy();
+        if (this.cannonRenderer) this.cannonRenderer.destroy();
+        if (this.slotsRenderer) { this.slotsRenderer.destroy(); this.slotsRenderer = null; }
+        if (this.jonhRenderer) this.jonhRenderer.destroy();
+        if (this.ballRenderer) this.ballRenderer.destroy();
+        if (this.trailRenderer) this.trailRenderer.destroy();
+        if (this.debugRenderer) this.debugRenderer.destroy();
+      }
+    });
+
     this.htmlControls = new HTMLControls(
       gameContainer,
       {
@@ -108,6 +140,7 @@ export class PrototypeScene extends Phaser.Scene {
           if (this.debugRenderer) this.debugRenderer.setVisible(enabled);
         },
         onToggleMute: () => this.audioManager.toggleMute(),
+        onPause: () => this.togglePause(),
       },
       this.currentAngleDeg,
       this.currentPowerPercent,
@@ -142,7 +175,9 @@ export class PrototypeScene extends Phaser.Scene {
         this.trailHistory.clear();
         this.loadMultiplayerMap(this.multiMachine.currentMapId);
         this.updateUIPerMultiState();
-      }
+      },
+      onPauseResume: () => this.sessionCoordinator.resume(),
+      onPauseQuit: () => this.sessionCoordinator.quit()
     });
 
     this.inputCoordinator = new InputCoordinator({
@@ -168,6 +203,7 @@ export class PrototypeScene extends Phaser.Scene {
           this.setPower(nextPower);
         }
       },
+      onEscape: () => this.togglePause(),
     });
 
     // Gesture unlock
@@ -185,15 +221,23 @@ export class PrototypeScene extends Phaser.Scene {
     const onKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInput = activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLSelectElement;
+      
+      // Prevent native interactions for game keys unless in an input field
+      if (!isInput) {
+        if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+          e.preventDefault();
+        }
+      }
+
       if (e.code === 'KeyD' && !isInput) {
         if (this.debugRenderer) this.isDebugEnabled = this.debugRenderer.toggle();
         return;
       }
-      if (!this.currentLevel || this.menuOverlay.isVisible()) return;
+      
+      // We process inputs regardless of view to catch global pause actions and maintain space tracking
       this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput);
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!this.currentLevel || this.menuOverlay.isVisible()) return;
       this.inputCoordinator.handleKeyUp(e.code);
     };
     window.addEventListener('keydown', onKeyDown);
@@ -215,6 +259,23 @@ export class PrototypeScene extends Phaser.Scene {
     // Show Main Menu initially
     this.htmlControls.setCanFire(false);
     this.menuOverlay.showMainMenu();
+  }
+
+  private togglePause(): void {
+    if (this.sessionCoordinator.isPaused) {
+      this.sessionCoordinator.resume();
+    } else {
+      if (this.activeMode === 'none') return;
+      let pausable = false;
+      if (this.activeMode === 'solo') {
+        const s = this.soloMachine.state;
+        pausable = s === 'aiming' || s === 'simulating' || s === 'result';
+      } else if (this.activeMode === 'multi') {
+        const s = this.multiMachine.state;
+        pausable = s === 'aiming' || s === 'simulating' || s === 'result';
+      }
+      this.sessionCoordinator.togglePause(pausable);
+    }
   }
 
   private loadMap(mapId: string): void {
@@ -393,6 +454,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   override update(_time: number, deltaMs: number): void {
+    if (this.sessionCoordinator?.isPaused) return;
     if (!this.currentLevel || !this.attemptMachine) return;
     const dtSeconds = deltaMs / MS_PER_SECOND;
 

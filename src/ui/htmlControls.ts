@@ -8,6 +8,7 @@ export interface HTMLControlsCallbacks {
   onReset: () => void;
   onToggleDebug: (enabled: boolean) => void;
   onToggleMute: () => boolean;
+  onPause?: () => void;
 }
 
 export class HTMLControls {
@@ -20,6 +21,7 @@ export class HTMLControls {
   private fireButton!: HTMLButtonElement;
   private resetButton!: HTMLButtonElement;
   private muteButton!: HTMLButtonElement;
+  private pauseButton!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
 
@@ -80,6 +82,7 @@ export class HTMLControls {
           <button type="button" class="btn btn-fire" id="fire-btn">Fire · Space</button>
           <button type="button" class="btn btn-reset" id="reset-btn">Aim again</button>
           <button type="button" class="btn btn-mute" id="mute-btn">${muted ? 'Sound off' : 'Sound on'}</button>
+          <button type="button" class="btn btn-pause" id="pause-btn">Pause</button>
         </div>
 
         <div class="debug-group" ${debug ? '' : 'hidden'}>
@@ -100,6 +103,7 @@ export class HTMLControls {
     this.fireButton = this.container.querySelector('#fire-btn') as HTMLButtonElement;
     this.resetButton = this.container.querySelector('#reset-btn') as HTMLButtonElement;
     this.muteButton = this.container.querySelector('#mute-btn') as HTMLButtonElement;
+    this.pauseButton = this.container.querySelector('#pause-btn') as HTMLButtonElement;
     this.debugToggle = this.container.querySelector('#debug-toggle') as HTMLInputElement;
     this.feedbackBanner = this.container.querySelector('#shot-feedback') as HTMLElement;
 
@@ -139,6 +143,12 @@ export class HTMLControls {
     };
     this.muteButton.addEventListener('click', onMuteClick);
     this.cleanupListeners.push(() => this.muteButton.removeEventListener('click', onMuteClick));
+
+    const onPauseClick = () => {
+      this.callbacks.onPause?.();
+    };
+    this.pauseButton.addEventListener('click', onPauseClick);
+    this.cleanupListeners.push(() => this.pauseButton.removeEventListener('click', onPauseClick));
 
     const onDebugChange = () => {
       this.callbacks.onToggleDebug(this.debugToggle.checked);

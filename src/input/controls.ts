@@ -13,12 +13,14 @@ export interface InputCallbacks {
   onContinue?: () => void;
   onToggleMute?: () => void;
   onAimChange: (deltaAngle: number, deltaPower: number) => void;
+  onEscape?: () => void;
 }
 
 export class InputCoordinator {
   private canFire = false;
   private isSpaceDown = false;
   private spaceReleasedSinceAiming = true;
+  private isPaused = false;
 
   constructor(private readonly callbacks: InputCallbacks) {}
 
@@ -33,15 +35,27 @@ export class InputCoordinator {
     }
   }
 
-  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean): void {
-    if (isTextInputFocused) return;
+  setPaused(paused: boolean): void {
+    this.isPaused = paused;
+  }
 
+  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean): void {
     if (code === 'Space') {
       this.isSpaceDown = true;
+    }
+
+    if (this.isPaused || isTextInputFocused) return;
+
+    if (code === 'Space') {
       if (!repeat && this.canFire && this.spaceReleasedSinceAiming) {
         this.spaceReleasedSinceAiming = false;
         this.callbacks.onFire();
       }
+      return;
+    }
+
+    if (code === 'Escape') {
+      this.callbacks.onEscape?.();
       return;
     }
 
