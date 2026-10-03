@@ -7,7 +7,9 @@ Codex leads acceptance; all implementation is delegated through the AGY companio
 | Phase 1 / M2 closure | Gemini 3.8 Flash High | implement-musc104x-afc0ee88 | e400890 | check: typecheck/lint pass, 12 test files / 82 tests pass; build: 50 modules, succeeds |
 | M2 reaction timing correction | Gemini 3.8 Flash High | implement-muschnpx-9f117176 | df19f1a | check: typecheck/lint pass, 12 files / 87 tests pass; build: 50 modules, succeeds |
 | Phase 2 / M3 initial | Gemini 3.1 Pro High | implement-musct9nj-c503e7a7 | 7a2e52c | check: 14 files / 99 tests pass, build: 56 modules, succeeds; lead requested corrections |
-| M3 review corrections | Gemini 3.1 Pro High | implement-musda4e3-82130817 | Pending | Pending final report and lead acceptance |
+| M3 review corrections | Gemini 3.1 Pro High | implement-musda4e3-82130817 | dbf6bb3 | check: 15 files / 102 tests pass, build: 57 modules, succeeds; lead inspected corrected coordinator/storage/rendering |
+| Phase 3 / M4 | Gemini 3.1 Pro High | implement-musdnkk5-5ccc1bdf | None | Interrupted by RESOURCE_EXHAUSTED quota; partial source not accepted |
+| M4 model fallback | Gemini 3.8 Flash High | implement-muse7eky-08609916 | None | Same quota error before additional work |
 
 ## Lead review notes
 
@@ -32,3 +34,20 @@ Chrome browser extension, production served by `npm run preview -- --host 127.0.
 - Fence selected; native controls set 45 degrees / 24 percent. Fire locked aim inputs, then showed RICOCHET HIT (125 pts), Challenge Complete, three stars, one shot and style marker.
 - Screenshot confirmed the physical fence was absent visually; requested correction.
 - Captured warning/error console entries: empty. Full success/failure/retry/storage/other-map walkthrough still pending.
+
+## Codex browser evidence (corrected M3 build dbf6bb3)
+
+- Main menu -> Solo Challenge -> all-map selection. Fence best of one shot and style marker survived reload.
+- Rooftop building and tea table were visible at correct elevation; 45 degrees / 50 percent gave ricochet body success. Result stayed on scene with Continue immediately available; Continue showed three-star solo result; Retry returned to three attempts with aim retained.
+- Weak Rooftop shot 5 degrees / 0 percent: Reset during flight was ignored; eventually SHORT resolved; Continue returned to two attempts left with aim retained.
+- Three weak Rooftop misses completed through explicit Continue actions: remaining attempts 2 -> 1 -> failure. Final Continue showed Challenge Failed / all 3 attempts used. Retry restored three attempts and kept 5 degrees / 0 percent without reload. Captured warning/error logs remained empty.
+- Review identified the display Attempt 0/3, unclamped stored aim values, and arrival dialogue misinterpreted as drawn target guide lines. Phase 3 brief explicitly requests correction before MP. These are not considered owner-approved design choices.
+- These checks do not cover all transitions or verify hardware touch/audio enjoyment.
+
+## Quota interruption and preservation
+
+- Pro error: "Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h9m16s." Flash continuation error: same quota, "Resets in 2h6m22s." No further automatic retries.
+- Lead inspected partial tracked/untracked paths and diff. Last worker check had a `menuOverlay.ts` type error; M4 transition/history/player identity work remained unfinished.
+- Preserved only known worker source/progress/scratch files in recoverable Git stash `b754aa51de7365e444e652339ef718f624ac2a45` (includes untracked MP source/tests/scratch). Root-authored prompts/audit stayed in working tree. Restored the prior verified source; no worker work was discarded.
+- Lead reran checks after restore: `npm run check` typecheck/lint pass, 15 files / 102 tests pass (876ms); `npm run build` 57 modules, built in 812ms. Design brief diff from original baseline is empty.
+- Owner execution preference is pending: finish locally with Codex or resume AGY after quota reset. No scheduled task was created and no worker remains active.

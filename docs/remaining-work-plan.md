@@ -2,6 +2,8 @@
 
 Prepared 2026-10-03. The owner requested phased execution through Antigravity; Codex owns scope, acceptance, review and delivery. This resumes feature work after the Backyard appearance pass. Visual enjoyment, sound balance and hardware touch testing remain owner judgments, never inferred from passing tests.
 
+Execution status: Phases 1 and 2 implemented with reviewed corrections (last verified source `dbf6bb3`; 102 tests/check/build pass). Phase 3 was interrupted by shared AGY quota; Flash fallback also failed. Recoverable partial work is in stash `b754aa51de7365e444e652339ef718f624ac2a45`; current source restored to M3. Phase 4 and Phase 5 pending. See `orchestration-log.md` and `agy-prompts/phase-3-recovery.md` for continuation, unresolved M3 follow-ups, and exact evidence. No completion is claimed for interrupted/pending phases.
+
 ## Execution contract
 
 - Read `AGENTS.md`, `SPEC.md`, and `docs/progress.md` before each phase. SPEC is authoritative.

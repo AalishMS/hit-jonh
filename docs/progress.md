@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Phase 2 (M3 solo play and three maps) completed; ready for Phase 3 (M4 local competition).** Map selection, pure 3-attempt solo state machine, stars/style tracking, versioned persistence (`hitJonh.v1`), and all three maps (Backyard, Fence, Rooftop) with adapter-verified reference solutions are wired and verified.
+**Current: last verified code checkpoint is Phase 2 / M3 (`dbf6bb3`). Phase 3 / M4 is blocked by Antigravity quota.** The interrupted multiplayer changes are preserved in Git stash `b754aa51de7365e444e652339ef718f624ac2a45`; the working source was restored to playable M3. Phase 4 / M5 and the independent final review have not run.
 
 ## Completed
 
@@ -160,6 +160,8 @@ _Last updated: 2026-10-03_
 
 ## Known issues
 
+- **Execution blocker (2026-10-03):** Pro 3.1 High stopped during M4 with `RESOURCE_EXHAUSTED` / "Individual quota reached". Flash 3.8 High continuation returned the same error before doing further work. Latest CLI estimate: 2h6m22s from 18:38:29 Nepal time (approximately 20:45 on 3 October, not independently confirmed). No AGY worker remains running. Partial M4 had a TypeScript error and incomplete transitions/appearance/history; it is not accepted or committed as a milestone. Exact recovery brief: `docs/agy-prompts/phase-3-recovery.md`.
+- **M3 follow-ups captured in the M4 brief:** the restored checkpoint shows the first shot as Attempt 0/3, does not bound otherwise-finite stored aim values, and mistakenly interprets Jonh's spoken arrival line as vertical target guide lines. Interrupted M4 addressed parts of these; those changes remain in the preserved stash. These are known issues, not approved design choices.
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
 - Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
 - Visual enjoyment, sound balance, and hardware touch testing remain owner judgments, never inferred from passing tests.
@@ -167,5 +169,11 @@ _Last updated: 2026-10-03_
 
 ## Next task
 
-**Phase 3: M4 Local Competition.** Add 2–4-player setup with optional names, colour and pattern, saved personal aim/trail, explicit handover, three maps/rounds with rotating start, three shots per player per round, scores, round/match results, tie-breaks and rematch. All shots use the same launch position and identical reset state; early hits do not shorten a round.
+**Resume Phase 3 / M4 once the execution route is resolved.** Restore the preserved stash without dropping it, reconcile any documentation conflicts while keeping this audit record, then follow `docs/agy-prompts/phase-3-recovery.md`. Finish the reviewed gaps, run check/build and checkpoint before Phase 4 and independent Phase 5 review. The owner was asked whether Codex should finish locally or AGY should resume after quota resets; no answer is inferred from elapsed time.
 
+## Lead acceptance evidence — 2026-10-03
+
+- Codex inspected phase diffs and returned concrete corrections before proceeding; M2 timing and M3 transition/storage/rendering fixes are checkpointed in `df19f1a` and `dbf6bb3`.
+- Chrome production preview: menu -> Solo Challenge -> map select; Fence best/style survived reload; visible Rooftop building/props; Rooftop reference hit -> immediate Continue -> three-star result -> Retry without reload. Three weak Rooftop misses progressed through 2/1 attempts remaining -> failure -> Retry back to 3, retaining aim. Reset during flight was ignored. Captured warning/error logs were empty. See `docs/orchestration-log.md` for build-specific coverage limits.
+- After preserving interrupted M4 and restoring M3, Codex reran `npm run check`: typecheck/lint pass, **15 test files passed, 102 tests passed**. `npm run build`: **57 modules transformed, built in 812ms**; Phaser remains **375.59 kB gzip**.
+- Multiplayer and M5/browser full-transition/performance/hardware-touch gates are **not verified**, because M4 was interrupted and M5 has not run. Art enjoyment and perceived sound balance remain owner playtest judgments.
