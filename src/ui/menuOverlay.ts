@@ -1,6 +1,6 @@
 import { MAPS } from '../levels';
 import { MULTIPLAYER } from '../config/tuning';
-import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup } from '../storage/storage';
+import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
 
@@ -105,8 +105,14 @@ export class MenuOverlay {
     settingsList.style.width = '100%';
     settingsList.style.maxWidth = '320px';
 
+    const notifyAndPersist = () => {
+      saveSettings({ muted, volume, reducedMotion });
+      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+    };
+
     // Mute row
     const muteRow = document.createElement('label');
+    muteRow.htmlFor = 'settings-mute';
     muteRow.style.display = 'flex';
     muteRow.style.alignItems = 'center';
     muteRow.style.justifyContent = 'space-between';
@@ -115,10 +121,11 @@ export class MenuOverlay {
     muteText.textContent = 'Mute Audio';
     const muteCheck = document.createElement('input');
     muteCheck.type = 'checkbox';
+    muteCheck.id = 'settings-mute';
     muteCheck.checked = muted;
     muteCheck.addEventListener('change', () => {
       muted = muteCheck.checked;
-      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+      notifyAndPersist();
     }, { signal: this.clickAbortController.signal });
     muteRow.append(muteText, muteCheck);
     settingsList.appendChild(muteRow);
@@ -131,14 +138,17 @@ export class MenuOverlay {
     const volLabelRow = document.createElement('div');
     volLabelRow.style.display = 'flex';
     volLabelRow.style.justifyContent = 'space-between';
-    const volText = document.createElement('span');
-    volText.textContent = 'Master Volume';
+    const volLabel = document.createElement('label');
+    volLabel.htmlFor = 'settings-volume';
+    volLabel.textContent = 'Master Volume';
     const volValue = document.createElement('span');
     volValue.textContent = `${Math.round(volume * 100)}%`;
-    volLabelRow.append(volText, volValue);
+    volLabelRow.append(volLabel, volValue);
 
     const volSlider = document.createElement('input');
     volSlider.type = 'range';
+    volSlider.id = 'settings-volume';
+    volSlider.setAttribute('aria-label', 'Master Volume');
     volSlider.min = '0';
     volSlider.max = '100';
     volSlider.step = '5';
@@ -147,13 +157,14 @@ export class MenuOverlay {
       const val = Number.parseInt(volSlider.value, 10);
       volume = val / 100;
       volValue.textContent = `${val}%`;
-      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+      notifyAndPersist();
     }, { signal: this.clickAbortController.signal });
     volumeRow.append(volLabelRow, volSlider);
     settingsList.appendChild(volumeRow);
 
     // Reduced Motion row
     const motionRow = document.createElement('label');
+    motionRow.htmlFor = 'settings-reduced-motion';
     motionRow.style.display = 'flex';
     motionRow.style.alignItems = 'center';
     motionRow.style.justifyContent = 'space-between';
@@ -162,10 +173,11 @@ export class MenuOverlay {
     motionText.textContent = 'Reduced Motion';
     const motionCheck = document.createElement('input');
     motionCheck.type = 'checkbox';
+    motionCheck.id = 'settings-reduced-motion';
     motionCheck.checked = reducedMotion;
     motionCheck.addEventListener('change', () => {
       reducedMotion = motionCheck.checked;
-      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+      notifyAndPersist();
     }, { signal: this.clickAbortController.signal });
     motionRow.append(motionText, motionCheck);
     settingsList.appendChild(motionRow);
@@ -181,6 +193,7 @@ export class MenuOverlay {
     this.content.appendChild(backBtn);
     backBtn.focus();
   }
+
 
 
   showMapSelect(): void {

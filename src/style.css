@@ -29,6 +29,27 @@ body { margin: 0; }
 }
 .tagline { margin: 0; font-size: 13px; }
 main { padding: 0 16px 20px; }
+.boot-status {
+  width: min(100%, var(--scene-width));
+  margin: 0 auto 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: #faf8e9;
+  text-align: center;
+}
+.boot-status[hidden] { display: none; }
+.boot-status.boot-error {
+  border-color: var(--accent);
+  background: #f0e1ca;
+}
+.boot-status .btn-retry {
+  margin-left: 10px;
+  min-height: 28px;
+  padding: 4px 10px;
+}
 #game, .controls-panel { width: min(100%, var(--scene-width)); margin-inline: auto; }
 #game {
   aspect-ratio: 16 / 7;

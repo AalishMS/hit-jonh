@@ -4,16 +4,17 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Phase 4 / M5 (Polish and readiness) implementation complete; automated acceptance passing, awaiting Codex browser acceptance.** All Phase 4 requirements (pause/resume/quit state machine, accumulator reset at both boundaries, input lifecycle and accidental-action rules, held Space tracking across handover/pause/text boundaries, Settings menu with persisted mute/volume/reducedMotion, reduced motion suppression in renderer, idempotent cleanup, dev-only opt-in debug gate) verified via `npm run check` (19 test files, 128 tests passing) and `npm run build` (686ms). Automated evidence and explicit NOT VERIFIED entries for browser/sensory inspection documented in `docs/release-verification.md`.
+**Current: Phase 4 / M5 (Polish and readiness) implementation complete with browser findings resolved; automated acceptance passing, awaiting Codex browser acceptance.** All Phase 4 requirements (pause/resume/quit state machine, accumulator reset at both boundaries, input lifecycle and accidental-action rules, held Space tracking across handover/pause/text boundaries, Settings menu with persisted mute/volume/reducedMotion, reduced motion suppression in renderer, accessible volume slider name, accessible boot status with failure/retry presentation, inert result overlays, idempotent cleanup, dev-only opt-in debug gate) verified via `npm run check` (19 test files, 130 tests passing) and `npm run build` (769ms). Automated evidence and explicit NOT VERIFIED entries for browser/sensory inspection documented in `docs/release-verification.md`.
 
 ## Completed
 
 - **M5 (2026-10-03): Polish and readiness.**
   - **Pure Session Coordinator (`src/rules/sessionCoordinator.ts`):** Framework-agnostic state machine managing pause/resume/quit states, pausable evaluation per SPEC §12 (Aiming, Simulating, in-game Result; disallowed in menus/modals), FixedStepper advancement gating, and accumulator resets at both pause entry and resume exit to eliminate catch-up bursts.
   - **Input Lifecycle & Accidental-Action Rules (`src/input/controls.ts`):** Space release tracked unconditionally across pauses/menus/text focus; fresh press required for firing; Escape resumes from pause (repeat ignored); gameplay shortcuts blocked when typing in text/select/textarea controls (range sliders treated as native sliders); native menu buttons activated without bypass.
-  - **Settings & Audio (`src/audio/audioManager.ts`, `src/storage/storage.ts`, `src/ui/menuOverlay.ts`):** Settings menu reachable from Main Menu with persisted mute toggle, master volume slider (0–100%), and reduced motion toggle; AudioContext master gain and first-gesture unlock.
-  - **Reduced Motion Support (`src/render/jonhRenderer.ts`):** Suppresses screen shake, rapid fluttering, blinding flashes, and impact dust/stars while keeping clear, satisfying slapstick hit pose and speech bubble reaction.
-  - **Idempotent Scene Cleanup & Inert Controls (`src/scenes/PrototypeScene.ts`, `src/ui/htmlControls.ts`):** Quit returns cleanly to Main Menu, clearing physics bodies and destroying renderers; controls made inert/disabled under menus and handover modals; developer debug HUD and `KeyD` shortcut gated strictly to explicit dev opt-in (`?debug`).
+  - **Settings & Audio (`src/audio/audioManager.ts`, `src/storage/storage.ts`, `src/ui/menuOverlay.ts`):** Settings menu reachable from Main Menu with persisted mute toggle, master volume slider (0–100%) with accessible label (`id="settings-volume"`, `aria-label="Master Volume"`), and persisted reduced motion toggle; AudioContext master gain and first-gesture unlock.
+  - **Reduced Motion Support (`src/render/jonhRenderer.ts`):** Suppresses screen shake, rapid fluttering, blinding flashes, and impact dust/stars while keeping clear, satisfying slapstick hit pose and speech bubble reaction. State persists reliably across reloads and mid-game changes.
+  - **Accessible Boot Status & Dev-Only Debug (`index.html`, `src/main.ts`, `src/scenes/PrototypeScene.ts`):** Accessible boot status banner with `role="status"` and `aria-live="polite"` hidden on `READY` event, presenting user-friendly failure/retry UI on boot error; debug HUD strictly gated by `Boolean(import.meta.env.DEV) && hasDebugParam`.
+  - **Idempotent Scene Cleanup & Inert Controls (`src/scenes/PrototypeScene.ts`, `src/ui/htmlControls.ts`):** Quit returns cleanly to Main Menu, clearing physics bodies and destroying renderers; controls made inert/disabled under menus, pause, and result overlays; restored cleanly on retry or map load.
 
 
 - **M0 (2026-10-03):** Vite + TypeScript + Phaser 4 project; strict tsconfig; ESLint; Vitest; `.gitignore`; lockfile.
@@ -194,21 +195,31 @@ _Last updated: 2026-10-03_
 ## Known issues
 
 - **Historical quota audit (2026-10-03):** Earlier Pro 3.1 run stopped during initial M4 with `RESOURCE_EXHAUSTED`. Work was subsequently resumed and completed under Gemini Flash 3.8 High.
-- **Interactive browser playthrough / hardware touch:** Automated test suite (117 tests) and production build are verified passing; interactive browser playthrough and visual/sound balance are **NOT VERIFIED** in this automated run and are left for Codex browser review due to environment Chrome DevTools profile conflict.
-- Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
+- **Interactive browser playthrough / hardware touch:** Automated test suite (19 test files, 130 tests) and production build are verified passing. Interactive browser walkthrough, live sound balance perception, physical touchscreen testing, and real-time hardware frame rates are **NOT VERIFIED** in this automated run and are left for Codex browser review due to environment Chrome DevTools profile conflict.
+- Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable bundle size for current asset-free build.
 - Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
 - Visual enjoyment, sound balance, and hardware touch testing remain owner judgments, never inferred from passing tests.
 
 ## Next task
 
-Codex browser acceptance review for M4, then proceed to Phase 4 / M5 (Pause, settings, audio sliders, polish).
+Codex lead browser acceptance review of completed M5 polish and readiness features, followed by final milestone sign-off.
 
 ## Lead acceptance evidence — 2026-10-03
+
+### Historical Lead Audit (M3 restoration / pre-M4)
 
 - Codex inspected phase diffs and returned concrete corrections before proceeding; M2 timing and M3 transition/storage/rendering fixes are checkpointed in `df19f1a` and `dbf6bb3`.
 - Chrome production preview: menu -> Solo Challenge -> map select; Fence best/style survived reload; visible Rooftop building/props; Rooftop reference hit -> immediate Continue -> three-star result -> Retry without reload. Three weak Rooftop misses progressed through 2/1 attempts remaining -> failure -> Retry back to 3, retaining aim. Reset during flight was ignored. Captured warning/error logs were empty. See `docs/orchestration-log.md` for build-specific coverage limits.
 - After preserving interrupted M4 and restoring M3, Codex reran `npm run check`: typecheck/lint pass, **15 test files passed, 102 tests passed**. `npm run build`: **57 modules transformed, built in 812ms**; Phaser remains **375.59 kB gzip**.
-- Multiplayer and M5/browser full-transition/performance/hardware-touch gates are **not verified**, because M4 was interrupted and M5 has not run. Art enjoyment and perceived sound balance remain owner playtest judgments.
+- Multiplayer and M5/browser full-transition/performance/hardware-touch gates are **not verified** at that time, because M4 was interrupted and M5 had not run. Art enjoyment and perceived sound balance remain owner playtest judgments.
+
+### Current M5 Status & Lead Verification
+
+- **M4 Multiplayer**: Successfully completed and accepted by Codex lead.
+- **M5 Polish & Readiness**: All pause/resume/quit, input lifecycle, settings persistence, reduced motion, accessible volume label, accessible boot banner, and inert overlay requirements implemented.
+- **Automated Verification**: `npm run check` passed (19 test files, 130 tests passed, 0 lint warnings, 0 type errors); `npm run build` passed (62 modules transformed, 769ms).
+- **Environment**: Dev server (port 5173) and preview server (port 4174) remain running.
+- **Browser/Sensory Status**: Explicit NOT VERIFIED checklist documented in `docs/release-verification.md` for Codex browser walkthrough.
 
 
 

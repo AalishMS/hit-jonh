@@ -30,9 +30,37 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [PrototypeScene],
 };
 
-const game = new Phaser.Game(config);
+const statusEl = document.getElementById('game-status');
 
-// Expose for dev-only inspection in the browser console.
-if (import.meta.env.DEV) {
-  (window as unknown as { __HIT_JONH__: Phaser.Game }).__HIT_JONH__ = game;
+function showBootError(message = 'Failed to load Hit Jonh.'): void {
+  if (statusEl) {
+    statusEl.removeAttribute('hidden');
+    statusEl.className = 'boot-status boot-error';
+    statusEl.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = message + ' ';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'btn btn-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => location.reload());
+    statusEl.append(span, retryBtn);
+  }
+}
+
+try {
+  const game = new Phaser.Game(config);
+
+  game.events.once(Phaser.Core.Events.READY, () => {
+    if (statusEl) {
+      statusEl.setAttribute('hidden', '');
+    }
+  });
+
+  // Expose for dev-only inspection in the browser console.
+  if (import.meta.env.DEV) {
+    (window as unknown as { __HIT_JONH__: Phaser.Game }).__HIT_JONH__ = game;
+  }
+} catch {
+  showBootError();
 }

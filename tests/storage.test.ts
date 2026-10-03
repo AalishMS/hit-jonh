@@ -184,4 +184,42 @@ describe('Storage', () => {
     expect(loaded.lastMP![1]!.lastAngle).toBe(5);
     expect(loaded.lastMP![1]!.lastPower).toBe(100);
   });
+
+  it('persists reducedMotion across reloads and maintains all settings on incremental updates', () => {
+    // Repro case: Settings sets volume 40%, mute true, reducedMotion true
+    saveSettings({ volume: 0.4, muted: true, reducedMotion: true });
+    let data = loadSaveData();
+    expect(data.settings.volume).toBeCloseTo(0.4);
+    expect(data.settings.muted).toBe(true);
+    expect(data.settings.reducedMotion).toBe(true);
+
+    // Subsequent reload or independent volume change preserves reducedMotion
+    saveSettings({ volume: 0.5 });
+    data = loadSaveData();
+    expect(data.settings.volume).toBeCloseTo(0.5);
+    expect(data.settings.muted).toBe(true);
+    expect(data.settings.reducedMotion).toBe(true);
+
+    // Toggle reducedMotion off
+    saveSettings({ reducedMotion: false });
+    data = loadSaveData();
+    expect(data.settings.reducedMotion).toBe(false);
+    expect(data.settings.volume).toBeCloseTo(0.5);
+    expect(data.settings.muted).toBe(true);
+  });
+
+  it('supports onSettingsChange callback pattern to persist settings even without an active renderer', () => {
+    // Mimic PrototypeScene's onSettingsChange callback handler
+    const mockJonhRenderer: { setReducedMotion: (val: boolean) => void } | null = null;
+    const handleSettingsChange = (settings: { muted: boolean; volume: number; reducedMotion: boolean }) => {
+      saveSettings(settings);
+      if (mockJonhRenderer) (mockJonhRenderer as { setReducedMotion: (val: boolean) => void }).setReducedMotion(settings.reducedMotion);
+    };
+
+    handleSettingsChange({ muted: true, volume: 0.4, reducedMotion: true });
+    const data = loadSaveData();
+    expect(data.settings.muted).toBe(true);
+    expect(data.settings.volume).toBeCloseTo(0.4);
+    expect(data.settings.reducedMotion).toBe(true);
+  });
 });

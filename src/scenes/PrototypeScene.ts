@@ -29,7 +29,7 @@ import {
 } from '../sim/units';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay } from '../ui/menuOverlay';
-import { loadSaveData, recordSoloResult, saveMultiplayerSetup, saveSoloAim } from '../storage/storage';
+import { loadSaveData, recordSoloResult, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../storage/storage';
 import type { LevelData } from '../levels/types';
 
 export class PrototypeScene extends Phaser.Scene {
@@ -94,10 +94,10 @@ export class PrototypeScene extends Phaser.Scene {
 
     const gameContainer = document.getElementById('game')?.parentElement ?? document.body;
     
-    // Check URL param ?debug - explicitly gated dev opt-in
+    // Check URL param ?debug - explicitly gated dev opt-in (dev mode only)
     const hasDebugParam = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
-    this.isDevOptIn = hasDebugParam;
-    this.isDebugEnabled = hasDebugParam;
+    this.isDevOptIn = Boolean(import.meta.env.DEV) && hasDebugParam;
+    this.isDebugEnabled = this.isDevOptIn;
 
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
@@ -148,6 +148,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.menuOverlay = new MenuOverlay(gameContainer, {
       onMapSelected: (mapId) => this.loadMap(mapId),
       onRetry: () => {
+        this.inputCoordinator.setOverlayVisible(false);
+        this.htmlControls.setVisible(true);
+        this.htmlControls.setControlsInert(false);
         this.soloMachine.retry();
         this.reset();
       },
@@ -156,9 +159,11 @@ export class PrototypeScene extends Phaser.Scene {
       },
       onStartMultiplayer: (players) => this.startMultiplayer(players),
       onMultiplayerHandoverContinue: () => {
+        this.inputCoordinator.setOverlayVisible(false);
         this.multiCoordinator.beginTurn(this.currentAngleDeg, this.currentPowerPercent);
       },
       onMultiplayerNextRound: () => {
+        this.inputCoordinator.setOverlayVisible(false);
         this.multiMachine.nextRound();
         if (this.multiMachine.state !== 'match_result') {
           this.trailHistory.clear();
@@ -167,6 +172,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.updateUIPerMultiState();
       },
       onMultiplayerRematch: () => {
+        this.inputCoordinator.setOverlayVisible(false);
         this.multiMachine.rematch();
         this.trailHistory.clear();
         this.loadMultiplayerMap(this.multiMachine.currentMapId);
@@ -175,6 +181,7 @@ export class PrototypeScene extends Phaser.Scene {
       onPauseResume: () => this.sessionCoordinator.resume(),
       onPauseQuit: () => this.sessionCoordinator.quit(),
       onSettingsChange: (settings) => {
+        saveSettings(settings);
         this.audioManager.setMuted(settings.muted);
         this.audioManager.setVolume(settings.volume);
         this.htmlControls.setMuted(settings.muted);
@@ -349,6 +356,8 @@ export class PrototypeScene extends Phaser.Scene {
         this.ballRenderer.draw(muzzle.x, muzzle.y);
       },
       onShowResult: (res) => {
+        this.inputCoordinator.setOverlayVisible(true);
+        this.htmlControls.setControlsInert(true);
         this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle);
         this.htmlControls.setCanFire(false);
         this.htmlControls.setFeedback('', 'info');
@@ -384,6 +393,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.cannonRenderer.draw(this.currentAngleDeg);
     this.htmlControls.setVisible(true);
     this.htmlControls.setControlsInert(false);
+    this.inputCoordinator.setOverlayVisible(false);
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
 
@@ -723,6 +733,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
     this.htmlControls.setVisible(true);
+    this.inputCoordinator.setOverlayVisible(false);
 
     // Nothing from the previous map may leak into this one.
     this.stepper.reset();
