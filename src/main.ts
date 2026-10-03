@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PHYSICS, WORLD } from './config/tuning';
-import { EmptyGameScene } from './scenes/EmptyGameScene';
+import { PrototypeScene } from './scenes/PrototypeScene';
 import { matterGravityY } from './sim/units';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -27,7 +27,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: import.meta.env.DEV && new URLSearchParams(location.search).has('debug'),
     },
   },
-  scene: [EmptyGameScene],
+  scene: [PrototypeScene],
 };
 
 const game = new Phaser.Game(config);

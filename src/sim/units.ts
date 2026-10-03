@@ -48,3 +48,46 @@ export function powerToLaunchSpeed(
   const impulse = minImpulseNs + p * (maxImpulseNs - minImpulseNs);
   return impulse / massKg;
 }
+
+/**
+ * Base step rate in Hz used by Matter.js internally for Body.setVelocity
+ * (_baseDelta = 1000/60 ms).
+ */
+export const MATTER_BASE_FPS = 60;
+
+/**
+ * Convert speed in m/s to Matter.js velocity units (pixels per 1000/60 ms).
+ * v_matter = v[m/s] * ppm / 60.
+ */
+export function speedMsToMatterVelocity(speedMs: number, pixelsPerMetre: number): number {
+  return (speedMs * pixelsPerMetre) / MATTER_BASE_FPS;
+}
+
+/**
+ * Convert Matter.js velocity units back to physical speed in m/s.
+ */
+export function matterVelocityToSpeedMs(vMatter: number, pixelsPerMetre: number): number {
+  return (vMatter * MATTER_BASE_FPS) / pixelsPerMetre;
+}
+
+/**
+ * Calculate launch velocity vector in Matter world units (px / base step).
+ * Angle is in degrees above horizontal: 0° is right (+x), 90° is straight up (-y).
+ */
+export function launchVelocityToWorld(
+  speedMs: number,
+  angleDeg: number,
+  pixelsPerMetre: number,
+): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  const vMatter = speedMsToMatterVelocity(speedMs, pixelsPerMetre);
+  return {
+    x: vMatter * Math.cos(rad),
+    y: -vMatter * Math.sin(rad),
+  };
+}
+
+/** 2D Euclidean length of a vector. */
+export function vectorLength(x: number, y: number): number {
+  return Math.hypot(x, y);
+}

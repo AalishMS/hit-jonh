@@ -1,9 +1,16 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 
+import { fileURLToPath } from 'node:url';
+
 export default defineConfig({
   // Relative base so the static build works from any host sub-path.
   base: './',
+  resolve: {
+    alias: {
+      '@matter-js': fileURLToPath(new URL('./node_modules/phaser/src/physics/matter-js/CustomMain.js', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     strictPort: false,
