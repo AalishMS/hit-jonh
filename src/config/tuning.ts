@@ -47,3 +47,11 @@ export const AIM = {
   minImpulseNs: 24,
   maxImpulseNs: 80,
 } as const;
+
+export const MATERIALS: Record<string, { restitution: number; friction: number }> = {
+  grass: { restitution: 0.2, friction: 0.8 },
+  wood: { restitution: 0.3, friction: 0.6 },
+  concrete: { restitution: 0.4, friction: 0.5 },
+  jonhBody: { restitution: 0.3, friction: 0.6 },
+  cannonball: { restitution: 0.25, friction: 0.5 },
+};

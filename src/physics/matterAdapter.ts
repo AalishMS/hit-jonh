@@ -1,4 +1,5 @@
 import Matter, { type Body, type World } from '@matter-js';
+import { MATERIALS } from '../config/tuning';
 import type { LevelData } from '../levels/types';
 import { sweepCircleVsBox } from '../sim/swept';
 import {
@@ -117,6 +118,33 @@ export class MatterAdapter {
       );
       Matter.World.add(this.matterWorld, this.jonhHatBody);
     }
+
+    // 4. Obstacles
+    for (const obs of level.obstacles) {
+      const obsWidthPx = metresToPixels(obs.box.maxX - obs.box.minX, this.pixelsPerMetre);
+      const obsHeightPx = metresToPixels(obs.box.maxY - obs.box.minY, this.pixelsPerMetre);
+      const obsCenterXPx = metresToPixels((obs.box.minX + obs.box.maxX) / 2, this.pixelsPerMetre);
+      const obsTopPx = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.pixelsPerMetre);
+      const obsCenterYPx = obsTopPx + obsHeightPx / 2;
+
+      // Lookup material (default to concrete if missing)
+      const mat = (MATERIALS as any)[obs.material] || { restitution: 0.2, friction: 0.5 };
+
+      const obsBody = Matter.Bodies.rectangle(
+        obsCenterXPx,
+        obsCenterYPx,
+        obsWidthPx,
+        obsHeightPx,
+        {
+          isStatic: true,
+          restitution: mat.restitution,
+          friction: mat.friction,
+          label: 'obstacle',
+        },
+      );
+      Matter.World.add(this.matterWorld, obsBody);
+      this.obstacleBodies.push(obsBody);
+    }
   }
 
   spawnProjectile(
@@ -162,16 +190,60 @@ export class MatterAdapter {
       y: worldYToSimY(currPx.y, this.worldHeightPx, this.pixelsPerMetre),
     };
 
-    // 1. Swept test against Jonh body
-    const hitJonh = sweepCircleVsBox(prevSim, currSim, radiusMetres, level.jonhSpawn.bodyBox);
-    if (hitJonh) {
-      this.hasHitJonh = true;
+    // Gather solid colliders for sweeping
+    const boxes = [
+      { box: level.ground, label: 'ground', material: level.ground.material },
+      { box: level.jonhSpawn.bodyBox, label: 'jonhBody', material: 'jonhBody' },
+      ...level.obstacles.map(o => ({ box: o.box, label: 'obstacle', material: o.material })),
+    ];
+
+    let earliestHit: { hit: any; boxLabel: string; material: string } | null = null;
+    for (const b of boxes) {
+      const hit = sweepCircleVsBox(prevSim, currSim, radiusMetres, b.box);
+      if (hit && hit.t <= 1) { // Accept t=0 if it's currently penetrating
+        if (!earliestHit || hit.t < earliestHit.hit.t) {
+          earliestHit = { hit, boxLabel: b.label, material: b.material };
+        }
+      }
     }
 
-    // 2. Swept test against Ground
-    const hitGround = sweepCircleVsBox(prevSim, currSim, radiusMetres, level.ground);
-    if (hitGround) {
-      this.hasHitGround = true;
+    if (earliestHit) {
+      if (earliestHit.boxLabel === 'jonhBody') this.hasHitJonh = true;
+      if (earliestHit.boxLabel === 'ground') this.hasHitGround = true;
+
+      // Calculate relative velocity into normal
+      const matterVx = this.projectileBody.velocity.x;
+      const matterVy = this.projectileBody.velocity.y;
+      
+      const matterNormalX = earliestHit.hit.normal.x;
+      const matterNormalY = -earliestHit.hit.normal.y; // sim +y is up, matter +y is down
+
+      const dot = matterVx * matterNormalX + matterVy * matterNormalY;
+      
+      // If moving into the surface, apply manual reflection to prevent tunnelling
+      if (dot < 0) {
+        const mat = (MATERIALS as any)[earliestHit.material] || { restitution: 0.2, friction: 0.5 };
+        const projMat = MATERIALS.cannonball;
+        const restitution = Math.max(mat.restitution, projMat.restitution);
+        
+        const vNewMatterX = matterVx - (1 + restitution) * dot * matterNormalX;
+        const vNewMatterY = matterVy - (1 + restitution) * dot * matterNormalY;
+
+        // Reposition exactly at time of impact, plus tiny epsilon to avoid sticky re-collision
+        const newSimX = earliestHit.hit.point.x + earliestHit.hit.normal.x * 1e-4;
+        const newSimY = earliestHit.hit.point.y + earliestHit.hit.normal.y * 1e-4;
+
+        const newPxX = metresToPixels(newSimX, this.pixelsPerMetre);
+        const newPxY = simYToWorldY(newSimY, this.worldHeightPx, this.pixelsPerMetre);
+        
+        Matter.Body.setPosition(this.projectileBody, { x: newPxX, y: newPxY });
+        Matter.Body.setVelocity(this.projectileBody, { x: vNewMatterX, y: vNewMatterY });
+        
+        currPx.x = newPxX;
+        currPx.y = newPxY;
+        currSim.x = newSimX;
+        currSim.y = newSimY;
+      }
     }
 
     this.prevPosPx = { ...currPx };

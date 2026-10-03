@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**M1 — Prove the shot: complete.** Next: **M2 — Make hitting Jonh satisfying** (SPEC §14).
+**M1 — Prove the shot: complete and verified.** Next: **M2 — Make hitting Jonh satisfying** (SPEC §14).
 
 ## Completed
 
@@ -40,11 +40,21 @@ _Last updated: 2026-10-03_
     - `debugRenderer.ts`: Toggleable wireframes (ground, Jonh body, Jonh hat, cannon pivot, muzzle, projectile) and live HUD telemetry overlay.
   - **Scene (`src/scenes/PrototypeScene.ts`):** Thin orchestrator wiring fixed stepping accumulator, physics, rules, input, and renderers.
 
+- **Physics Strengthening and Verification (2026-10-03):**
+  - Centralized materials in `src/config/tuning.ts` and made default drag explicit (0).
+  - Integrated `sweepCircleVsBox` into `MatterAdapter.stepProjectile` for physical resolution of fast shots, preventing tunnelling by manually reflecting velocity and placing the projectile accurately at the contact point.
+  - Verified tests pass:
+    - Identical inputs produce repeatable landing positions (in `matterPhysics.test.ts`).
+    - Unobstructed flight agrees with ballistic trajectory within 5cm tolerance.
+    - Tunnelling prevented (0.2m thin wall test passed using swept collision response in `matterAdapter.test.ts`).
+    - Physics speed unaffected by FPS (fixedStep dropping excess backlog).
+    - Shot resolution state machine registers a single hit and properly drops into `resolved` state.
+
 ## Decisions (implementer, delegated by owner)
 
 - **Stack: Phaser 4.2.1 + Matter.js 0.20 (bundled), TypeScript 6.0.3, Vite 8.3.2.** Chosen over plain canvas for scene/input/tween/audio/scaling support and rigid bodies for future props; pure-TS `sim/` keeps exact maths and testability. See SPEC §13.1.
 - **Manual fixed stepping.** Phaser 4's `MatterRunnerConfig` has no fixed-step option (verified in bundled types), so Matter runs with `autoUpdate: false` and our accumulator.
-- **No CCD in Matter** → swept-circle guard + thickness validation + tunnelling tests required (SPEC §9.2). Implemented in `src/sim/swept.ts` and integrated in `MatterAdapter`.
+- **No CCD in Matter** → swept-circle guard + thickness validation + tunnelling tests required (SPEC §9.2). Swept guard is integrated into `MatterAdapter` to apply reflection directly.
 - **Headless Matter testing verified:** Matter can be driven in Node/Vitest by resolving `phaser/src/physics/matter-js/CustomMain.js` (aliased as `@matter-js`), removing any browser requirement for automated physics integration tests.
 - **TypeScript pinned to 6.0.3**: TS 7.0.2 is latest, but `typescript-eslint` 8.71 peer range is `<6.1.0`.
 - **Impulse range 24–80 N·s (6–20 m/s)** so shots fit a 25.6 m world — `[PROPOSED]`.
@@ -52,6 +62,7 @@ _Last updated: 2026-10-03_
 ## Known issues
 
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
+- Browser-specific real-time frame rate drops have not been manually verified visually due to running in a headless environment, but fixed step dropping backlog is verified via pure unit tests.
 
 ## Next task
 
