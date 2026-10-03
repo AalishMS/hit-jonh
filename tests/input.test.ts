@@ -90,4 +90,34 @@ describe('InputCoordinator', () => {
     coordinator.handleKeyDown('Space', false, false);
     expect(fireCount).toBe(1);
   });
+
+  it('triggers onContinue on Enter keypress', () => {
+    let continueCount = 0;
+    const coordinator = new InputCoordinator({
+      onFire: () => {},
+      onReset: () => {},
+      onContinue: () => {
+        continueCount++;
+      },
+      onAimChange: () => {},
+    });
+
+    coordinator.handleKeyDown('Enter', false, false);
+    expect(continueCount).toBe(1);
+  });
+
+  it('triggers onToggleMute on KeyM keypress', () => {
+    let muteCount = 0;
+    const coordinator = new InputCoordinator({
+      onFire: () => {},
+      onReset: () => {},
+      onToggleMute: () => {
+        muteCount++;
+      },
+      onAimChange: () => {},
+    });
+
+    coordinator.handleKeyDown('KeyM', false, false);
+    expect(muteCount).toBe(1);
+  });
 });

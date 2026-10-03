@@ -1,5 +1,5 @@
 import Matter, { type Body, type World } from '@matter-js';
-import { MATERIALS } from '../config/tuning';
+import { MATERIALS, PHYSICS } from '../config/tuning';
 import type { LevelData } from '../levels/types';
 import { sweepCircleVsBox } from '../sim/swept';
 import {
@@ -128,7 +128,7 @@ export class MatterAdapter {
       const obsCenterYPx = obsTopPx + obsHeightPx / 2;
 
       // Lookup material (default to concrete if missing)
-      const mat = (MATERIALS as any)[obs.material] || { restitution: 0.2, friction: 0.5 };
+      const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[obs.material] ?? { restitution: 0.2, friction: 0.5 };
 
       const obsBody = Matter.Bodies.rectangle(
         obsCenterXPx,
@@ -197,7 +197,11 @@ export class MatterAdapter {
       ...level.obstacles.map(o => ({ box: o.box, label: 'obstacle', material: o.material })),
     ];
 
-    let earliestHit: { hit: any; boxLabel: string; material: string } | null = null;
+    let earliestHit: {
+      hit: NonNullable<ReturnType<typeof sweepCircleVsBox>>;
+      boxLabel: string;
+      material: string;
+    } | null = null;
     for (const b of boxes) {
       const hit = sweepCircleVsBox(prevSim, currSim, radiusMetres, b.box);
       if (hit && hit.t <= 1) { // Accept t=0 if it's currently penetrating
@@ -222,7 +226,7 @@ export class MatterAdapter {
       
       // If moving into the surface, apply manual reflection to prevent tunnelling
       if (dot < 0) {
-        const mat = (MATERIALS as any)[earliestHit.material] || { restitution: 0.2, friction: 0.5 };
+        const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[earliestHit.material] ?? { restitution: 0.2, friction: 0.5 };
         const projMat = MATERIALS.cannonball;
         const restitution = Math.max(mat.restitution, projMat.restitution);
         
@@ -244,6 +248,13 @@ export class MatterAdapter {
         currSim.x = newSimX;
         currSim.y = newSimY;
       }
+    }
+
+    if (this.hasHitGround) {
+      Matter.Body.setVelocity(this.projectileBody, {
+        x: this.projectileBody.velocity.x * PHYSICS.groundRollingDamping,
+        y: this.projectileBody.velocity.y,
+      });
     }
 
     this.prevPosPx = { ...currPx };

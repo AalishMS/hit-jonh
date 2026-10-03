@@ -10,6 +10,8 @@
 export interface InputCallbacks {
   onFire: () => void;
   onReset: () => void;
+  onContinue?: () => void;
+  onToggleMute?: () => void;
   onAimChange: (deltaAngle: number, deltaPower: number) => void;
 }
 
@@ -40,6 +42,20 @@ export class InputCoordinator {
         this.spaceReleasedSinceAiming = false;
         this.callbacks.onFire();
       }
+      return;
+    }
+
+    if (code === 'Enter') {
+      if (this.callbacks.onContinue) {
+        this.callbacks.onContinue();
+      } else {
+        this.callbacks.onReset();
+      }
+      return;
+    }
+
+    if (code === 'KeyM') {
+      this.callbacks.onToggleMute?.();
       return;
     }
 

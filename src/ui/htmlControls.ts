@@ -7,6 +7,7 @@ export interface HTMLControlsCallbacks {
   onFire: () => void;
   onReset: () => void;
   onToggleDebug: (enabled: boolean) => void;
+  onToggleMute: () => boolean;
 }
 
 export class HTMLControls {
@@ -18,6 +19,7 @@ export class HTMLControls {
   private speedLabel!: HTMLElement;
   private fireButton!: HTMLButtonElement;
   private resetButton!: HTMLButtonElement;
+  private muteButton!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
 
@@ -29,16 +31,17 @@ export class HTMLControls {
     initialAngleDeg = 45,
     initialPowerPercent = 50,
     initialDebug = false,
+    initialMuted = false,
   ) {
     this.container = document.createElement('section');
     this.container.className = 'controls-panel';
     this.container.setAttribute('aria-label', 'Cannon Controls');
 
-    this.render(initialAngleDeg, initialPowerPercent, initialDebug);
+    this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
     parentElement.appendChild(this.container);
   }
 
-  private render(angle: number, power: number, debug: boolean): void {
+  private render(angle: number, power: number, debug: boolean, muted: boolean): void {
     this.container.innerHTML = `
       <div class="feedback-banner" id="shot-feedback">Ready. Set angle and power, then click Fire!</div>
       <div class="controls-row">
@@ -75,7 +78,8 @@ export class HTMLControls {
 
         <div class="actions-group">
           <button type="button" class="btn btn-fire" id="fire-btn">🔥 Fire</button>
-          <button type="button" class="btn btn-reset" id="reset-btn">🔄 Reset</button>
+          <button type="button" class="btn btn-reset" id="reset-btn">🔄 Aim Again</button>
+          <button type="button" class="btn btn-mute" id="mute-btn">${muted ? '🔇 Muted' : '🔊 Sound'}</button>
         </div>
 
         <div class="debug-group">
@@ -94,6 +98,7 @@ export class HTMLControls {
     this.speedLabel = this.container.querySelector('#speed-indicator') as HTMLElement;
     this.fireButton = this.container.querySelector('#fire-btn') as HTMLButtonElement;
     this.resetButton = this.container.querySelector('#reset-btn') as HTMLButtonElement;
+    this.muteButton = this.container.querySelector('#mute-btn') as HTMLButtonElement;
     this.debugToggle = this.container.querySelector('#debug-toggle') as HTMLInputElement;
     this.feedbackBanner = this.container.querySelector('#shot-feedback') as HTMLElement;
 
@@ -127,6 +132,13 @@ export class HTMLControls {
     this.resetButton.addEventListener('click', onResetClick);
     this.cleanupListeners.push(() => this.resetButton.removeEventListener('click', onResetClick));
 
+    const onMuteClick = () => {
+      const isMuted = this.callbacks.onToggleMute();
+      this.setMuted(isMuted);
+    };
+    this.muteButton.addEventListener('click', onMuteClick);
+    this.cleanupListeners.push(() => this.muteButton.removeEventListener('click', onMuteClick));
+
     const onDebugChange = () => {
       this.callbacks.onToggleDebug(this.debugToggle.checked);
     };
@@ -155,6 +167,14 @@ export class HTMLControls {
     this.fireButton.disabled = !allowed;
     this.angleSlider.disabled = !allowed;
     this.powerSlider.disabled = !allowed;
+  }
+
+  setResetLabel(label: string): void {
+    this.resetButton.textContent = label;
+  }
+
+  setMuted(muted: boolean): void {
+    this.muteButton.textContent = muted ? '🔇 Muted' : '🔊 Sound';
   }
 
   setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' = 'info'): void {

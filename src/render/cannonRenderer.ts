@@ -77,16 +77,51 @@ export class CannonRenderer {
       this.pivotYPx + pBand2.y,
     );
 
-    // Initial aim guide line at muzzle (SPEC §3.2)
+    // Initial aim guide line at muzzle (SPEC §3.2) - short directional indicator
     const guideStart = this.getMuzzlePosition(angleDeg, 0.15);
-    const guideLenPx = metresToPixels(0.8, this.ppm);
-    this.graphics.lineStyle(2, 0xe8572a, 0.7);
-    this.graphics.lineBetween(
-      guideStart.x,
-      guideStart.y,
-      guideStart.x + guideLenPx * cos,
-      guideStart.y + guideLenPx * sin,
+    const guideLenPx = metresToPixels(0.85, this.ppm);
+    const endX = guideStart.x + guideLenPx * cos;
+    const endY = guideStart.y + guideLenPx * sin;
+
+    // Outer contrasting line
+    this.graphics.lineStyle(4, 0x2b2118, 0.5);
+    this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
+
+    // Inner bright directional line
+    this.graphics.lineStyle(2, 0xe8572a, 0.95);
+    this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
+
+    // Dotted rhythm ticks along guide
+    for (let d = 0.2; d <= 0.8; d += 0.2) {
+      const tickPx = metresToPixels(d, this.ppm);
+      const tx = guideStart.x + tickPx * cos;
+      const ty = guideStart.y + tickPx * sin;
+      this.graphics.fillStyle(0xfff3e0, 1);
+      this.graphics.fillCircle(tx, ty, 2.5);
+      this.graphics.lineStyle(1, 0x2b2118, 1);
+      this.graphics.strokeCircle(tx, ty, 2.5);
+    }
+
+    // Directional arrow tip
+    const arrowLen = 7;
+    const arrowWidth = 4;
+    const normalX = -sin;
+    const normalY = cos;
+    this.graphics.fillStyle(0xe8572a, 1);
+    this.graphics.lineStyle(1.5, 0x2b2118, 1);
+    this.graphics.beginPath();
+    this.graphics.moveTo(endX, endY);
+    this.graphics.lineTo(
+      endX - arrowLen * cos + arrowWidth * normalX,
+      endY - arrowLen * sin + arrowWidth * normalY,
     );
+    this.graphics.lineTo(
+      endX - arrowLen * cos - arrowWidth * normalX,
+      endY - arrowLen * sin - arrowWidth * normalY,
+    );
+    this.graphics.closePath();
+    this.graphics.fillPath();
+    this.graphics.strokePath();
 
     // 2. Carriage / Base Mount
     // Wooden wheel

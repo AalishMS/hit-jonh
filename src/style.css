@@ -209,6 +209,16 @@ input[type='range']:disabled {
   background: #e2e8f0;
 }
 
+.btn-mute {
+  background: #fbf8f2;
+  color: var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.btn-mute:hover:not(:disabled) {
+  background: #ede6d8;
+}
+
 .debug-group {
   display: flex;
   align-items: center;

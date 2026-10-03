@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**M1 — Prove the shot: complete and verified.** Next: **M2 — Make hitting Jonh satisfying** (SPEC §14).
+**M2 — Make hitting Jonh satisfying: complete and verified.** Next: **M3 — Solo play and maps** (SPEC §14).
 
 ## Completed
 
@@ -43,12 +43,37 @@ _Last updated: 2026-10-03_
 - **Physics Strengthening and Verification (2026-10-03):**
   - Centralized materials in `src/config/tuning.ts` and made default drag explicit (0).
   - Integrated `sweepCircleVsBox` into `MatterAdapter.stepProjectile` for physical resolution of fast shots, preventing tunnelling by manually reflecting velocity and placing the projectile accurately at the contact point.
-  - Verified tests pass:
-    - Identical inputs produce repeatable landing positions (in `matterPhysics.test.ts`).
-    - Unobstructed flight agrees with ballistic trajectory within 5cm tolerance.
-    - Tunnelling prevented (0.2m thin wall test passed using swept collision response in `matterAdapter.test.ts`).
-    - Physics speed unaffected by FPS (fixedStep dropping excess backlog).
-    - Shot resolution state machine registers a single hit and properly drops into `resolved` state.
+
+- **M2 (2026-10-03): Make hitting Jonh satisfying.**
+  - **Recognisable Jonh with Idle Animation (`src/render/jonhRenderer.ts`):**
+    - Jonh seated in deckchair with straw bowler hat, glasses, moustache, and newspaper.
+    - Smooth cosmetic idle animation: breathing cycle (chest/head oscillation), newspaper rustle/drift, and periodic eye blinks.
+    - Strict invariant maintained: Jonh's target collider remains completely stationary during aiming and flight; cosmetic animation stays aligned within collider boundaries.
+  - **Authored Hit Reaction (`src/render/jonhRenderer.ts`):**
+    - Immediate (< 0.5 s) clear slapstick consequence: Jonh knocked backwards onto the lawn, deckchair collapses/tips back, bowler hat spins off along an upward parabolic arc, newspaper flutters away, impact stars/dust appear, and speech bubble pops above his head.
+    - No changes to projectile physics or hit detection.
+  - **Previous-Shot Trajectory & Terminal Position Feedback (`src/render/trailRenderer.ts`):**
+    - Prior shot flight path preserved as a subtle ghost trail with its terminal landing marker during the next aiming phase.
+    - Active flight displays a vibrant trail with impact rings and crosshairs.
+    - Full predicted trajectory is never revealed.
+  - **Preserved Aiming Settings:**
+    - Player's chosen angle and power remain saved across shots, scene resets, and quick continuations.
+  - **Short Directional Guide (`src/render/cannonRenderer.ts`):**
+    - Muzzle-extended directional guide with distance ticks and directional arrowhead tip matching the true barrel angle.
+  - **Procedural Web Audio (`src/audio/audioManager.ts`):**
+    - Procedural Web Audio synthesizer with zero external assets: punchy low-frequency cannon blast with filtered propellant crack, comical slapstick body hit thump/bonk, and turf ground impact thud.
+    - Audio begins only after explicit user interaction (`click`, `keydown`, `touchstart`).
+    - Dedicated Mute control in HTML panel and `KeyM` keyboard shortcut, with persisted state in `localStorage` (`hitJonh.v1.muted`).
+  - **Dry Reaction Line Pool (`src/rules/reactions.ts`):**
+    - Pool of dry, calm British reactions for hit, short, over, and miss outcomes.
+    - Non-repetition guarantee: consecutive shots never repeat the same line, driven by cosmetic RNG completely separate from simulation physics. Unit-tested in `tests/reactions.test.ts`.
+  - **Outcome Classification & Quick Continuation (`src/ui/htmlControls.ts`, `src/scenes/PrototypeScene.ts`):**
+    - Clear classification labels ("DIRECT HIT", "SHORT", "OVER JONH", "MISS").
+    - Enter key, Space, or "Aim Again" button provides immediate quick continuation. Tweaking angle/power automatically transitions back to aiming.
+  - **Ground Rolling Damping (`src/config/tuning.ts`):**
+    - Centralized `PHYSICS.groundRollingDamping` (0.985) applied on ground contact so cannonballs roll to a natural stop within ~1–2 seconds on grass rather than waiting for the 15-second safety timeout. Unobstructed free flight retains 0 drag (`frictionAir: 0`).
+  - **Browser Verification:**
+    - Verified in Chrome via Chrome DevTools MCP: UI controls, projectile flight, direct hits (45° / 40% and 73° / 70%), short misses (60° / 10%), overshot misses (45° / 50%), ghost trajectory display, AudioContext unlock upon interaction, and mute toggle all visually and programmatically inspected.
 
 ## Decisions (implementer, delegated by owner)
 
@@ -58,12 +83,14 @@ _Last updated: 2026-10-03_
 - **Headless Matter testing verified:** Matter can be driven in Node/Vitest by resolving `phaser/src/physics/matter-js/CustomMain.js` (aliased as `@matter-js`), removing any browser requirement for automated physics integration tests.
 - **TypeScript pinned to 6.0.3**: TS 7.0.2 is latest, but `typescript-eslint` 8.71 peer range is `<6.1.0`.
 - **Impulse range 24–80 N·s (6–20 m/s)** so shots fit a 25.6 m world — `[PROPOSED]`.
+- **Procedural Web Audio synthesis**: Synthesizing cannon boom, body hit bonk, and ground thud via Web Audio API oscillators and filtered noise buffers prevents missing asset load errors and provides instant, zero-latency feedback without extra network requests.
+- **Ground rolling damping 0.985**: Resolves Matter.js frictionless rolling of rigid circles on flat surfaces without adding any air drag during free flight.
 
 ## Known issues
 
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
-- Browser-specific real-time frame rate drops have not been manually verified visually due to running in a headless environment, but fixed step dropping backlog is verified via pure unit tests.
+- Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
 
 ## Next task
 
-**M2 — Make hitting Jonh satisfying:** Jonh body + hat colliders, idle animations, weak vs strong hit reactions, near-miss/overhead reactions, persistent last trail and landing marker across attempts, reaction line pool, outcome classification labels.
+**M3 — Solo play and maps:** Fence and Rooftop maps, map select, three-attempt challenge, stars rating, best results in localStorage.

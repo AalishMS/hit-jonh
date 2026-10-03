@@ -23,6 +23,11 @@ export const PHYSICS = {
   maxStepsPerFrame: 8,
   /** Matter's gravity.scale default; gravity.y is derived from this so units stay explicit. */
   matterGravityScale: 0.001,
+  /**
+   * Linear rolling damping factor applied per fixed step once the projectile contacts the ground.
+   * Enables the cannonball to roll naturally to a stop on grass/turf.
+   */
+  groundRollingDamping: 0.985,
 } as const;
 
 export const PROJECTILE = {
@@ -48,10 +53,16 @@ export const AIM = {
   maxImpulseNs: 80,
 } as const;
 
-export const MATERIALS: Record<string, { restitution: number; friction: number }> = {
+export interface MaterialProps {
+  restitution: number;
+  friction: number;
+}
+
+export const MATERIALS = {
   grass: { restitution: 0.2, friction: 0.8 },
   wood: { restitution: 0.3, friction: 0.6 },
   concrete: { restitution: 0.4, friction: 0.5 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
-};
+} as const satisfies Record<string, MaterialProps>;
+

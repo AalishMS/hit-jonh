@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { AudioManager } from '../audio/audioManager';
 import { AIM, PHYSICS, PROJECTILE, WORLD } from '../config/tuning';
 import { InputCoordinator } from '../input/controls';
 import { BACKYARD_LEVEL } from '../levels/backyard';
@@ -9,6 +10,7 @@ import { DebugRenderer } from '../render/debugRenderer';
 import { JonhRenderer } from '../render/jonhRenderer';
 import { SceneryRenderer } from '../render/sceneryRenderer';
 import { TrailRenderer } from '../render/trailRenderer';
+import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -29,6 +31,8 @@ export class PrototypeScene extends Phaser.Scene {
   private physicsAdapter!: MatterAdapter;
   private inputCoordinator!: InputCoordinator;
   private htmlControls!: HTMLControls;
+  private audioManager!: AudioManager;
+  private reactionSelector = new JonhReactionSelector();
 
   private sceneryRenderer!: SceneryRenderer;
   private cannonRenderer!: CannonRenderer;
@@ -51,7 +55,10 @@ export class PrototypeScene extends Phaser.Scene {
   create(): void {
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
-    // 1. Initialise State Machine
+    // 1. Initialise Audio Manager
+    this.audioManager = new AudioManager();
+
+    // 2. Initialise State Machine
     this.attemptMachine = new ShotAttemptMachine(
       BACKYARD_LEVEL.bounds.maxX,
       0.05, // 0.05 m/s settled threshold
@@ -61,12 +68,12 @@ export class PrototypeScene extends Phaser.Scene {
     );
     this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
 
-    // 2. Initialise Physics Adapter with Phaser's Matter engine
+    // 3. Initialise Physics Adapter with Phaser's Matter engine
     const matterEngine = this.matter.world.engine;
     this.physicsAdapter = new MatterAdapter(matterEngine.world, ppm, h);
     this.physicsAdapter.setupLevel(BACKYARD_LEVEL);
 
-    // 3. Initialise Renderers
+    // 4. Initialise Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(BACKYARD_LEVEL);
 
@@ -87,7 +94,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.debugRenderer.setVisible(true);
     }
 
-    // 4. Initialise HTML Controls
+    // 5. Initialise HTML Controls
     const gameContainer = document.getElementById('game')?.parentElement ?? document.body;
     this.htmlControls = new HTMLControls(
       gameContainer,
@@ -100,17 +107,33 @@ export class PrototypeScene extends Phaser.Scene {
           this.isDebugEnabled = enabled;
           this.debugRenderer.setVisible(enabled);
         },
+        onToggleMute: () => {
+          return this.audioManager.toggleMute();
+        },
       },
       this.currentAngleDeg,
       this.currentPowerPercent,
       this.isDebugEnabled,
+      this.audioManager.isMuted,
     );
 
-    // 5. Initialise Input Coordinator
+    // 6. Initialise Input Coordinator
     this.inputCoordinator = new InputCoordinator({
       onFire: () => this.fire(),
       onReset: () => this.reset(),
+      onContinue: () => {
+        if (this.attemptMachine.state === 'resolved') {
+          this.reset();
+        }
+      },
+      onToggleMute: () => {
+        const isMuted = this.audioManager.toggleMute();
+        this.htmlControls.setMuted(isMuted);
+      },
       onAimChange: (deltaAngle, deltaPower) => {
+        if (this.attemptMachine.state === 'resolved') {
+          this.reset();
+        }
         if (deltaAngle !== 0) {
           const nextAngle = Math.max(
             AIM.minAngleDeg,
@@ -126,7 +149,18 @@ export class PrototypeScene extends Phaser.Scene {
     });
     this.inputCoordinator.setCanFire(true);
 
-    // 6. Keyboard Listeners
+    // 7. User gesture unlock for Web Audio
+    const unlockAudio = () => this.audioManager.unlock();
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    this.cleanupHandlers.push(() => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    });
+
+    // 8. Keyboard Listeners
     const onKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInput =
@@ -165,6 +199,9 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setAngle(angle: number): void {
+    if (this.attemptMachine.state === 'resolved') {
+      this.reset();
+    }
     this.currentAngleDeg = angle;
     this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
     this.cannonRenderer.draw(this.currentAngleDeg);
@@ -172,6 +209,9 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setPower(power: number): void {
+    if (this.attemptMachine.state === 'resolved') {
+      this.reset();
+    }
     this.currentPowerPercent = power;
     this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
@@ -180,13 +220,16 @@ export class PrototypeScene extends Phaser.Scene {
   private fire(): void {
     if (!this.attemptMachine.canFire) return;
 
+    this.audioManager.unlock();
+    this.audioManager.playCannonFire();
+
     this.attemptMachine.fire(this.currentAngleDeg, this.currentPowerPercent);
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
-    this.htmlControls.setFeedback('Cannonball fired! Tracking flight...', 'simulating');
+    this.htmlControls.setFeedback('Cannonball in flight! Tracking...', 'simulating');
 
-    this.trailRenderer.clear();
-    this.jonhRenderer.draw(false);
+    this.trailRenderer.startNewShot();
+    this.jonhRenderer.resetToIdle();
 
     // Calculate spawn outside barrel
     const muzzle = this.cannonRenderer.getMuzzlePosition(
@@ -207,6 +250,8 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   reset(): void {
+    this.audioManager.unlock();
+
     // 1. Remove projectile body
     this.physicsAdapter.removeProjectile();
     this.lastProjectileState = null;
@@ -217,18 +262,25 @@ export class PrototypeScene extends Phaser.Scene {
 
     // 3. Reset visual presentations
     this.ballRenderer.setVisible(false);
-    this.jonhRenderer.draw(false);
+    this.jonhRenderer.resetToIdle();
     this.cannonRenderer.draw(this.currentAngleDeg);
+    this.trailRenderer.onAttemptReset();
 
     // 4. Update UI
     this.inputCoordinator.setCanFire(true);
     this.htmlControls.setCanFire(true);
+    this.htmlControls.setResetLabel('🔄 Aim Again');
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
-    this.htmlControls.setFeedback('Ready. Set angle and power, then click Fire!', 'info');
+    this.htmlControls.setFeedback('Aiming settings preserved. Adjust and click Fire or press Space!', 'info');
   }
 
   override update(_time: number, deltaMs: number): void {
-    const steps = this.stepper.advance(deltaMs / MS_PER_SECOND);
+    const dtSeconds = deltaMs / MS_PER_SECOND;
+
+    // Update cosmetic idle/hit animations (does not affect stationary colliders)
+    this.jonhRenderer.update(dtSeconds);
+
+    const steps = this.stepper.advance(dtSeconds);
     const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
 
     for (let i = 0; i < steps; i++) {
@@ -302,20 +354,42 @@ export class PrototypeScene extends Phaser.Scene {
     result: { resolved: true; outcome: 'hit' | 'miss'; reason?: string },
     state: ProjectileState,
   ): void {
-    this.trailRenderer.setLandingMarker(state.xPx, state.yPx);
-    this.inputCoordinator.setCanFire(false);
+    const isHit = result.outcome === 'hit';
 
-    if (result.outcome === 'hit') {
-      this.jonhRenderer.draw(true);
-      this.htmlControls.setFeedback('🎯 DIRECT HIT! Jonh was struck! Click Reset to try again.', 'hit');
+    // Play impact audio
+    if (isHit) {
+      this.audioManager.playImpact('body');
     } else {
-      let reasonText = 'Cannonball settled on the ground.';
-      if (result.reason === 'out_of_bounds') reasonText = 'Shot went out of bounds.';
-      if (result.reason === 'timeout') reasonText = 'Flight safety timeout reached.';
-      this.htmlControls.setFeedback(`❌ MISS: ${reasonText} Adjust angle/power or Reset.`, 'miss');
+      this.audioManager.playImpact('ground');
     }
 
-    // Enable reset in UI
+    // Classify shot outcome for player feedback
+    const classification = classifyShotOutcome(
+      isHit,
+      state.xSim,
+      BACKYARD_LEVEL.jonhSpawn.bodyBox.minX,
+      BACKYARD_LEVEL.jonhSpawn.bodyBox.maxX,
+    );
+    const quote = this.reactionSelector.selectReaction(classification.category);
+
+    // Terminal landing position feedback
+    this.trailRenderer.setLandingMarker(state.xPx, state.yPx, classification.label);
+    this.inputCoordinator.setCanFire(false);
+
+    if (isHit) {
+      this.jonhRenderer.triggerHit(state.speedMs, quote);
+      this.htmlControls.setFeedback(
+        `🎯 ${classification.label}! Jonh: "${quote}" (Press Enter or click Aim Again to continue)`,
+        'hit',
+      );
+    } else {
+      this.htmlControls.setFeedback(
+        `❌ ${classification.label}: ${classification.detail} — Jonh: "${quote}" (Press Enter or click Aim Again to continue)`,
+        'miss',
+      );
+    }
+
+    this.htmlControls.setResetLabel('🔄 Aim Again (Enter)');
     this.htmlControls.setCanFire(false);
   }
 
@@ -323,6 +397,7 @@ export class PrototypeScene extends Phaser.Scene {
     for (const h of this.cleanupHandlers) h();
     this.cleanupHandlers = [];
 
+    this.audioManager.destroy();
     this.physicsAdapter.clear();
     this.htmlControls.destroy();
     this.sceneryRenderer.destroy();
