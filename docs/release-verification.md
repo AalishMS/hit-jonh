@@ -1,115 +1,64 @@
-# Release Verification — Hit Jonh Phase 4 / M5 Polish & Readiness
+# Release verification — Hit Jonh
 
-Date: 2026-10-03  
-Target: Phase 4 / M5 (Pause, settings, audio sliders, input lifecycle, polish)
+Date: 2026-10-03. M0–M5 scope accepted by Codex after AGY implementation and corrections. No deployment or push was performed.
 
-## 1. Automated Verification Evidence
+## Final automated evidence
 
-Commands executed in environment:
+Checks ran after the final Change Map source correction, following checkpoint `8118398`:
 
-### `npm run check`
-Output summary:
 ```text
-> hit-jonh@0.0.1 check
-> npm run typecheck && npm run lint && npm run test
+npm run check
+  tsc --noEmit: passed
+  eslint .: passed
+  Vitest v5.0.3
+  Test Files  19 passed (19)
+       Tests  129 passed (129)
+    Start at  23:30:19
+    Duration  1.03s
 
-> hit-jonh@0.0.1 typecheck
-> tsc --noEmit
-
-> hit-jonh@0.0.1 lint
-> eslint .
-
-> hit-jonh@0.0.1 test
-> vitest run
-
- RUN  v5.0.3 E:/pet_project/Kill Jonh
-
- Test Files  19 passed (19)
-      Tests  130 passed (130)
-   Start at  23:12:58
-   Duration  928ms (transform 58%, import 19%, tests 18%, worker 4%)
+npm run build
+  tsc --noEmit && vite build: passed
+  Vite v8.3.2
+  64 modules transformed
+  built in 861ms
 ```
-Result: **100% PASSING** (19 files, 130 tests, 0 type errors, 0 lint warnings).
 
-### `npm run build`
-Output summary:
-```text
-> hit-jonh@0.0.1 build
-> tsc --noEmit && vite build
+The Phaser chunk is 1,431.43 kB / 375.59 kB gzip; the game main chunk is 98.25 kB / 23.97 kB gzip. Node emitted an experimental warning about localStorage being unavailable without its file option. A sandbox-only Vitest worker-cache ENOENT failure preceded the successful outside-sandbox rerun; no test configuration was changed to hide it.
 
-vite v8.3.2 building client environment for production...
-transforming...
-✓ 62 modules transformed.
-rendering chunks...
-computing gzip size...
-dist/index.html                               1.02 kB │ gzip:   0.50 kB
-dist/assets/index-DTvC1OjP.css                4.38 kB │ gzip:   1.53 kB
-dist/assets/rolldown-runtime-CbXtAM7H.js      0.58 kB │ gzip:   0.36 kB
-dist/assets/index-Cmu62lJw.js                98.86 kB │ gzip:  24.28 kB │ map:    305.69 kB
-dist/assets/phaser-BDua2ZS6.js            1,431.43 kB │ gzip: 375.59 kB │ map: 11,566.34 kB
+Coverage includes classification/idempotency, actual Matter reference solutions and reset state, fixed stepping and swept collision guards, solo progression/storage, N=2/3/4 multiplayer counts/order and ties, history isolation, input guards, settings parsing and audio gain clamping.
 
-✓ built in 769ms
-```
-Result: **SUCCESSFUL PRODUCTION BUILD**.
+The session helper tests exercise its own gates and callbacks. They do not instantiate Phaser or prove scene timer/cleanup integration. Source inspection established that `PrototypeScene.update()` exits before physics and cosmetic updates when paused/inactive, and pause/resume reset its accumulator; browser checks below exercise that integration. Heap leak freedom and exact reaction timing are not inferred from these tests.
 
----
+## Production browser acceptance
 
-## 2. Tested Pure Helper Gates (Vitest Suite)
+Codex used real Chrome UI through the browser extension against the production preview on port 4174. All actions were native UI actions; readonly DOM inspection measured layout. Earlier build-specific observations are retained in `orchestration-log.md`.
 
-These invariants are proven via headless pure unit tests in Node/Vitest:
+| Area | Observed evidence | Build scope |
+| --- | --- | --- |
+| Solo maps | Visible Fence/Rooftop geometry, reference ricochet hits, explicit Continue, three-star result, retained best/style after reload, retry with aim retained | Corrected M3 `dbf6bb3` |
+| Solo failure | Three weak shots progressed through two/one attempts remaining to Challenge Failed; Retry restored three attempts and aim | M3 and M5 walkthroughs |
+| Multiplayer | Completed 18 actual shots over all three maps for two players. Each player scored 300, then 675, then 1050; nine body hits each; final shared tie. Round starters alternated Player 1/2/1, and each shot/round required Continue | `4c109ee`, repeated on `8118398` |
+| Personal history/rematch | Player-owned coloured prior trail/landing returned on the next turn; inactive patterned slot visible. Rematch reset scores/rounds while retaining setup and aim | `4c109ee` |
+| Four-player setup | Count 2→3→4 exposed labelled name fields; blank name became Player 4. Active red and inactive blue striped, green dotted and orange checked slots visible; Pause/Quit returned to menu | `8118398` |
+| Pause/input | Escape pause/resume during aiming and result; focused slider changed 45→46 once; focused Fire+Space fired once; Enter continued result. Long shot paused in flight; two screenshots taken after elapsed time were byte-identical; resume continued the existing attempt; Quit and new solo session worked | M5 production walkthrough |
+| Settings | Mute on, volume 40 and reduced motion on all survived reload. AX tree exposed Master Volume and associated checkbox labels | `ae894a6` and subsequent build |
+| Narrow layout | At 500×800 viewport, document/scroll widths both 500; logical canvas 1280×560 rendered at 468×204.75; buttons were 42px high. Viewport override was reset | M5 production walkthrough |
+| Menus/result safety | Native Space on Solo Challenge opened map selection; solo result exposed only result actions, with gameplay controls inert; final match Main Menu and Pause/Quit cleanup returned to menus without stale controls | M5 production walkthrough |
+| Production debug | Loading the production page with `?debug` did not expose debug controls; source gates both rendering and shortcut by development mode | Final production walkthrough |
+| Boot failure/retry | Temporarily renamed exactly one generated main module; fresh page displayed friendly failure and Retry with no canvas. Immediately restored the module; Retry reached Main Menu. No backup remains | `8118398` |
+| Change Map | Solo body hit → Continue → result → Change Map opened Select Map with all three maps; Back returned to Main Menu | Final 64-module build after one-line navigation fix |
 
-| Area | Invariant Tested | Verification Method |
-|---|---|---|
-| **Pure Stepper Gating** | Helper returns 0 steps when paused and ignores incoming delta time | `tests/sessionCoordinator.test.ts` FixedStepper advance test |
-| **Boundary Accumulator** | Stepper accumulator reset at BOTH pause entry and resume exit (no catch-up burst) | `tests/sessionCoordinator.test.ts` FixedStepper step count assertion |
-| **State Preservation** | Projectile position, velocity, and shot attempt state are identical across pause/resume | `tests/sessionCoordinator.test.ts` with real `MatterAdapter` & `ShotAttemptMachine` |
-| **Pure Quit Invalidation** | Quitting stops coordinator from processing attempts and rejects aim/fire/reset | `tests/sessionCoordinator.test.ts` |
-| **Pausable States Matrix** | Pause permitted during Aiming, Simulating, and in-game Result (including terminal solo result before modal); disallowed in menus or when modals are open | `tests/sessionCoordinator.test.ts` SPEC §12 matrix |
-| **Space Handover Leak** | Held Space during handover, pause, or text input cannot leak into accidental fire upon aiming; requires fresh physical press | `tests/input.test.ts` |
-| **Form Element Focus** | Gameplay shortcuts ignored when typing in text/select/textarea fields; range sliders correctly classified as non-text controls | `tests/input.test.ts` |
-| **Native Menu Activation** | Space and Enter on focused menu buttons do not trigger game fire or continue, preserving native button activation without bypass | `tests/input.test.ts` |
-| **Key Repeat & Escape** | Escape key repeats ignored; Escape works when paused to resume; Arrow keys prevent double slider increments | `tests/input.test.ts` |
-| **Settings Persistence** | Volume, mute, and `reducedMotion` settings persist in `localStorage` under `hitJonh.v1` schema across reloads and incremental updates | `tests/storage.test.ts` |
-| **Renderer-independent Settings** | Settings updates succeed and persist even without an active renderer instance | `tests/storage.test.ts` |
-| **Audio Volume Clamping** | Volume levels clamped to `[0, 1]` with master gain updates and uninitialized AudioContext safety | `tests/audio.test.ts` |
+Captured warning/error logs were empty during normal post-reload/post-Retry flows. The intentionally withheld boot module produced the expected failure; it was restored before retry. The complete multiplayer replay preceded the final Change Map-only patch; that patch affects solo navigation and received its own final-build browser check.
 
----
+## Review and corrections
 
-## 3. Production Scene & DOM Wiring (Architectural Review)
+Fresh independent AGY Pro High review approved the change, but overstated scene-level coverage and missed actual settings/boot defects. Codex acceptance caught reduced-motion persistence, the volume label, missing boot failure handling and Change Map navigation. AGY corrected the settings/UI gaps; Codex added the small bootstrap boundary and final navigation correction. One callback-copying test was removed, bringing the final suite from 130 to 129 meaningful tests. Review scratch artifacts were removed by exact path.
 
-The following components are implemented in production source and wired into the game lifecycle:
+## Verification limits
 
-1. **Scene Update & Stepper Guarding (`src/scenes/PrototypeScene.ts`)**:
-   - `PrototypeScene.update()` checks `this.sessionCoordinator.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine` before calling `this.jonhRenderer.update(dtSeconds)` or `this.stepper.advance(dtSeconds)`.
-   - *Note*: Vitest unit tests do not instantiate Phaser or drive scene-level cosmetic reaction timers; this wiring is verified structurally in code and delegated to browser verification.
+- Physical touchscreen taps/drags: not verified; no touch hardware was available.
+- Perceived audio volume/balance and visual enjoyment: not verified; require owner listening/playtest.
+- Actual FPS, CPU-throttled hardware performance and heap leak profiling: not verified; no profiler/hardware measurements were performed. Build sizes and automated fixed-step regressions are evidence for their respective properties only.
+- Browser walkthroughs cover the recorded cases, not every possible input sequence. Three/four-player full matches and all scoring tie variants are covered by pure tests rather than complete browser matches.
 
-2. **Idempotent Scene Cleanup (`src/scenes/PrototypeScene.ts`)**:
-   - `performQuit()` resets activeMode to `'none'`, resets stepper and classifier, clears physics bodies via `physicsAdapter.clear()`, destroys active renderers, clears trail history, and hides/inerts HTML controls.
-   - *Note*: Vitest unit tests do not run DOM/Phaser canvas destruction cycles; this is verified structurally and delegated to browser verification.
-
-3. **Accessible UI Controls & Inert Overlays (`src/ui/htmlControls.ts`, `src/ui/menuOverlay.ts`, `src/scenes/PrototypeScene.ts`)**:
-   - Master Volume range slider has explicit `id="settings-volume"`, `aria-label="Master Volume"`, and linked `<label htmlFor="settings-volume">`.
-   - Mute and Reduced Motion checkboxes have explicit `htmlFor` and `id` associations.
-   - `SoloResult` overlay invocation explicitly sets `this.inputCoordinator.setOverlayVisible(true)` and `this.htmlControls.setControlsInert(true)` (which applies HTML `inert` and disables sliders/buttons).
-   - Retry and map load restore `setVisible(true)`, `setControlsInert(false)`, and `setOverlayVisible(false)`.
-
-4. **Loading Status & Dev-only Debug Gate (`index.html`, `src/style.css`, `src/main.ts`, `src/scenes/PrototypeScene.ts`)**:
-   - Accessible boot banner `<div id="game-status" role="status" aria-live="polite" class="boot-status">` in `index.html`.
-   - Automatically hidden via `game.events.once(Phaser.Core.Events.READY)` in `src/main.ts`.
-   - Displays user-friendly failure message and Retry button on caught boot failure without exposing raw internal error stacks.
-   - Debug HUD and `KeyD` shortcut strictly gated by `Boolean(import.meta.env.DEV) && hasDebugParam`, preventing `?debug` URL parameter from enabling debug features in production builds.
-
----
-
-## 4. Browser & Sensory Verification Status (For Codex Lead Review)
-
-Per AGENTS rule 9 and worker instructions regarding the Chrome DevTools profile conflict, browser-interactive, visual, audio, and hardware-specific checks were not executed in this environment and are explicitly listed below:
-
-- [ ] **Live Browser Settings Persistence (`reducedMotion`)**: **NOT VERIFIED by worker** (Repro verified fixed via unit tests; live browser reload check delegated to Codex lead).
-- [ ] **Accessible Name & Tree Inspection in Browser AX Tree**: **NOT VERIFIED by worker** (Volume slider label and inertness verified via DOM attributes in code; browser AX audit delegated to Codex lead).
-- [ ] **Boot Status Display & Dismissal**: **NOT VERIFIED by worker** (DOM structure and `READY` event hook wired; live visual boot sequence delegated to Codex lead).
-- [ ] **Live Scene Reaction Timer Freeze on Pause**: **NOT VERIFIED by worker** (Pure helper gate verified in `sessionCoordinator.test.ts`; live visual freeze of Jonh's animations in browser delegated to Codex lead).
-- [ ] **Live Scene Cleanup & Return to Menu**: **NOT VERIFIED by worker** (Pure helper gate verified in `sessionCoordinator.test.ts`; live scene reset without memory/DOM leaks in browser delegated to Codex lead).
-- [ ] **Audio Master Volume Attenuation Perception**: **NOT VERIFIED by worker** (Requires real audio listening).
-- [ ] **Physical Touchscreen Tap & Drag Reliability**: **NOT VERIFIED by worker** (Requires mobile / touch hardware).
-- [ ] **Real-time 60fps/120fps Frame Performance**: **NOT VERIFIED by worker** (Requires browser performance profiling on test hardware; no fabricated fps claims).
+The requested dev server remains available at http://localhost:5173. No implementation task remains in the requested scope; optional owner playtest can inform later tuning without treating proposed values as approved.

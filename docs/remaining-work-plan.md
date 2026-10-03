@@ -2,7 +2,7 @@
 
 Prepared 2026-10-03. The owner requested phased execution through Antigravity; Codex owns scope, acceptance, review and delivery. This resumes feature work after the Backyard appearance pass. Visual enjoyment, sound balance and hardware touch testing remain owner judgments, never inferred from passing tests.
 
-Execution status: Phases 1 and 2 implemented with reviewed corrections (last verified source `dbf6bb3`; 102 tests/check/build pass). Phase 3 was interrupted by shared AGY quota; Flash fallback also failed. Recoverable partial work is in stash `b754aa51de7365e444e652339ef718f624ac2a45`; current source restored to M3. Phase 4 and Phase 5 pending. See `orchestration-log.md` and `agy-prompts/phase-3-recovery.md` for continuation, unresolved M3 follow-ups, and exact evidence. No completion is claimed for interrupted/pending phases.
+Execution status: all five phases completed and accepted after lead corrections. M4 is checkpointed in `4c109ee`; M5 in `b0fa862`, `067cba6`, `ae894a6`, and `8118398`, followed by the final Change Map correction. Final checks: 19 test files / 129 tests passed, typecheck and lint passed; production build transformed 64 modules in 861ms. Browser acceptance and its limits are recorded in `release-verification.md`. Historical partial-work stash `b754aa51de7365e444e652339ef718f624ac2a45` is retained and already applied; never reapply it. See `orchestration-log.md` for exact evidence.
 
 ## Execution contract
 
@@ -40,7 +40,7 @@ Gate: N=2/3/4 shot counts/order; out-of-turn and duplicate score rejection; winn
 
 ## Phase 4 — M5 polish and release readiness
 
-Model: `gemini-3.8-flash-high`; effort: high. Prompt: `docs/agy-prompts/phase-4-m5.md`.
+Completed sequential assignments: focused pause/input lifecycle via `gemini-3.1-pro-high` and `docs/agy-prompts/phase-4a-pause-input.md`, then remaining settings/audio/responsive/release work via `gemini-3.8-flash-high` and `docs/agy-prompts/phase-4-m5.md`. Effort: high. The owner authorized Sonnet for complex small tasks; its focused M4 correction exhausted quota, so Pro/Flash completed the work. Browser findings received a separate correction prompt, `docs/agy-prompts/phase-4-browser-fixes.md`.
 
 Finish first-gesture audio, persisted mute/volume/reduced motion, settings, pause/resume/quit, loading and responsive accessible controls. Freeze physics and cosmetic timers while paused; clear transient state on quit/restart. Hide developer controls in normal production play. Measure performance before choosing a fix; preserve fixed physics at throttled frame rates. Walk every SPEC section 12 transition, including production preview.
 
@@ -48,7 +48,7 @@ Gate: meaningful settings/pause/input/timing/lifecycle regressions; scripted tra
 
 ## Phase 5 — independent review and delivery
 
-Model: `gemini-3.1-pro-high`; effort: high. Prompt: `docs/agy-prompts/phase-5-review.md`.
+Completed model: `gemini-3.1-pro-high`; effort: high. Prompt: `docs/agy-prompts/phase-5-review.md`. Fresh focused review of M4/M5 state coordination, input and resource lifetimes; Codex assessed broader visual/physics/build evidence. Sonnet was unavailable after quota exhaustion. The review approved the change, but lead browser acceptance still found and corrected settings, boot and navigation gaps; review approval alone was not acceptance evidence.
 
 Read-only fresh AGY conversation reviews changes from baseline `ec0e120` for correctness, repo standards, SPEC alignment and security. Findings need concrete triggers, file/line and evidence. Codex assesses findings; material fixes return to the implementation conversation, then receive appropriate checks and a checkpoint. Record remaining owner playtest judgments and verification limits. No deployment is part of this request.
 

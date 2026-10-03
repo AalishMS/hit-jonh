@@ -1,6 +1,6 @@
 # Antigravity execution record
 
-Codex leads acceptance; all implementation is delegated through the AGY companion, which invokes the `agy` CLI. Both models were confirmed by `agy models`; effort is high for every assignment. No push or deployment is authorized by this workflow.
+Codex leads acceptance; substantive implementation is delegated through the AGY companion, which invokes the `agy` CLI. Codex also applied the small final bootstrap and navigation fixes described below. Available models were confirmed by `agy models`; effort is high for every assignment. No push or deployment is authorized by this workflow.
 
 | Assignment | Model | Job | Checkpoint | Evidence |
 | --- | --- | --- | --- | --- |
@@ -54,3 +54,35 @@ Chrome browser extension, production served by `npm run preview -- --host 127.0.
 - Owner execution preference is pending: finish locally with Codex or resume AGY after quota reset. No scheduled task was created and no worker remains active.
 - Later owner instruction: "what if left? you can continue the quota is back." AGY execution resumed; Codex applied the saved stash, resolved the progress-log conflict while retaining this historical audit, and dispatched the recorded M4 conversation at high effort. Stash remains retained until accepted delivery.
 - Owner additionally authorized Antigravity Sonnet 5.5 for complex, small tasks. Lead will use it for a focused review or correction when appropriate; no change to the high-effort requirement.
+
+### M4 acceptance correction and Sonnet option
+
+Owner explicitly authorized Sonnet 5.5 for complex small tasks. Resumed Pro returned checkpoint `8c60438` (reported 107 tests / 17 files, check/build pass), but lead source inspection did not substantiate its personal trail/colour/inactive-slot and meaningful tie/reset test claims. Existing tests directly mutated records/private state; production scene still lacked those integrations. M4 remains under acceptance review.
+
+Dispatched fresh bounded Sonnet High correction `implement-muslxcu6-9612b34c` using `docs/agy-prompts/phase-3-acceptance-fixes.md`; waiting normally without inspecting intermediate worker artifacts. Subsequent M5 split: Sonnet High pause/input, Flash High remaining polish, then fresh focused Sonnet review. Dev server 5173 confirmed HTTP200 (escalated local read; sandbox sockets blocked). Historical stash remains retained and must not be reapplied.
+
+Sonnet correction returned partial edits, no checks/commit, quota `RESOURCE_EXHAUSTED` with CLI reset161h9m17s. Lead inspected exact diff and preserved source. Continued same conversation through Flash High as `implement-musmazgs-99fd5c53` with `phase-3-sonnet-recovery.md`. Sonnet is not retried during this run; pause/input model fallback changed to Pro High (Flash if unavailable). Historical Sonnet response is not milestone completion evidence.
+
+Flash recovery completed checkpoint `4c109ee`: reported and source-reviewed check117tests/18files, build61modules/632ms. Production rules tests now exercise N2/3/4 counts/order, valid 500-point tie fixtures, rematch and guards; coordinator tests resolve via ShotAttemptMachine.step; actual adapter reset test and history/storage tests added. Scene visibly wires shooter-owned history, player colour/pattern, inactive slots, final-round guard, explicit round Continue. Lead Chrome dev smoke: two-player setup -> named handover -> active aiming -> Backyard45/40 direct body100 -> explicitContinue -> Player2 handover with independent50power. Canvas showed red active cannon/trail and blue striped inactive slot below playable ground. Broader final production walkthrough remains M5 gate. No console/performance/full match claims from this smoke.
+
+### M5 and independent review
+
+ProHigh4a job `implement-musmsp4q-bd0c9803` checkpointed `b0fa862` (123tests/19files, build704ms). Lead found Quit/update references, paused Escape routing, native input/range handling and overlay guards incomplete; these were included in FlashHigh4b continuation `implement-musn20jh-96a82976`, checkpoint `067cba6` (128tests/19files, build645ms reported).
+
+Fresh independent ProHigh review `review-musnhjvz-b9b8d935` returned Approve/no findings, but overclaimed scene timing coverage and produced unrequested scratch files (three exact review artifacts). Lead retained ownership of acceptance: production Settings volume40/mute true survived reload, Reduced Motion checkbox did not. Scene callback omitted persistence. Master volume slider had no accessible name; boot loading/error UI was absent. Flash continuation `implement-musns6p4-7774d041` uses phase-4-browser-fixes.md to correct these and documentation/scratch artifacts.
+
+Lead Chrome production on067cba6: aiming EscapePauseResume; focusedslider45->46 exactly; focusedFireSpace yieldedAttempt1 once; directbody100 paused as Result, resumed ->Enter ->3stars ->Retryretained45/40. Long85/100shot paused DURINGflight; two screenshots separated by elapsed time byte-identical; at500x800 viewport logicalcanvas1280x560/CSS468x204.75/documentwidth500/scrollWidth500; resumed flight and reset viewport, pausedagain/Quit->MainMenu; capturedwarn/errorlogs empty. Freshsolo afterQuit retainer85/100 then weak5/0misses progressed2/1attemptsleft; thirdshot inprogress. No hardware touch/audio perception/actualfps profiling claims. M4 full production match uses cached4c109ee JS; its acceptance coverage must be labelled by build, not described as067cba6 full match.
+
+### Final lead acceptance and delivery
+
+Flash browser-correction job `implement-musns6p4-7774d041` checkpointed `ae894a6` (worker reported 130 tests). Lead verified persisted mute/volume/reduced motion and labelled controls on reload. Root checkpoint `8118398` added the small bootstrap dynamic-module failure boundary and singular attempt wording, and removed one callback-copying storage test; final suite is 129 tests.
+
+Full production multiplayer walkthrough completed on `4c109ee`, then repeated all 18 shots on `8118398`: both players 300/675/1050 points across Backyard/Fence/Rooftop, nine body hits each, shared tie and explicit round/match continuation. Initial rematch retained setup/aim and reset match state; final replay Main Menu cleaned up. Separate final-build four-player setup showed all labelled patterned slots and blank-name fallback, then Pause/Quit cleaned up. N3/N4 complete shot ordering remains automated coverage, not claimed as complete browser matches.
+
+Final browser checks covered three-miss failure/retry, native keyboard menu actions, persisted settings, inert solo results, narrow layout, pause/quit/restart and production debug gating. Boot failure was tested by temporarily withholding exactly one generated main module, restoring it immediately, and clicking Retry successfully; no backup remains. Normal warning/error logs were empty.
+
+Lead found Change Map used the generic cleanup callback, which returned to Main Menu. Added `showMapSelect()` after cleanup; on the final build solo hit → Continue → result → Change Map reached all-map selection → Back → Main Menu. No broader implementation rewrite or speculative feature was added.
+
+Final root `npm run check` after this last source patch: typecheck/lint passed, 19 files / 129 tests passed, duration 1.03s (23:30:19). Final `npm run build`: 64 modules transformed, built in 861ms; main chunk 98.25kB / 23.97kB gzip, Phaser 1431.43kB / 375.59kB gzip. Sandbox Vitest worker-cache ENOENT was resolved by running outside the sandbox; Node experimental localStorage warning remained and did not fail tests. Docs now distinguish pure helper tests, scene source inspection and actual browser coverage.
+
+All AGY jobs are collected and complete; Sonnet is not retried after its quota error. All five phases are accepted. Requested dev server remains on 5173; no push/deploy performed. Historical stash is retained as a backup and has already been applied. Hardware touch, listening/visual enjoyment, actual FPS/CPU throttling and heap profiling remain unverified, as recorded in release-verification.md.

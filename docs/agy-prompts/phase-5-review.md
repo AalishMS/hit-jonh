@@ -1,6 +1,6 @@
 # Phase 5: independent release review
 
-Model choice for this assignment: Sonnet 5.5 High, explicitly authorized by the owner for complex small work. Keep the review focused on the new M4/M5 state coordination and resource/input lifetimes; consult prior accepted work only where these changes call it. Codex covers broader visual/physics acceptance separately. Do not re-investigate unchanged engine internals or expand into cosmetic preferences. This is a fresh independent conversation.
+Model choice for this assignment: Gemini Pro 3.1 High in a fresh conversation. Sonnet 5.5 was authorized and used for M4, but its quota reset is now days away; no retry required. Keep the review focused on the new M4/M5 state coordination and resource/input lifetimes; consult prior accepted work only where these changes call it. Codex covers broader visual/physics acceptance separately. Do not re-investigate unchanged engine internals or expand into cosmetic preferences. This is a fresh independent conversation.
 
 Fresh read-only review for Codex, the main orchestrator. Read AGENTS.md, SPEC.md, docs/remaining-work-plan.md, docs/progress.md and docs/release-verification.md. Review all changes from baseline ec0e120 to current HEAD plus working tree. Fetch git diff/log/status yourself and read callers/surrounding code. Do not modify or commit files.
 

@@ -497,6 +497,7 @@ export class MenuOverlay {
     menuBtn.textContent = 'Change Map';
     menuBtn.addEventListener('click', () => {
       this.callbacks.onReturnToMenu();
+      this.showMapSelect();
     }, { signal: this.clickAbortController.signal });
     actions.appendChild(menuBtn);
 
