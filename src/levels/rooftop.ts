@@ -47,10 +47,7 @@ export const ROOFTOP_LEVEL: LevelData = {
       ricochet: true,
     }
   ],
-  arrivalLines: [
-    { x: 17.6 },
-    { x: 18.4 }
-  ],
+  arrivalLine: 'Much quieter here.',
   referenceSolutions: [
     { angleDeg: 45, powerPercent: 50 },
   ],

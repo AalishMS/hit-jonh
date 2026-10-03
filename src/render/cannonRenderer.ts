@@ -5,8 +5,8 @@ import { metresToPixels, simYToWorldY } from '../sim/units';
 
 export class CannonRenderer {
   private graphics: Phaser.GameObjects.Graphics;
-  private readonly pivotXPx: number;
-  private readonly pivotYPx: number;
+  private pivotXPx: number;
+  private pivotYPx: number;
   private readonly barrelLengthPx: number;
   private readonly barrelThicknessPx: number;
 
@@ -14,7 +14,7 @@ export class CannonRenderer {
     scene: Phaser.Scene,
     cannonSpawn: Point2D,
     private readonly ppm: number,
-    worldHeightPx: number,
+    private readonly worldHeightPx: number,
   ) {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(10);
@@ -23,6 +23,11 @@ export class CannonRenderer {
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
     this.barrelLengthPx = metresToPixels(AIM.barrelLengthMetres, ppm);
     this.barrelThicknessPx = metresToPixels(0.36, ppm);
+  }
+
+  setPosition(cannonSpawn: Point2D): void {
+    this.pivotXPx = metresToPixels(cannonSpawn.x, this.ppm);
+    this.pivotYPx = simYToWorldY(cannonSpawn.y, this.worldHeightPx, this.ppm);
   }
 
   getMuzzlePosition(angleDeg: number, ballRadiusMetres: number): { x: number; y: number } {
@@ -36,7 +41,7 @@ export class CannonRenderer {
     };
   }
 
-  draw(angleDeg: number): void {
+  draw(angleDeg: number, color: number = 0x3a3f47, pattern: string = 'solid'): void {
     this.graphics.clear();
     const rad = (angleDeg * Math.PI) / 180;
 
@@ -55,7 +60,7 @@ export class CannonRenderer {
       { x: -10 * cos + halfThick * -sin, y: -10 * sin + halfThick * cos },
     ];
 
-    this.graphics.fillStyle(0x3a3f47, 1);
+    this.graphics.fillStyle(color, 1);
     this.graphics.lineStyle(3, 0x1f2329, 1);
     this.graphics.beginPath();
     this.graphics.moveTo(this.pivotXPx + corners[0]!.x, this.pivotYPx + corners[0]!.y);
@@ -65,6 +70,54 @@ export class CannonRenderer {
     this.graphics.closePath();
     this.graphics.fillPath();
     this.graphics.strokePath();
+
+    // Pattern overlay
+    this.graphics.fillStyle(0xffffff, 0.3); // Semi-transparent white for pattern
+    this.graphics.lineStyle(2, 0xffffff, 0.3);
+
+    if (pattern === 'stripes') {
+      for (let d = 0; d < len; d += 15) {
+        const sx1 = d * cos - halfThick * -sin;
+        const sy1 = d * sin - halfThick * cos;
+        const sx2 = (d+5) * cos + halfThick * -sin;
+        const sy2 = (d+5) * sin + halfThick * cos;
+        this.graphics.beginPath();
+        this.graphics.moveTo(this.pivotXPx + sx1, this.pivotYPx + sy1);
+        this.graphics.lineTo(this.pivotXPx + sx2, this.pivotYPx + sy2);
+        this.graphics.strokePath();
+      }
+    } else if (pattern === 'dots') {
+      for (let d = 10; d < len - 10; d += 20) {
+        for (let w = -halfThick + 5; w <= halfThick - 5; w += 10) {
+          const dx = d * cos - w * -sin;
+          const dy = d * sin - w * cos;
+          this.graphics.fillCircle(this.pivotXPx + dx, this.pivotYPx + dy, 3);
+        }
+      }
+    } else if (pattern === 'checks') {
+      for (let d = 0; d < len - 10; d += 15) {
+        for (let w = -halfThick; w <= halfThick - 10; w += 15) {
+          if (Math.floor(d / 15 + w / 15) % 2 === 0) {
+             const p1x = d * cos - w * -sin;
+             const p1y = d * sin - w * cos;
+             const p2x = (d+15) * cos - w * -sin;
+             const p2y = (d+15) * sin - w * cos;
+             const p3x = (d+15) * cos - (w+15) * -sin;
+             const p3y = (d+15) * sin - (w+15) * cos;
+             const p4x = d * cos - (w+15) * -sin;
+             const p4y = d * sin - (w+15) * cos;
+
+             this.graphics.beginPath();
+             this.graphics.moveTo(this.pivotXPx + p1x, this.pivotYPx + p1y);
+             this.graphics.lineTo(this.pivotXPx + p2x, this.pivotYPx + p2y);
+             this.graphics.lineTo(this.pivotXPx + p3x, this.pivotYPx + p3y);
+             this.graphics.lineTo(this.pivotXPx + p4x, this.pivotYPx + p4y);
+             this.graphics.closePath();
+             this.graphics.fillPath();
+          }
+        }
+      }
+    }
 
     // Muzzle band ring
     const bandLen = len - 6;

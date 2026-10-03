@@ -126,14 +126,6 @@ export class SceneryRenderer {
     this.graphics.lineStyle(2, LOOK.paper);
     this.graphics.strokeCircle(jonhX + 93, jonhBaseWorldPx - 42, 4);
 
-    // Arrival lines as per SPEC
-    if (level.arrivalLines) {
-      this.graphics.lineStyle(2, LOOK.accent, 0.4);
-      for (const line of level.arrivalLines) {
-        const lx = metresToPixels(line.x, this.ppm);
-        this.graphics.lineBetween(lx, 0, lx, this.worldHeightPx);
-      }
-    }
   }
 
   private drawCloud(x: number, y: number, r: number): void {

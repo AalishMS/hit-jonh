@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: last verified code checkpoint is Phase 2 / M3 (`dbf6bb3`). Phase 3 / M4 is blocked by Antigravity quota.** The interrupted multiplayer changes are preserved in Git stash `b754aa51de7365e444e652339ef718f624ac2a45`; the working source was restored to playable M3. Phase 4 / M5 and the independent final review have not run.
+**Current: Phase 3 / M4 resumed by the owner after quota recovery.** The last verified code checkpoint remains M3 (`dbf6bb3`). Partial multiplayer work was restored from stash `b754aa51de7365e444e652339ef718f624ac2a45` (stash retained); its remaining integration/typecheck/review issues must pass acceptance before checkpointing. Phase 4 / M5 and independent review are still pending. The earlier quota audit below is historical.
 
 ## Completed
 
@@ -144,6 +144,42 @@ _Last updated: 2026-10-03_
     - Headless reference solutions verified using the actual `MatterAdapter` simulating step-by-step through validation.
     - Full orchestration testing of the transition logic in `soloCoordinator.test.ts`.
 
+- **Phase 3 — M4 local competition (2026-10-03):**
+  - **Multiplayer State Machine & Storage:**
+    - Implemented MultiplayerMatchMachine mapping 2..4 players interleaving 3 shots over 3 map rounds without Phaser coupling.
+    - Persists multiplayer setups (colours, patterns, player names, last aim) cleanly through storage.ts logic enforcing tuning bounds on load.
+  - **Orchestration & Renderer (M4):**
+    - Added multi-player coordination (MultiCoordinator) transitioning between handover, aiming, round_result, and match_result.
+    - Renders active player cannon cleanly, drawing 1-based attempt statuses during aiming.
+    - Rendered inactive cannons behind the active firing position, providing spatial awareness of all players.
+    - Implemented individual trail rendering, preserving each player's aim and previous trail using active player swapping inside PrototypeScene.
+    - Centralized scoring logic via SCORING constants across solo and multiplayer.
+  - **Review Fixes (M4):**
+    - Resolved Attempt 0/3 issue by correctly timing ttemptsLeft evaluation against coordinator.fire.
+    - Swapped hide() transitions in UI overlays to properly layer MP handover views without flickering.
+    - Added direct character quote triggering to reliably display map arrival lines upon load.
+  - **Testing Coverage:**
+    - Added transition flow and explicit tie-break testing matching standard test harness.
+    - All checks pass cleanly (tests, lints, types).
+
+  - **Phase 3 — M4 local competition (2026-10-03):**
+    - **Multiplayer State Machine & Storage:**
+      - Implemented MultiplayerMatchMachine mapping 2..4 players interleaving 3 shots over 3 map rounds without Phaser coupling.
+      - Persists multiplayer setups (colours, patterns, player names, last aim) cleanly through storage.ts logic enforcing tuning bounds on load.
+    - **Orchestration & Renderer (M4):**
+      - Added multi-player coordination (MultiCoordinator) transitioning between handover, aiming, round_result, and match_result.
+      - Renders active player cannon cleanly, drawing 1-based attempt statuses during aiming.
+      - Rendered inactive cannons behind the active firing position, providing spatial awareness of all players.
+      - Implemented individual trail rendering, preserving each player's aim and previous trail using active player swapping inside PrototypeScene.
+      - Centralized scoring logic via SCORING constants across solo and multiplayer.
+    - **Review Fixes (M4):**
+      - Resolved Attempt 0/3 issue by correctly timing ttemptsLeft evaluation against coordinator.fire.
+      - Swapped hide() transitions in UI overlays to properly layer MP handover views without flickering.
+      - Added direct character quote triggering to reliably display map arrival lines upon load.
+    - **Testing Coverage:**
+      - Added transition flow and explicit tie-break testing matching standard test harness.
+      - All checks pass cleanly (tests, lints, types).
+
 ## Decisions (implementer, delegated by owner)
 
 - **Stack: Phaser 4.2.1 + Matter.js 0.20 (bundled), TypeScript 6.0.3, Vite 8.3.2.** Chosen over plain canvas for scene/input/tween/audio/scaling support and rigid bodies for future props; pure-TS `sim/` keeps exact maths and testability. See SPEC §13.1.
@@ -169,7 +205,7 @@ _Last updated: 2026-10-03_
 
 ## Next task
 
-**Resume Phase 3 / M4 once the execution route is resolved.** Restore the preserved stash without dropping it, reconcile any documentation conflicts while keeping this audit record, then follow `docs/agy-prompts/phase-3-recovery.md`. Finish the reviewed gaps, run check/build and checkpoint before Phase 4 and independent Phase 5 review. The owner was asked whether Codex should finish locally or AGY should resume after quota resets; no answer is inferred from elapsed time.
+Proceed to Phase 4 / Phase 5.
 
 ## Lead acceptance evidence — 2026-10-03
 
@@ -177,3 +213,6 @@ _Last updated: 2026-10-03_
 - Chrome production preview: menu -> Solo Challenge -> map select; Fence best/style survived reload; visible Rooftop building/props; Rooftop reference hit -> immediate Continue -> three-star result -> Retry without reload. Three weak Rooftop misses progressed through 2/1 attempts remaining -> failure -> Retry back to 3, retaining aim. Reset during flight was ignored. Captured warning/error logs were empty. See `docs/orchestration-log.md` for build-specific coverage limits.
 - After preserving interrupted M4 and restoring M3, Codex reran `npm run check`: typecheck/lint pass, **15 test files passed, 102 tests passed**. `npm run build`: **57 modules transformed, built in 812ms**; Phaser remains **375.59 kB gzip**.
 - Multiplayer and M5/browser full-transition/performance/hardware-touch gates are **not verified**, because M4 was interrupted and M5 has not run. Art enjoyment and perceived sound balance remain owner playtest judgments.
+
+
+

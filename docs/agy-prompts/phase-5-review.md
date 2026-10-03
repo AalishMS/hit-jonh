@@ -1,5 +1,7 @@
 # Phase 5: independent release review
 
+Model choice for this assignment: Sonnet 5.5 High, explicitly authorized by the owner for complex small work. Keep the review focused on the new M4/M5 state coordination and resource/input lifetimes; consult prior accepted work only where these changes call it. Codex covers broader visual/physics acceptance separately. Do not re-investigate unchanged engine internals or expand into cosmetic preferences. This is a fresh independent conversation.
+
 Fresh read-only review for Codex, the main orchestrator. Read AGENTS.md, SPEC.md, docs/remaining-work-plan.md, docs/progress.md and docs/release-verification.md. Review all changes from baseline ec0e120 to current HEAD plus working tree. Fetch git diff/log/status yourself and read callers/surrounding code. Do not modify or commit files.
 
 Review correctness (game transitions, duplicate scoring, hat-then-body, real ricochet ordering, player counts/rotations, reset/rematch, pause/focus, storage failure, resource cleanup), repo standards (cited rules/module boundaries/fixed stepping/tuning), SPEC alignment (missing first-release requirements or unsupported completion claims), and security (names/storage/untrusted text sinks). Verify meaningful tests and browser evidence, noting scope limits. Prioritize realistic user-visible bugs and regressions; do not list stylistic preferences as requirements. Actual tests/checks may be run as needed.

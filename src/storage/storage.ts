@@ -1,4 +1,5 @@
 import { MAPS } from '../levels';
+import { AIM } from '../config/tuning';
 
 export interface LevelScore {
   bestShots: number | null;
@@ -11,6 +12,8 @@ export interface PlayerSetup {
   name: string;
   color: number;
   pattern: string;
+  lastAngle?: number;
+  lastPower?: number;
 }
 
 export interface Settings {
@@ -101,13 +104,40 @@ export function loadSaveData(): SaveData {
 
         const hasStyle = typeof val.hasStyle === 'boolean' ? val.hasStyle : false;
         
-        const lastAngle = typeof val.lastAngle === 'number' && Number.isFinite(val.lastAngle) 
-          ? val.lastAngle : 45;
+        let lastAngle = typeof val.lastAngle === 'number' && Number.isFinite(val.lastAngle) 
+          ? Math.round(val.lastAngle) : 45;
+        lastAngle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, lastAngle));
           
-        const lastPower = typeof val.lastPower === 'number' && Number.isFinite(val.lastPower) 
-          ? val.lastPower : 50;
+        let lastPower = typeof val.lastPower === 'number' && Number.isFinite(val.lastPower) 
+          ? Math.round(val.lastPower) : 50;
+        lastPower = Math.max(0, Math.min(100, lastPower));
 
         data.solo[key] = { bestShots, hasStyle, lastAngle, lastPower };
+      }
+    }
+
+    // Validate lastMP
+    if (Array.isArray(parsedObj.lastMP)) {
+      const validSetups: PlayerSetup[] = [];
+      const allowedPatterns = new Set(['solid', 'stripes', 'dots', 'checks']);
+      for (const p of parsedObj.lastMP) {
+        if (!p || typeof p !== 'object') continue;
+        const name = typeof p.name === 'string' ? p.name.substring(0, 16) : 'Player';
+        const color = typeof p.color === 'number' && Number.isFinite(p.color) ? p.color : 0xff4444;
+        const pattern = typeof p.pattern === 'string' && allowedPatterns.has(p.pattern) ? p.pattern : 'solid';
+        
+        let lastAngle = typeof p.lastAngle === 'number' && Number.isFinite(p.lastAngle) 
+          ? Math.round(p.lastAngle) : 45;
+        lastAngle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, lastAngle));
+          
+        let lastPower = typeof p.lastPower === 'number' && Number.isFinite(p.lastPower) 
+          ? Math.round(p.lastPower) : 50;
+        lastPower = Math.max(0, Math.min(100, lastPower));
+
+        validSetups.push({ name, color, pattern, lastAngle, lastPower });
+      }
+      if (validSetups.length >= 2 && validSetups.length <= 4) {
+        data.lastMP = validSetups;
       }
     }
 
@@ -159,3 +189,4 @@ export function saveSettings(settings: Partial<Settings>): void {
   data.settings = { ...data.settings, ...settings };
   writeSaveData(data);
 }
+

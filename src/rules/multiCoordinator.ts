@@ -1,34 +1,33 @@
 import { ShotAttemptMachine } from './shotAttempt';
+import { MultiplayerMatchMachine } from './multiplayerMatch';
 import { AIM } from '../config/tuning';
-import { SoloChallengeMachine, type SoloResult } from './soloChallenge';
 
-export interface CoordinatorCallbacks {
+export interface MultiCoordinatorCallbacks {
   onStateChange: () => void;
   onShotFired: (angle: number, power: number) => void;
-  onShowResult: (result: SoloResult) => void;
 }
 
-export class SoloCoordinator {
+export class MultiCoordinator {
   constructor(
     public attemptMachine: ShotAttemptMachine,
-    public soloMachine: SoloChallengeMachine,
-    private callbacks: CoordinatorCallbacks
+    public multiMachine: MultiplayerMatchMachine,
+    private callbacks: MultiCoordinatorCallbacks
   ) {}
 
   canFire(): boolean {
-    return this.attemptMachine.canFire && this.soloMachine.state === 'aiming';
+    return this.attemptMachine.canFire && this.multiMachine.state === 'aiming';
   }
 
   fire(angle: number, power: number): void {
     if (!this.canFire()) return;
     this.attemptMachine.fire(angle, power);
-    this.soloMachine.fire();
+    this.multiMachine.fire();
     this.callbacks.onShotFired(angle, power);
     this.callbacks.onStateChange();
   }
 
   canAdjustAim(): boolean {
-    return this.attemptMachine.state === 'aiming';
+    return this.attemptMachine.state === 'aiming' && this.multiMachine.state === 'aiming';
   }
 
   adjustAim(currentAngle: number, currentPower: number, deltaAngle: number, deltaPower: number): { angle: number, power: number } | null {
@@ -39,8 +38,8 @@ export class SoloCoordinator {
     return { angle, power };
   }
 
-  resolveShot(isHit: boolean, isRicochet: boolean): void {
-    this.soloMachine.resolveShot(isHit, isRicochet);
+  resolveShot(outcomePoints: number, isBodyHit: boolean): void {
+    this.multiMachine.resolveShot(outcomePoints, isBodyHit);
     this.callbacks.onStateChange();
   }
 
@@ -51,17 +50,12 @@ export class SoloCoordinator {
   reset(currentAngle: number, currentPower: number): void {
     if (!this.canReset()) return;
     
-    if (this.soloMachine.state === 'solo_result') {
-      this.callbacks.onShowResult(this.soloMachine.result!);
-      return;
+    if (this.multiMachine.state === 'result') {
+      this.multiMachine.nextTurn();
     }
     
     this.attemptMachine.reset();
     this.attemptMachine.setAim(currentAngle, currentPower);
-    
-    if (this.soloMachine.state === 'result') {
-      this.soloMachine.startAiming();
-    }
     this.callbacks.onStateChange();
   }
 }

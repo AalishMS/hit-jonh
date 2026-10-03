@@ -25,6 +25,30 @@ export class TrailRenderer {
     }).setDepth(7).setVisible(false);
   }
 
+  exportData() {
+    return {
+      activePoints: [...this.activePoints],
+      activeLandingMarker: this.activeLandingMarker ? { ...this.activeLandingMarker } : null,
+      previousPoints: [...this.previousPoints],
+      previousLandingMarker: this.previousLandingMarker ? { ...this.previousLandingMarker } : null,
+    };
+  }
+
+  importData(data: ReturnType<typeof this.exportData> | null) {
+    if (!data) {
+      this.activePoints = [];
+      this.activeLandingMarker = null;
+      this.previousPoints = [];
+      this.previousLandingMarker = null;
+    } else {
+      this.activePoints = [...data.activePoints];
+      this.activeLandingMarker = data.activeLandingMarker ? { ...data.activeLandingMarker } : null;
+      this.previousPoints = [...data.previousPoints];
+      this.previousLandingMarker = data.previousLandingMarker ? { ...data.previousLandingMarker } : null;
+    }
+    this.redraw();
+  }
+
   /**
    * Called when a new shot is launched. Archives current active trail to previous trail.
    */
@@ -155,3 +179,4 @@ export class TrailRenderer {
     this.landingText.destroy();
   }
 }
+

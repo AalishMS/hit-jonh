@@ -47,10 +47,7 @@ export const FENCE_LEVEL: LevelData = {
       ricochet: true,
     }
   ],
-  arrivalLines: [
-    { x: 16.6 },
-    { x: 17.4 }
-  ],
+  arrivalLine: 'Much quieter here.',
   referenceSolutions: [
     { angleDeg: 45, powerPercent: 24 },
   ],

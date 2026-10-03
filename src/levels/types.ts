@@ -30,5 +30,5 @@ export interface LevelData {
   jonhSpawn: JonhSpawnData;
   obstacles: ObstacleData[];
   referenceSolutions: ReferenceSolution[];
-  arrivalLines?: { x: number }[];
+  arrivalLine?: string;
 }

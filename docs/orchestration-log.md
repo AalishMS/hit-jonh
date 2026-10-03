@@ -10,6 +10,7 @@ Codex leads acceptance; all implementation is delegated through the AGY companio
 | M3 review corrections | Gemini 3.1 Pro High | implement-musda4e3-82130817 | dbf6bb3 | check: 15 files / 102 tests pass, build: 57 modules, succeeds; lead inspected corrected coordinator/storage/rendering |
 | Phase 3 / M4 | Gemini 3.1 Pro High | implement-musdnkk5-5ccc1bdf | None | Interrupted by RESOURCE_EXHAUSTED quota; partial source not accepted |
 | M4 model fallback | Gemini 3.8 Flash High | implement-muse7eky-08609916 | None | Same quota error before additional work |
+| M4 resumed after owner confirmed quota recovery | Gemini 3.1 Pro High | implement-muskuzcf-934efea1 | Pending | Stash already restored; pending result and lead acceptance |
 
 ## Lead review notes
 
@@ -51,3 +52,5 @@ Chrome browser extension, production served by `npm run preview -- --host 127.0.
 - Preserved only known worker source/progress/scratch files in recoverable Git stash `b754aa51de7365e444e652339ef718f624ac2a45` (includes untracked MP source/tests/scratch). Root-authored prompts/audit stayed in working tree. Restored the prior verified source; no worker work was discarded.
 - Lead reran checks after restore: `npm run check` typecheck/lint pass, 15 files / 102 tests pass (876ms); `npm run build` 57 modules, built in 812ms. Design brief diff from original baseline is empty.
 - Owner execution preference is pending: finish locally with Codex or resume AGY after quota reset. No scheduled task was created and no worker remains active.
+- Later owner instruction: "what if left? you can continue the quota is back." AGY execution resumed; Codex applied the saved stash, resolved the progress-log conflict while retaining this historical audit, and dispatched the recorded M4 conversation at high effort. Stash remains retained until accepted delivery.
+- Owner additionally authorized Antigravity Sonnet 5.5 for complex, small tasks. Lead will use it for a focused review or correction when appropriate; no change to the high-effort requirement.

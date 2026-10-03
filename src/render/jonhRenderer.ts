@@ -81,6 +81,10 @@ export class JonhRenderer {
     this.draw();
   }
 
+  triggerArrival(quote: string): void {
+    this.speechText.setText(quote);
+    this.speechText.setVisible(true);
+  }
   triggerHit(impactSpeedMs: number, quote: string): void {
     this.reactionMode = 'hit';
     this.reactionTimerSeconds = 0;
@@ -517,3 +521,7 @@ export class JonhRenderer {
     this.speechText.destroy();
   }
 }
+
+
+
+
