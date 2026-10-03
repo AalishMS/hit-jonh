@@ -9,7 +9,7 @@
 export const WORLD = {
   /** Logical design resolution in pixels. The canvas is scaled to fit; physics never sees screen pixels. */
   designWidthPx: 1280,
-  designHeightPx: 720,
+  designHeightPx: 560,
   /** Pixels per metre in the logical (unscaled) world. PROPOSED. */
   pixelsPerMetre: 50,
 } as const;
@@ -44,6 +44,8 @@ export const AIM = {
   angleStepDeg: 1,
   /** Power is shown as a percentage 0–100. */
   powerStepPercent: 1,
+  barrelLengthMetres: 1.2,
+  muzzleGapMetres: 0.04,
   /**
    * PROPOSED launch impulse range in N·s; speed = impulse / mass.
    * With massKg = 4 this gives 6–20 m/s (45° flat range ≈ 3.7–40.8 m) for a
@@ -51,6 +53,37 @@ export const AIM = {
    */
   minImpulseNs: 24,
   maxImpulseNs: 80,
+} as const;
+
+export const SHOT = {
+  settledSpeedMs: 0.05,
+  settledSeconds: 0.5,
+  timeoutSeconds: 15,
+  boundsMarginMetres: 1,
+} as const;
+
+/** Reversible art direction: a quiet, sunlit garden with inked cartoon figures. */
+export const LOOK = {
+  ink: 0x293c36,
+  sky: 0xd8ebe6,
+  cloud: 0xfaf8e9,
+  distantGreen: 0xb6cbb0,
+  hedge: 0x8eac86,
+  grass: 0x72966a,
+  earth: 0xc9b693,
+  wood: 0x9c7450,
+  shirt: 0xc76d43,
+  trousers: 0x405d64,
+  skin: 0xf0c299,
+  paper: 0xfff9e6,
+  hat: 0xd8b76e,
+  accent: 0xc45032,
+  trailSpacingPx: 10,
+  strongImpactMs: 10,
+  tumbleSeconds: 0.35,
+  hatFlightSeconds: 0.85,
+  paperFlightSeconds: 1,
+  impactFlashSeconds: 0.22,
 } as const;
 
 export interface MaterialProps {
@@ -65,4 +98,3 @@ export const MATERIALS = {
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
-

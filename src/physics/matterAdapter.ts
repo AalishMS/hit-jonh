@@ -4,6 +4,7 @@ import type { LevelData } from '../levels/types';
 import { sweepCircleVsBox } from '../sim/swept';
 import {
   metresToPixels,
+  matterVelocityToSpeedMs,
   pixelsToMetres,
   simYToWorldY,
   vectorLength,
@@ -20,6 +21,8 @@ export interface ProjectileState {
   speedMs: number;
   hitJonh: boolean;
   hitGround: boolean;
+  impactSpeedMs: number;
+  firstGroundContact: { xSim: number; xPx: number; yPx: number } | null;
 }
 
 export class MatterAdapter {
@@ -32,6 +35,9 @@ export class MatterAdapter {
   private prevPosPx: { x: number; y: number } | null = null;
   private hasHitJonh = false;
   private hasHitGround = false;
+  private previousVelocity = { x: 0, y: 0 };
+  private impactSpeedMs = 0;
+  private firstGroundContact: ProjectileState['firstGroundContact'] = null;
 
   constructor(
     private readonly matterWorld: World,
@@ -67,8 +73,7 @@ export class MatterAdapter {
       groundHeightPx,
       {
         isStatic: true,
-        restitution: 0.2,
-        friction: 0.8,
+        ...MATERIALS.grass,
         label: 'ground',
       },
     );
@@ -89,8 +94,7 @@ export class MatterAdapter {
       jonhHeightPx,
       {
         isStatic: true,
-        restitution: 0.3,
-        friction: 0.6,
+        ...MATERIALS.jonhBody,
         label: 'jonhBody',
       },
     );
@@ -156,11 +160,13 @@ export class MatterAdapter {
     this.removeProjectile();
     this.hasHitJonh = false;
     this.hasHitGround = false;
+    this.impactSpeedMs = 0;
+    this.firstGroundContact = null;
+    this.previousVelocity = { ...launchVelocityWorld };
 
     this.projectileBody = Matter.Bodies.circle(startXPx, startYPx, radiusPx, {
       frictionAir: 0,
-      restitution: 0.25,
-      friction: 0.5,
+      ...MATERIALS.cannonball,
       density: 0.005,
       label: 'projectile',
     });
@@ -212,6 +218,19 @@ export class MatterAdapter {
     }
 
     if (earliestHit) {
+      if (earliestHit.boxLabel === 'jonhBody' && !this.hasHitJonh) {
+        // Use incoming velocity, before Matter or the swept guard reflects it.
+        this.impactSpeedMs = matterVelocityToSpeedMs(
+          vectorLength(this.previousVelocity.x, this.previousVelocity.y), this.pixelsPerMetre,
+        );
+      }
+      if (earliestHit.boxLabel === 'ground' && !this.firstGroundContact) {
+        this.firstGroundContact = {
+          xSim: earliestHit.hit.point.x,
+          xPx: metresToPixels(earliestHit.hit.point.x, this.pixelsPerMetre),
+          yPx: simYToWorldY(level.ground.maxY, this.worldHeightPx, this.pixelsPerMetre),
+        };
+      }
       if (earliestHit.boxLabel === 'jonhBody') this.hasHitJonh = true;
       if (earliestHit.boxLabel === 'ground') this.hasHitGround = true;
 
@@ -250,7 +269,7 @@ export class MatterAdapter {
       }
     }
 
-    if (this.hasHitGround) {
+    if (this.hasHitGround && currSim.y <= level.ground.maxY + radiusMetres + 1e-3) {
       Matter.Body.setVelocity(this.projectileBody, {
         x: this.projectileBody.velocity.x * PHYSICS.groundRollingDamping,
         y: this.projectileBody.velocity.y,
@@ -258,11 +277,12 @@ export class MatterAdapter {
     }
 
     this.prevPosPx = { ...currPx };
+    this.previousVelocity = { ...this.projectileBody.velocity };
 
     // Matter velocity is in px per (1000/60)ms -> speed in m/s = (px/baseStep * 60) / ppm
-    const vxMs = (this.projectileBody.velocity.x * 60) / this.pixelsPerMetre;
+    const vxMs = matterVelocityToSpeedMs(this.projectileBody.velocity.x, this.pixelsPerMetre);
     // In world y is down, so vySim = -vyWorld
-    const vyMs = (-this.projectileBody.velocity.y * 60) / this.pixelsPerMetre;
+    const vyMs = -matterVelocityToSpeedMs(this.projectileBody.velocity.y, this.pixelsPerMetre);
     const speedMs = vectorLength(vxMs, vyMs);
 
     return {
@@ -275,6 +295,8 @@ export class MatterAdapter {
       speedMs,
       hitJonh: this.hasHitJonh,
       hitGround: this.hasHitGround,
+      impactSpeedMs: this.impactSpeedMs,
+      firstGroundContact: this.firstGroundContact,
     };
   }
 
@@ -286,6 +308,8 @@ export class MatterAdapter {
     this.prevPosPx = null;
     this.hasHitJonh = false;
     this.hasHitGround = false;
+    this.impactSpeedMs = 0;
+    this.firstGroundContact = null;
   }
 
   clear(): void {

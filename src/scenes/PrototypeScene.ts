@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, PHYSICS, PROJECTILE, WORLD } from '../config/tuning';
+import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { InputCoordinator } from '../input/controls';
 import { BACKYARD_LEVEL } from '../levels/backyard';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
@@ -44,6 +44,7 @@ export class PrototypeScene extends Phaser.Scene {
   private currentAngleDeg = 45;
   private currentPowerPercent = 50;
   private lastProjectileState: ProjectileState | null = null;
+  private groundFeedbackShown = false;
   private isDebugEnabled = false;
 
   private cleanupHandlers: Array<() => void> = [];
@@ -61,10 +62,10 @@ export class PrototypeScene extends Phaser.Scene {
     // 2. Initialise State Machine
     this.attemptMachine = new ShotAttemptMachine(
       BACKYARD_LEVEL.bounds.maxX,
-      0.05, // 0.05 m/s settled threshold
-      0.5,  // 0.5 s settled duration
-      15.0, // 15 s safety timeout
-      1.0,  // 1.0 m out-of-bounds margin
+      SHOT.settledSpeedMs,
+      SHOT.settledSeconds,
+      SHOT.timeoutSeconds,
+      SHOT.boundsMarginMetres,
     );
     this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
 
@@ -229,6 +230,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setFeedback('Cannonball in flight! Tracking...', 'simulating');
 
     this.trailRenderer.startNewShot();
+    this.groundFeedbackShown = false;
     this.jonhRenderer.resetToIdle();
 
     // Calculate spawn outside barrel
@@ -269,9 +271,9 @@ export class PrototypeScene extends Phaser.Scene {
     // 4. Update UI
     this.inputCoordinator.setCanFire(true);
     this.htmlControls.setCanFire(true);
-    this.htmlControls.setResetLabel('🔄 Aim Again');
+    this.htmlControls.setResetLabel('Aim again');
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
-    this.htmlControls.setFeedback('Aiming settings preserved. Adjust and click Fire or press Space!', 'info');
+    this.htmlControls.setFeedback('Last shot kept below. Adjust your angle or power, then fire.', 'info');
   }
 
   override update(_time: number, deltaMs: number): void {
@@ -297,6 +299,12 @@ export class PrototypeScene extends Phaser.Scene {
         if (state) {
           this.lastProjectileState = state;
           this.trailRenderer.addPoint(state.xPx, state.yPx);
+          if (state.firstGroundContact && !this.groundFeedbackShown) {
+            this.groundFeedbackShown = true;
+            const landing = state.firstGroundContact;
+            this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
+            this.audioManager.playImpact('ground');
+          }
 
           const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
             x: state.xSim,
@@ -359,37 +367,46 @@ export class PrototypeScene extends Phaser.Scene {
     // Play impact audio
     if (isHit) {
       this.audioManager.playImpact('body');
-    } else {
-      this.audioManager.playImpact('ground');
     }
 
     // Classify shot outcome for player feedback
     const classification = classifyShotOutcome(
       isHit,
-      state.xSim,
+      isHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
       BACKYARD_LEVEL.jonhSpawn.bodyBox.minX,
       BACKYARD_LEVEL.jonhSpawn.bodyBox.maxX,
     );
     const quote = this.reactionSelector.selectReaction(classification.category);
 
     // Terminal landing position feedback
-    this.trailRenderer.setLandingMarker(state.xPx, state.yPx, classification.label);
+    const landing = !isHit ? state.firstGroundContact : null;
+    this.trailRenderer.setLandingMarker(
+      landing?.xPx ?? state.xPx, landing?.yPx ?? state.yPx,
+      `${classification.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
+    );
     this.inputCoordinator.setCanFire(false);
 
     if (isHit) {
-      this.jonhRenderer.triggerHit(state.speedMs, quote);
+      this.jonhRenderer.triggerHit(state.impactSpeedMs, quote);
       this.htmlControls.setFeedback(
-        `🎯 ${classification.label}! Jonh: "${quote}" (Press Enter or click Aim Again to continue)`,
+        `${classification.label} · “${quote}”`,
         'hit',
       );
     } else {
+      const correction = classification.category === 'short'
+        ? this.currentPowerPercent === 100
+          ? 'At full power, try an angle closer to 45°.'
+          : 'Try a little more power at this angle.'
+        : classification.category === 'over'
+          ? 'Try a little less power at this angle.'
+          : classification.detail;
       this.htmlControls.setFeedback(
-        `❌ ${classification.label}: ${classification.detail} — Jonh: "${quote}" (Press Enter or click Aim Again to continue)`,
+        `${classification.label} · ${correction} Jonh: “${quote}”`,
         'miss',
       );
     }
 
-    this.htmlControls.setResetLabel('🔄 Aim Again (Enter)');
+    this.htmlControls.setResetLabel('Aim again ↵');
     this.htmlControls.setCanFire(false);
   }
 

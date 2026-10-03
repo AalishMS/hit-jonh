@@ -43,7 +43,7 @@ export class HTMLControls {
 
   private render(angle: number, power: number, debug: boolean, muted: boolean): void {
     this.container.innerHTML = `
-      <div class="feedback-banner" id="shot-feedback">Ready. Set angle and power, then click Fire!</div>
+      <div class="feedback-banner feedback-info" id="shot-feedback" role="status" aria-live="polite">Jonh is reading. Set your angle and power.</div>
       <div class="controls-row">
         <div class="control-group">
           <div class="control-label-row">
@@ -73,22 +73,23 @@ export class HTMLControls {
             step="${AIM.powerStepPercent}"
             value="${power}"
           />
-          <div class="sub-label" id="speed-indicator">Launch Speed: ${this.calcSpeed(power)} m/s</div>
+          <div class="sub-label" id="speed-indicator" hidden>Launch Speed: ${this.calcSpeed(power)} m/s</div>
         </div>
 
         <div class="actions-group">
-          <button type="button" class="btn btn-fire" id="fire-btn">🔥 Fire</button>
-          <button type="button" class="btn btn-reset" id="reset-btn">🔄 Aim Again</button>
-          <button type="button" class="btn btn-mute" id="mute-btn">${muted ? '🔇 Muted' : '🔊 Sound'}</button>
+          <button type="button" class="btn btn-fire" id="fire-btn">Fire · Space</button>
+          <button type="button" class="btn btn-reset" id="reset-btn">Aim again</button>
+          <button type="button" class="btn btn-mute" id="mute-btn">${muted ? 'Sound off' : 'Sound on'}</button>
         </div>
 
-        <div class="debug-group">
+        <div class="debug-group" ${debug ? '' : 'hidden'}>
           <label class="toggle-label" for="debug-toggle">
             <input type="checkbox" id="debug-toggle" ${debug ? 'checked' : ''} />
             <span>Debug View</span>
           </label>
         </div>
       </div>
+      <div class="control-help">← → angle · ↑ ↓ power · Enter to aim again · Previous shot stays visible</div>
     `;
 
     this.angleSlider = this.container.querySelector('#angle-slider') as HTMLInputElement;
@@ -174,7 +175,7 @@ export class HTMLControls {
   }
 
   setMuted(muted: boolean): void {
-    this.muteButton.textContent = muted ? '🔇 Muted' : '🔊 Sound';
+    this.muteButton.textContent = muted ? 'Sound off' : 'Sound on';
   }
 
   setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' = 'info'): void {

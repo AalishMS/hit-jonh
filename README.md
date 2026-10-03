@@ -4,7 +4,7 @@
 
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
-**Status:** Project setup complete (Milestone 0). Gameplay starts in Milestone 1 — see [`docs/progress.md`](docs/progress.md).
+**Status:** Playable Backyard prototype with verified physics, reactions, sound, and an appearance/feedback improvement pass. Further feature expansion is paused for playtesting — see [`docs/progress.md`](docs/progress.md).
 
 ## Stack
 

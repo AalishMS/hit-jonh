@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
 import { BACKYARD_LEVEL } from '../src/levels/backyard';
 import { MatterAdapter } from '../src/physics/matterAdapter';
+import { AIM, PHYSICS, PROJECTILE, WORLD } from '../src/config/tuning';
+import { launchVelocityToWorld, metresToPixels, simYToWorldY, powerToLaunchSpeed } from '../src/sim/units';
+import { FixedStepper } from '../src/sim/fixedStep';
+import { ShotAttemptMachine } from '../src/rules/shotAttempt';
 
 describe('MatterAdapter', () => {
   function makeAdapter() {
@@ -96,5 +100,112 @@ describe('MatterAdapter', () => {
     expect(state?.vxSim).toBeLessThan(0);
     // It should be positioned slightly before the wall
     expect(state?.xSim).toBeLessThanOrEqual(10.0);
+  });
+
+  it('retains incoming impact speed rather than the reflected speed', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+    adapter.spawnProjectile(871, 600, 7.5, launchVelocityToWorld(20, 0, 50));
+    Matter.Engine.update(engine, 1000 / 120);
+    const state = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+    expect(state.hitJonh).toBe(true);
+    expect(state.impactSpeedMs).toBeCloseTo(20, 1);
+    expect(state.speedMs).toBeLessThan(state.impactSpeedMs);
+  });
+
+  it('keeps the first landing point through rolling and clears it on retry', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+    adapter.spawnProjectile(300, 620, 7.5, launchVelocityToWorld(6, -15, 50));
+    let first: ReturnType<MatterAdapter['stepProjectile']> = null;
+    for (let step = 0; step < 180; step++) {
+      Matter.Engine.update(engine, 1000 / 120);
+      const state = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+      if (state.firstGroundContact && !first) first = state;
+    }
+    const last = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+    expect(first?.firstGroundContact).toBeTruthy();
+    expect(last.firstGroundContact).toEqual(first!.firstGroundContact);
+    expect(last.xPx).toBeGreaterThan(first!.firstGroundContact!.xPx + 10);
+    adapter.spawnProjectile(300, 400, 7.5, launchVelocityToWorld(6, 45, 50));
+    expect(adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!.firstGroundContact).toBeNull();
+    expect(adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!.impactSpeedMs).toBe(0);
+  });
+
+  it('proves every reference solution through the actual adapter and muzzle', () => {
+    for (const aim of BACKYARD_LEVEL.referenceSolutions) {
+      const { engine, adapter } = makeAdapter();
+      adapter.setupLevel(BACKYARD_LEVEL);
+      const rad = aim.angleDeg * Math.PI / 180;
+      const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+      const speed = powerToLaunchSpeed(aim.powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
+      adapter.spawnProjectile(
+        metresToPixels(BACKYARD_LEVEL.cannonSpawn.x + offset * Math.cos(rad), 50),
+        simYToWorldY(BACKYARD_LEVEL.cannonSpawn.y + offset * Math.sin(rad), 720, 50),
+        7.5, launchVelocityToWorld(speed, aim.angleDeg, 50),
+      );
+      let hit = false;
+      for (let step = 0; step < 720; step++) {
+        Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+        if (adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!.hitJonh) {
+          hit = true;
+          break;
+        }
+      }
+      expect(hit, `reference ${aim.angleDeg}°/${aim.powerPercent}%`).toBe(true);
+    }
+  });
+
+  it('catches maximum-speed contacts at every supported integer angle', () => {
+    for (let angle = AIM.minAngleDeg; angle <= AIM.maxAngleDeg; angle++) {
+      const engine = Matter.Engine.create({ gravity: { x: 0, y: 0, scale: 0.001 } });
+      const adapter = new MatterAdapter(engine.world, WORLD.pixelsPerMetre, WORLD.designHeightPx);
+      adapter.setupLevel(BACKYARD_LEVEL);
+      const x = BACKYARD_LEVEL.jonhSpawn.bodyBox.minX - PROJECTILE.radiusMetres - 0.001;
+      adapter.spawnProjectile(metresToPixels(x, 50), simYToWorldY(2.5, WORLD.designHeightPx, 50), 7.5, launchVelocityToWorld(20, angle, 50));
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      expect(adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!.hitJonh, `angle ${angle}`).toBe(true);
+    }
+  });
+
+  it('keeps outcomes and landing feedback at 30/60/144 Hz and after viewport reframing', () => {
+    const shots = [[45, 0], [85, 100], [45, 100], [45, 40], [45, 50]] as const;
+    for (const [angle, power] of shots) {
+      let reference: { outcome: string; x: number; landingX: number | null } | undefined;
+      for (const height of [720, WORLD.designHeightPx]) {
+        for (const fps of [30, 60, 144]) {
+          const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });
+          const adapter = new MatterAdapter(engine.world, 50, height);
+          adapter.setupLevel(BACKYARD_LEVEL);
+          const rules = new ShotAttemptMachine(BACKYARD_LEVEL.bounds.maxX);
+          const stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
+          const rad = angle * Math.PI / 180;
+          const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+          adapter.spawnProjectile(
+            metresToPixels(2.5 + offset * Math.cos(rad), 50),
+            simYToWorldY(2.2 + offset * Math.sin(rad), height, 50), 7.5,
+            launchVelocityToWorld(powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, 4), angle, 50),
+          );
+          rules.fire(angle, power);
+          let state = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+          for (let frame = 0; frame < fps * 20 && rules.state === 'simulating'; frame++) {
+            const steps = stepper.advance(1 / fps);
+            for (let step = 0; step < steps && rules.state === 'simulating'; step++) {
+              Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+              state = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+              rules.step(PHYSICS.fixedStepSeconds, { x: state.xSim, y: state.ySim, speed: state.speedMs, hitBody: state.hitJonh });
+            }
+          }
+          expect(rules.state).toBe('resolved');
+          const result = { outcome: rules.outcome!, x: state.xSim, landingX: state.firstGroundContact?.xSim ?? null };
+          reference ??= result;
+          expect(result.outcome).toBe(reference.outcome);
+          expect(result.x).toBeCloseTo(reference.x, 5);
+          if (reference.landingX !== null) expect(result.landingX).toBeCloseTo(reference.landingX, 5);
+          else expect(result.landingX).toBeNull();
+          expect(result.outcome).toBe(angle === 45 && power === 40 ? 'hit' : 'miss');
+        }
+      }
+    }
   });
 });

@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { AIM, LOOK, PROJECTILE } from '../config/tuning';
 import type { Point2D } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 
@@ -20,14 +21,14 @@ export class CannonRenderer {
 
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
-    this.barrelLengthPx = metresToPixels(1.2, ppm);
+    this.barrelLengthPx = metresToPixels(AIM.barrelLengthMetres, ppm);
     this.barrelThicknessPx = metresToPixels(0.36, ppm);
   }
 
   getMuzzlePosition(angleDeg: number, ballRadiusMetres: number): { x: number; y: number } {
     const rad = (angleDeg * Math.PI) / 180;
     // Spawn tip offset: slightly ahead of barrel so ball cannot intersect barrel
-    const offsetMetres = 1.2 + ballRadiusMetres + 0.04;
+    const offsetMetres = AIM.barrelLengthMetres + ballRadiusMetres + AIM.muzzleGapMetres;
     const offsetPx = metresToPixels(offsetMetres, this.ppm);
     return {
       x: this.pivotXPx + offsetPx * Math.cos(rad),
@@ -78,7 +79,7 @@ export class CannonRenderer {
     );
 
     // Initial aim guide line at muzzle (SPEC §3.2) - short directional indicator
-    const guideStart = this.getMuzzlePosition(angleDeg, 0.15);
+    const guideStart = this.getMuzzlePosition(angleDeg, PROJECTILE.radiusMetres);
     const guideLenPx = metresToPixels(0.85, this.ppm);
     const endX = guideStart.x + guideLenPx * cos;
     const endY = guideStart.y + guideLenPx * sin;
@@ -88,7 +89,7 @@ export class CannonRenderer {
     this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
 
     // Inner bright directional line
-    this.graphics.lineStyle(2, 0xe8572a, 0.95);
+    this.graphics.lineStyle(2, LOOK.accent, 0.95);
     this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
 
     // Dotted rhythm ticks along guide
@@ -107,7 +108,7 @@ export class CannonRenderer {
     const arrowWidth = 4;
     const normalX = -sin;
     const normalY = cos;
-    this.graphics.fillStyle(0xe8572a, 1);
+    this.graphics.fillStyle(LOOK.accent, 1);
     this.graphics.lineStyle(1.5, 0x2b2118, 1);
     this.graphics.beginPath();
     this.graphics.moveTo(endX, endY);

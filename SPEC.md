@@ -129,8 +129,8 @@ Before **every** attempt (solo and MP): remove live projectiles, restore Jonh, h
 ### 8.1 Units and coordinates
 
 - Simulation maths: **metres, seconds, kilograms; +y up**. Gravity **g = 9.81 m/s²** downward. **[DECIDED]**
-- Phaser/Matter world: logical pixels, **+y down**, fixed logical size **1280 × 720 px** **[PROPOSED]**.
-- Scale: **50 px per metre** **[PROPOSED][TUNE]** ⇒ world is **25.6 m × 14.4 m**.
+- Phaser/Matter world: logical pixels, **+y down**, fixed logical viewport **1280 × 560 px** **[PROPOSED][TUNE]**. The appearance improvement pass crops unused upper sky; metres, gravity, geometry, launch speed and horizontal bounds are unchanged. Flights above the viewport remain simulated and use an off-screen marker.
+- Scale: **50 px per metre** **[PROPOSED][TUNE]** ⇒ visible viewport is **25.6 m × 11.2 m**. Level bounds retain 25.6 m × 14.4 m; leaving the top is allowed.
 - The canvas is scaled to the container (`Phaser.Scale.FIT`). Screen size **never** affects physics. Verified at setup: logical size stays 1280×720 and Matter gravity unchanged when the viewport is 500 px wide.
 - All conversions live in `src/sim/units.ts`; no inline magic conversion factors elsewhere.
 

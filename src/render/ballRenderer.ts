@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { LOOK, WORLD } from '../config/tuning';
 
 export class BallRenderer {
   private graphics: Phaser.GameObjects.Graphics;
@@ -25,6 +26,17 @@ export class BallRenderer {
     if (!this.visible) this.setVisible(true);
 
     this.graphics.clear();
+
+    if (yPx < 0) {
+      const x = Math.max(12, Math.min(WORLD.designWidthPx - 12, xPx));
+      this.graphics.fillStyle(LOOK.ink);
+      this.graphics.fillTriangle(x, 8, x - 7, 20, x + 7, 20);
+      this.graphics.fillStyle(LOOK.paper);
+      this.graphics.fillCircle(x, 30, this.radiusPx);
+      this.graphics.lineStyle(2, LOOK.ink);
+      this.graphics.strokeCircle(x, 30, this.radiusPx);
+      return;
+    }
 
     // Dark iron ball
     this.graphics.fillStyle(0x22262c, 1);

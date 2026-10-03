@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import { LOOK } from '../config/tuning';
 import type { JonhSpawnData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 
@@ -45,11 +46,11 @@ export class JonhRenderer {
     const bubbleY = this.bodyBoxPx.minY - 45;
 
     this.speechText = scene.add.text(cx + 25, bubbleY, '', {
-      fontSize: '13px',
+      fontSize: '18px',
       fontFamily: 'system-ui, sans-serif',
       color: '#2b2118',
       fontStyle: 'bold',
-      wordWrap: { width: 170 },
+      wordWrap: { width: 240 },
       align: 'center',
     });
     this.speechText.setOrigin(0.5, 0.5);
@@ -69,6 +70,9 @@ export class JonhRenderer {
   triggerHit(impactSpeedMs: number, quote: string): void {
     this.isHit = true;
     this.hitTimerSeconds = 0;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.hitTimerSeconds = LOOK.paperFlightSeconds + LOOK.impactFlashSeconds;
+    }
     this.hitImpactSpeed = impactSpeedMs;
     this.hitQuote = quote;
     this.speechText.setText(`"${quote}"`);
@@ -106,101 +110,88 @@ export class JonhRenderer {
   }
 
   private drawIdle(cx: number, groundY: number, _height: number): void {
-    // Idle animation: breathing and paper rustle
-    const breathY = Math.sin(this.idleTimerSeconds * 2.8) * 1.5;
-    const paperRustle = Math.sin(this.idleTimerSeconds * 1.6) * 1.2;
-
-    // 1. Deckchair frame (stationary on ground)
-    this.graphics.lineStyle(4, 0xb87333, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(cx - 28, groundY);
-    this.graphics.lineTo(cx + 8, groundY - 45);
-    this.graphics.lineTo(cx - 18, groundY - 75);
-    this.graphics.strokePath();
-
-    this.graphics.lineStyle(4, 0xb87333, 1);
-    this.graphics.lineBetween(cx - 15, groundY, cx + 22, groundY - 35);
-
-    // Canvas fabric (striped orange)
-    this.graphics.lineStyle(6, 0xe8572a, 1);
-    this.graphics.lineBetween(cx - 15, groundY - 70, cx + 5, groundY - 30);
-    this.graphics.lineBetween(cx + 5, groundY - 30, cx + 18, groundY - 10);
-
-    // 2. Jonh's legs (blue trousers)
-    this.graphics.fillStyle(0x34568b, 1);
-    this.graphics.fillRoundedRect(cx - 5, groundY - 28, 28, 14, 4);
-
-    // 3. Jonh's Torso (green cardigan/shirt, responds slightly to breath)
-    const torsoY = groundY - 65 + breathY;
-    this.graphics.fillStyle(0x5b8266, 1);
-    this.graphics.lineStyle(2, 0x2b2118, 1);
-    this.graphics.fillRoundedRect(cx - 22, torsoY, 26, 38, 6);
-    this.graphics.strokeRoundedRect(cx - 22, torsoY, 26, 38, 6);
-
-    // 4. Jonh's Head (skin tone)
-    const headY = groundY - 75 + breathY * 0.8;
-    this.graphics.fillStyle(0xffd1b3, 1);
-    this.graphics.fillCircle(cx - 9, headY, 13);
-    this.graphics.strokeCircle(cx - 9, headY, 13);
-
-    // Calm face (glasses & moustache)
-    this.graphics.lineStyle(2, 0x2b2118, 1);
-    // Glasses
-    this.graphics.strokeCircle(cx - 13, headY - 1, 4);
-    this.graphics.strokeCircle(cx - 5, headY - 1, 4);
-    this.graphics.lineBetween(cx - 9, headY - 1, cx - 9, headY - 1);
-    // Eyes behind glasses
-    const blinkCycle = this.idleTimerSeconds % 4.0;
-    if (blinkCycle > 3.85) {
-      // Blink (horizontal slit)
-      this.graphics.lineBetween(cx - 15, headY - 1, cx - 11, headY - 1);
-      this.graphics.lineBetween(cx - 7, headY - 1, cx - 3, headY - 1);
-    } else {
-      // Open pupils
-      this.graphics.fillStyle(0x2b2118, 1);
-      this.graphics.fillCircle(cx - 13, headY - 1, 1.5);
-      this.graphics.fillCircle(cx - 5, headY - 1, 1.5);
+    const g = this.graphics;
+    const breath = Math.sin(this.idleTimerSeconds * 2) * 0.6;
+    // Reclining chair behind the body, with the same ink weight as the figure.
+    g.lineStyle(4, LOOK.wood);
+    g.lineBetween(cx - 29, groundY, cx + 22, groundY - 34);
+    g.lineBetween(cx + 27, groundY, cx - 27, groundY - 70);
+    g.lineStyle(9, LOOK.paper);
+    g.lineBetween(cx - 26, groundY - 68, cx - 10, groundY - 29);
+    g.lineStyle(3, LOOK.trousers);
+    g.lineBetween(cx - 26, groundY - 68, cx - 10, groundY - 29);
+    // His silhouette fills the actual body box (40 × 90 logical pixels).
+    g.fillStyle(LOOK.trousers);
+    g.lineStyle(2, LOOK.ink);
+    g.fillRoundedRect(cx - 16, groundY - 29, 34, 17, 5);
+    g.strokeRoundedRect(cx - 16, groundY - 29, 34, 17, 5);
+    g.fillRoundedRect(cx + 3, groundY - 20, 14, 16, 3);
+    g.fillStyle(LOOK.ink);
+    g.fillRoundedRect(cx - 17, groundY - 8, 15, 7, 3);
+    g.fillRoundedRect(cx + 1, groundY - 7, 19, 7, 3);
+    g.fillStyle(LOOK.shirt);
+    g.fillRoundedRect(cx - 18, groundY - 61 + breath, 36, 35, 8);
+    g.strokeRoundedRect(cx - 18, groundY - 61 + breath, 36, 35, 8);
+    // Collar and cardigan buttons give him an everyday, slightly fussy look.
+    g.fillStyle(LOOK.paper);
+    g.fillTriangle(cx - 7, groundY - 60, cx + 7, groundY - 60, cx, groundY - 51);
+    g.fillStyle(LOOK.ink);
+    g.fillCircle(cx, groundY - 47, 1.5);
+    g.fillCircle(cx, groundY - 40, 1.5);
+    const headY = groundY - 75 + breath;
+    g.fillStyle(LOOK.skin);
+    g.fillRoundedRect(cx - 16, headY - 14, 32, 28, 10);
+    g.strokeRoundedRect(cx - 16, headY - 14, 32, 28, 10);
+    g.fillCircle(cx + 16, headY + 1, 3);
+    // Half-lidded glasses, side-eye and a stubborn moustache.
+    g.lineStyle(2, LOOK.ink);
+    g.strokeRoundedRect(cx - 13, headY - 4, 11, 8, 3);
+    g.strokeRoundedRect(cx + 2, headY - 4, 11, 8, 3);
+    g.lineBetween(cx - 2, headY - 1, cx + 2, headY - 1);
+    g.lineBetween(cx - 13, headY - 7, cx - 3, headY - 8);
+    g.lineBetween(cx + 3, headY - 8, cx + 13, headY - 7);
+    g.fillStyle(LOOK.ink);
+    if (this.idleTimerSeconds % 5 < 4.8) {
+      g.fillCircle(cx - 9, headY, 1.5);
+      g.fillCircle(cx + 5, headY, 1.5);
     }
-
-    // Moustache
-    this.graphics.fillStyle(0x5a4a42, 1);
-    this.graphics.fillRoundedRect(cx - 12, headY + 5, 8, 3, 1);
-
-    // 5. Distinctive Hat (straw bowler hat)
+    g.fillEllipse(cx - 3, headY + 7, 9, 4);
+    g.fillEllipse(cx + 3, headY + 7, 9, 4);
+    g.lineBetween(cx - 4, headY + 11, cx + 5, headY + 11);
+    // Hat centred on its sensor, with the brim at the top of his head.
     if (this.hatBoxPx) {
-      const hatY = this.hatBoxPx.maxY - 2 + breathY * 0.8;
-      // Hat brim
-      this.graphics.fillStyle(0xd4af37, 1);
-      this.graphics.lineStyle(2, 0x6e4e1b, 1);
-      this.graphics.fillEllipse(cx - 9, hatY + 6, 32, 8);
-      this.graphics.strokeEllipse(cx - 9, hatY + 6, 32, 8);
-      // Hat dome
-      this.graphics.fillRoundedRect(cx - 18, hatY - 8, 18, 14, 6);
-      this.graphics.strokeRoundedRect(cx - 18, hatY - 8, 18, 14, 6);
-      // Hat ribbon
-      this.graphics.fillStyle(0x8b0000, 1);
-      this.graphics.fillRect(cx - 18, hatY + 1, 18, 4);
+      const hatY = this.hatBoxPx.maxY;
+      g.fillStyle(LOOK.hat);
+      g.fillRoundedRect(cx - 12, this.hatBoxPx.minY, 24, hatY - this.hatBoxPx.minY, 6);
+      g.strokeRoundedRect(cx - 12, this.hatBoxPx.minY, 24, hatY - this.hatBoxPx.minY, 6);
+      g.fillStyle(LOOK.shirt);
+      g.fillRect(cx - 12, hatY - 6, 24, 4);
+      g.fillStyle(LOOK.hat);
+      g.fillRoundedRect(cx - 16, hatY - 3, 32, 5, 2);
+      g.strokeRoundedRect(cx - 16, hatY - 3, 32, 5, 2);
     }
-
-    // 6. Newspaper in hands (subtle rustle/drift)
-    const paperY = groundY - 55 + paperRustle;
-    this.graphics.fillStyle(0xf0ece1, 1);
-    this.graphics.lineStyle(2, 0x4a4a4a, 1);
-    this.graphics.fillRoundedRect(cx - 2, paperY, 18, 22, 2);
-    this.graphics.strokeRoundedRect(cx - 2, paperY, 18, 22, 2);
-    // Newspaper text lines
-    this.graphics.lineStyle(1, 0x888888, 1);
-    this.graphics.lineBetween(cx + 2, paperY + 5, cx + 12, paperY + 5);
-    this.graphics.lineBetween(cx + 2, paperY + 10, cx + 12, paperY + 10);
-    this.graphics.lineBetween(cx + 2, paperY + 15, cx + 12, paperY + 15);
+    // Folded newspaper and a hand, leaving the face visible.
+    const paperY = groundY - 42 + Math.sin(this.idleTimerSeconds) * 0.6;
+    g.fillStyle(LOOK.paper);
+    g.lineStyle(2, LOOK.ink);
+    g.fillRoundedRect(cx - 15, paperY, 30, 22, 2);
+    g.strokeRoundedRect(cx - 15, paperY, 30, 22, 2);
+    g.lineStyle(1, LOOK.wood);
+    g.lineBetween(cx, paperY + 2, cx, paperY + 20);
+    for (let row = 5; row < 18; row += 4) {
+      g.lineBetween(cx - 11, paperY + row, cx - 3, paperY + row);
+      g.lineBetween(cx + 3, paperY + row, cx + 11, paperY + row);
+    }
+    g.fillStyle(LOOK.skin);
+    g.fillEllipse(cx - 15, paperY + 12, 7, 10);
   }
 
   private drawKnockedDown(cx: number, groundY: number, _height: number): void {
-    const isStrong = this.hitImpactSpeed >= 10;
-    const tumbleProgress = Math.min(1, this.hitTimerSeconds / 0.35);
+    const isStrong = this.hitImpactSpeed >= LOOK.strongImpactMs;
+    const tumbleProgress = Math.min(1, this.hitTimerSeconds / LOOK.tumbleSeconds);
 
     // 1. Tumbled / collapsed deckchair
-    this.graphics.lineStyle(4, 0xb87333, 1);
+    this.graphics.lineStyle(4, LOOK.wood, 1);
     const chairTiltX = tumbleProgress * 15;
     const chairTiltY = tumbleProgress * 8;
     this.graphics.lineBetween(cx - 35, groundY - 10 + chairTiltY, cx - 5 + chairTiltX, groundY - 5);
@@ -208,39 +199,48 @@ export class JonhRenderer {
 
     // 2. Fallen Jonh on lawn
     const bodySlideX = tumbleProgress * (isStrong ? 28 : 16);
-    this.graphics.fillStyle(0x5b8266, 1);
-    this.graphics.lineStyle(2, 0x2b2118, 1);
+    this.graphics.fillStyle(LOOK.shirt, 1);
+    this.graphics.lineStyle(2, LOOK.ink, 1);
     this.graphics.fillRoundedRect(cx - 10 + bodySlideX, groundY - 18, 36, 16, 4);
     this.graphics.strokeRoundedRect(cx - 10 + bodySlideX, groundY - 18, 36, 16, 4);
 
     // Head
     const headX = cx + 34 + bodySlideX;
     const headY = groundY - 12;
-    this.graphics.fillStyle(0xffd1b3, 1);
+    this.graphics.fillStyle(LOOK.skin, 1);
     this.graphics.fillCircle(headX, headY, 11);
     this.graphics.strokeCircle(headX, headY, 11);
 
-    // Dazed spiral/cross eyes
-    this.graphics.lineStyle(2, 0x2b2118, 1);
-    this.graphics.lineBetween(headX - 4, headY - 4, headX + 4, headY + 4);
-    this.graphics.lineBetween(headX - 4, headY + 4, headX + 4, headY - 4);
+    // A dry glare reads as annoyance, rather than injury.
+    this.graphics.lineStyle(2, LOOK.ink);
+    this.graphics.lineBetween(headX - 7, headY - 5, headX - 1, headY - 3);
+    this.graphics.lineBetween(headX + 1, headY - 3, headX + 7, headY - 5);
+    this.graphics.fillStyle(LOOK.ink);
+    this.graphics.fillCircle(headX - 4, headY - 1, 1.5);
+    this.graphics.fillCircle(headX + 4, headY - 1, 1.5);
+    this.graphics.lineBetween(headX - 4, headY + 5, headX + 4, headY + 5);
+    const flash = Math.max(0, 1 - this.hitTimerSeconds / LOOK.impactFlashSeconds);
+    if (flash > 0) {
+      this.graphics.lineStyle(4, LOOK.paper, flash);
+      this.graphics.strokeCircle(cx - 15, groundY - 55, 16 + (1 - flash) * 18);
+    }
 
     // 3. Flying Hat spinning off in arc
-    const hatT = Math.min(1, this.hitTimerSeconds / 0.85);
+    const hatT = Math.min(1, this.hitTimerSeconds / LOOK.hatFlightSeconds);
     const hatArcY = -Math.sin(hatT * Math.PI) * (isStrong ? 65 : 40) + hatT * 30;
     const hatX = cx + 5 + hatT * (isStrong ? 55 : 30);
     const hatY = groundY - 65 + hatArcY;
 
-    this.graphics.fillStyle(0xd4af37, 1);
+    this.graphics.fillStyle(LOOK.hat, 1);
     this.graphics.lineStyle(2, 0x6e4e1b, 1);
     this.graphics.fillEllipse(hatX, hatY, 26, 10);
     this.graphics.strokeEllipse(hatX, hatY, 26, 10);
 
     // 4. Newspaper fluttering away
-    const paperT = Math.min(1, this.hitTimerSeconds / 1.0);
+    const paperT = Math.min(1, this.hitTimerSeconds / LOOK.paperFlightSeconds);
     const paperX = cx - 10 - paperT * 25;
     const paperY = groundY - 50 - Math.sin(paperT * Math.PI) * 35 + paperT * 40;
-    this.graphics.fillStyle(0xf0ece1, 1);
+    this.graphics.fillStyle(LOOK.paper, 1);
     this.graphics.lineStyle(1, 0x4a4a4a, 1);
     this.graphics.fillRoundedRect(paperX, paperY, 16, 20, 2);
     this.graphics.strokeRoundedRect(paperX, paperY, 16, 20, 2);
@@ -261,17 +261,17 @@ export class JonhRenderer {
 
     // 6. Speech Bubble with Jonh's dry reaction
     if (this.hitQuote) {
-      const bubbleW = 190;
-      const bubbleH = 50;
+      const bubbleW = 260;
+      const bubbleH = 64;
       const bubbleX = cx + 25 - bubbleW / 2;
-      const bubbleY = groundY - 125;
+      const bubbleY = groundY - 170;
 
       // Update text position to match bubble center
       this.speechText.setPosition(cx + 25, bubbleY + bubbleH / 2);
 
       // Bubble background pill
       this.graphics.fillStyle(0xffffff, 0.95);
-      this.graphics.lineStyle(2, 0x2b2118, 1);
+      this.graphics.lineStyle(2, LOOK.ink, 1);
       this.graphics.fillRoundedRect(bubbleX, bubbleY, bubbleW, bubbleH, 10);
       this.graphics.strokeRoundedRect(bubbleX, bubbleY, bubbleW, bubbleH, 10);
 
@@ -285,7 +285,7 @@ export class JonhRenderer {
       this.graphics.fillPath();
 
       // Tail stroke
-      this.graphics.lineStyle(2, 0x2b2118, 1);
+      this.graphics.lineStyle(2, LOOK.ink, 1);
       this.graphics.lineBetween(cx + 15, bubbleY + bubbleH, headX - 4, headY - 16);
       this.graphics.lineBetween(headX - 4, headY - 16, cx + 32, bubbleY + bubbleH);
     }

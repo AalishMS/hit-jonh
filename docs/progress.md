@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**M2 — Make hitting Jonh satisfying: complete and verified.** Next: **M3 — Solo play and maps** (SPEC §14).
+**Current: Backyard appearance and feedback improvement pass.** Feature expansion is paused until the owner enjoys replaying this scene. M0/M1 and the existing M2 reaction/audio work are retained; this pass adds no maps or challenge rules.
 
 ## Completed
 
@@ -91,6 +91,21 @@ _Last updated: 2026-10-03_
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
 - Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
 
+- Hat sensor exists, but hat-only and overhead reactions are not wired into the current shot loop. Obstacle outcome labels cannot be manually exercised on the Backyard because it has no obstacles. These existing gaps remain outside this appearance pass.
+- Cosmetic aftermath continues on render time; physics remains fixed-step. Sound quality and whether the humour is satisfying still require owner playtesting. Browser tools verified controls/timing/console, not listening quality.
+
+## Prototype improvement pass — 2026-10-03
+
+- **Owner priority:** appearance. Diagnosis before editing: empty sky and oversized translucent clouds dominated composition; full-width canvas pushed the target/controls below the initial viewport; Jonh's head/hat were offset from their colliders; feedback marked the end of rolling as the landing point; reaction strength used post-bounce velocity.
+- **Changes:** coherent muted garden palette and inked shapes, distant foliage and a tea table behind the playfield, centred hat/body silhouette with a deadpan face, compact HTML controls and native sliders, shorter readable feedback and visible keyboard hints. Previous trail now labels its outcome and angle/power. Debug controls remain available with `?debug`.
+- **Reversible tuning decisions:** logical viewport 1280×560 replaces 1280×720; 50 px/m, gravity 9.81, launch impulse 24–80 N·s, level colliders, world horizontal bounds and fixed 1/120 s stepping remain unchanged. Less upper sky gives Jonh more screen space; flights above the viewport continue and have a top-edge indicator. SPEC §8.1 records this proposed framing. Reaction threshold remains 10 m/s; speech text increased to 18 logical px and the bubble widened. Art palette and reaction timings are centralized in `LOOK`.
+- **Physics/feedback fixes:** retain first ground contact for marker/classification through subsequent rolling; play turf impact at contact rather than at final resolution, with no invented ground sound for out-of-bounds shots. Preserve incoming velocity from the preceding fixed step for weak/strong reaction selection. Ground rolling damping only applies near turf, preserving free flight during bounce arcs. Clear contact state on respawn. No gravity or launch-speed compensation.
+- **Verification:** baseline `npm install` succeeded; typecheck/lint passed and 49 tests passed. Sandbox Vitest runs initially failed with inaccessible temporary SSR files; the same checks passed outside the sandbox. New regressions prove incoming impact speed, first landing preservation/reset, all three actual-adapter reference shots, maximum-speed contacts for every integer angle 5°–85°, and identical shot outcomes/landing feedback at 30/60/144 Hz for weak, steep, maximum, hit and overshoot shots at both viewport heights. `npm run check`: 11 test files passed, 54 tests passed. `npm run build`: 49 modules transformed, build succeeded; Phaser remains ~375.59 kB gzip.
+- **Browser playtest:** before/after weak 45°/0% → short, steep 85°/100% → short, maximum 45°/100% → over, successful 45°/40% → direct hit. Retry restores Jonh and keeps settings/trail. Sliders freeze in flight; mute controls update. Production preview also exercised and had no warning/error console entries. Screenshots: [before](playtest/before.jpg), [after](playtest/after.jpg), [hit](playtest/hit.jpg). A transient dev HMR error occurred while editing a file and was corrected before the clean production replay.
+- **Responsive verification:** final production hit at 45°/40% survived resizing to 500×800 mid-flight; sliders and all actions fit that viewport. Saved [narrow-viewport screenshot](playtest/mobile.jpg). Restored the default viewport afterward. Exact landing-coordinate equality on a live resize was not measured; outcome/coordinates across both logical heights and three frame rates are covered by headless tests.
+- **Review:** independent code review found a hit label overlapping Jonh and missing existing miss commentary. Labels now occupy the clear ground strip; short/over/miss quotes are retained alongside correction advice. No remaining actionable physics/reset regression was found.
+- **Open judgments:** art direction is proposed rather than owner-approved. Owner should assess character size (especially on narrow screens), palette, reaction exaggeration, and audio balance on their normal device before expansion resumes. Manual frame-throttling and touch-device hardware tests have not been performed; frame scheduling and reframing were verified headlessly. Hat-only/overhead reactions remain unresolved as noted above.
+
 ## Next task
 
-**M3 — Solo play and maps:** Fence and Rooftop maps, map select, three-attempt challenge, stars rating, best results in localStorage.
+**Owner playtest of this scene:** tune appearance and hit feel from feedback. M3 (solo/maps) stays paused until the existing loop is approved.
