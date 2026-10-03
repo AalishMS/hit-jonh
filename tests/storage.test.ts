@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { loadSaveData, recordSoloResult, saveSettings, saveSoloAim } from '../src/storage/storage';
+import { defaultPlayerSetups, loadSaveData, recordSoloResult, sanitizePlayerName, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../src/storage/storage';
 
 
 const localStorageMock = (function () {
@@ -111,5 +111,69 @@ describe('Storage', () => {
     expect(data2.solo['backyard']!.hasStyle).toBe(false); // bad type falls back
     expect(data2.solo['backyard']!.lastAngle).toBe(45); // NaN falls back
     expect(data2.solo['backyard']!.lastPower).toBe(50); // NaN falls back
+  });
+
+  it('provides fresh default multiplayer setups and sanitizes player names', () => {
+    const defaults = defaultPlayerSetups();
+    expect(defaults.length).toBe(4);
+    expect(defaults[0]!.name).toBe('Player 1');
+    expect(defaults[0]!.color).toBe(0xff4444);
+    expect(defaults[0]!.pattern).toBe('solid');
+
+    // Name sanitization: trims, bounds length, defaults empty
+    expect(sanitizePlayerName('  Alice  ', 0)).toBe('Alice');
+    expect(sanitizePlayerName('', 2)).toBe('Player 3');
+    expect(sanitizePlayerName('   ', 3)).toBe('Player 4');
+    expect(sanitizePlayerName(12345, 0)).toBe('Player 1');
+    expect(sanitizePlayerName('VeryLongNameExceeding16Chars', 0).length).toBe(16);
+  });
+
+  it('validates multiplayer setup domain, bounds, and counts safely', () => {
+    // Valid 3-player setup save
+    saveMultiplayerSetup([
+      { name: 'Red', color: 0xff4444, pattern: 'solid', lastAngle: 50, lastPower: 60 },
+      { name: 'Blue', color: 0x4444ff, pattern: 'stripes', lastAngle: 30, lastPower: 70 },
+      { name: 'Green', color: 0x44ff44, pattern: 'dots', lastAngle: 70, lastPower: 80 },
+    ]);
+    let data = loadSaveData();
+    expect(data.lastMP).toBeDefined();
+    expect(data.lastMP!.length).toBe(3);
+    expect(data.lastMP![0]!.name).toBe('Red');
+
+    // Rejects invalid counts (< 2 or > 4) and does not corrupt existing data
+    saveMultiplayerSetup([
+      { name: 'Solo', color: 0xff4444, pattern: 'solid', lastAngle: 45, lastPower: 50 },
+    ]);
+    data = loadSaveData();
+    expect(data.lastMP!.length).toBe(3); // unchanged
+
+    // Malformed JSON storage payload with invalid colours, patterns, out-of-bounds aim
+    localStorage.setItem('hitJonh.v1', JSON.stringify({
+      version: 'hitJonh.v1',
+      solo: {},
+      settings: { muted: false, volume: 1, reducedMotion: false },
+      lastMP: [
+        { name: '  Bob  ', color: 0x999999 /* not in allowed domain */, pattern: 'invalid' /* invalid pattern */, lastAngle: 999, lastPower: -50 },
+        { name: '', color: 0x4444ff, pattern: 'stripes', lastAngle: 2 /* below min */, lastPower: 150 /* above max */ },
+      ],
+    }));
+    const loaded = loadSaveData();
+    expect(loaded.lastMP).toBeDefined();
+    expect(loaded.lastMP!.length).toBe(2);
+    // Unrecognized colour falls back to slot 0 default
+    expect(loaded.lastMP![0]!.color).toBe(0xff4444);
+    // Unrecognized pattern falls back to slot 0 default
+    expect(loaded.lastMP![0]!.pattern).toBe('solid');
+    // Name trimmed
+    expect(loaded.lastMP![0]!.name).toBe('Bob');
+    // Angle clamped to 85, power clamped to 0
+    expect(loaded.lastMP![0]!.lastAngle).toBe(85);
+    expect(loaded.lastMP![0]!.lastPower).toBe(0);
+
+    // Slot 1 blank name defaults to "Player 2"
+    expect(loaded.lastMP![1]!.name).toBe('Player 2');
+    // Angle clamped to minAngleDeg (5), power clamped to 100
+    expect(loaded.lastMP![1]!.lastAngle).toBe(5);
+    expect(loaded.lastMP![1]!.lastPower).toBe(100);
   });
 });

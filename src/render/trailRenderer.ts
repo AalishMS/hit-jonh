@@ -7,6 +7,23 @@ export interface LandingFeedback {
   label: string;
 }
 
+export interface TrailData {
+  activePoints: Array<{ x: number; y: number }>;
+  activeLandingMarker: LandingFeedback | null;
+  previousPoints: Array<{ x: number; y: number }>;
+  previousLandingMarker: LandingFeedback | null;
+}
+
+/** Turns a finished shot's trail into the ghost ("previous") trail shown at that player's next turn. */
+export function asPreviousTrail(data: TrailData): TrailData {
+  return {
+    activePoints: [],
+    activeLandingMarker: null,
+    previousPoints: [...data.activePoints],
+    previousLandingMarker: data.activeLandingMarker ? { ...data.activeLandingMarker } : null,
+  };
+}
+
 export class TrailRenderer {
   private graphics: Phaser.GameObjects.Graphics;
   private landingText: Phaser.GameObjects.Text;
@@ -15,6 +32,9 @@ export class TrailRenderer {
 
   private previousPoints: Array<{ x: number; y: number }> = [];
   private previousLandingMarker: LandingFeedback | null = null;
+
+  /** Player colour for both trails; null keeps the default solo look. */
+  private playerColor: number | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.graphics = scene.add.graphics();
@@ -25,7 +45,12 @@ export class TrailRenderer {
     }).setDepth(7).setVisible(false);
   }
 
-  exportData() {
+  setPlayerColor(color: number | null): void {
+    this.playerColor = color;
+    this.redraw();
+  }
+
+  exportData(): TrailData {
     return {
       activePoints: [...this.activePoints],
       activeLandingMarker: this.activeLandingMarker ? { ...this.activeLandingMarker } : null,
@@ -34,7 +59,7 @@ export class TrailRenderer {
     };
   }
 
-  importData(data: ReturnType<typeof this.exportData> | null) {
+  importData(data: TrailData | null) {
     if (!data) {
       this.activePoints = [];
       this.activeLandingMarker = null;
@@ -110,8 +135,9 @@ export class TrailRenderer {
     }
 
     // 1. Draw Previous Shot Trajectory (ghost trail for aiming reference)
+    const ghostColor = this.playerColor ?? LOOK.ink;
     if (this.previousPoints.length > 1) {
-      this.graphics.lineStyle(2, LOOK.ink, 0.65);
+      this.graphics.lineStyle(2, ghostColor, 0.65);
       this.graphics.beginPath();
       this.graphics.moveTo(this.previousPoints[0]!.x, this.previousPoints[0]!.y);
       for (let i = 1; i < this.previousPoints.length; i++) {
@@ -120,7 +146,7 @@ export class TrailRenderer {
       this.graphics.strokePath();
 
       // Ghost dots
-      this.graphics.fillStyle(LOOK.ink, 0.5);
+      this.graphics.fillStyle(ghostColor, 0.5);
       for (let i = 0; i < this.previousPoints.length; i += 2) {
         this.graphics.fillCircle(this.previousPoints[i]!.x, this.previousPoints[i]!.y, 2.5);
       }
@@ -129,19 +155,20 @@ export class TrailRenderer {
     // Previous landing marker (ghost)
     if (this.previousLandingMarker) {
       const { x, y } = this.previousLandingMarker;
-      this.graphics.lineStyle(2, LOOK.ink, 0.6);
+      this.graphics.lineStyle(2, ghostColor, 0.6);
       this.graphics.lineBetween(x - 6, y, x + 6, y);
       this.graphics.lineBetween(x, y - 6, x, y + 6);
       this.graphics.strokeCircle(x, y, 7);
 
       // Terminal position ring
-      this.graphics.fillStyle(LOOK.ink, 0.2);
+      this.graphics.fillStyle(ghostColor, 0.2);
       this.graphics.fillCircle(x, y, 7);
     }
 
     // 2. Draw Active Shot Trajectory (vibrant)
+    const activeColor = this.playerColor ?? LOOK.accent;
     if (this.activePoints.length > 1) {
-      this.graphics.lineStyle(3, LOOK.accent, 0.75);
+      this.graphics.lineStyle(3, activeColor, 0.75);
       this.graphics.beginPath();
       this.graphics.moveTo(this.activePoints[0]!.x, this.activePoints[0]!.y);
       for (let i = 1; i < this.activePoints.length; i++) {
@@ -150,7 +177,7 @@ export class TrailRenderer {
       this.graphics.strokePath();
 
       // Vibrant dots
-      this.graphics.fillStyle(LOOK.accent, 0.9);
+      this.graphics.fillStyle(activeColor, 0.9);
       for (let i = 0; i < this.activePoints.length; i += 2) {
         this.graphics.fillCircle(this.activePoints[i]!.x, this.activePoints[i]!.y, 3);
       }

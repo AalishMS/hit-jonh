@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Phase 3 / M4 resumed by the owner after quota recovery.** The last verified code checkpoint remains M3 (`dbf6bb3`). Partial multiplayer work was restored from stash `b754aa51de7365e444e652339ef718f624ac2a45` (stash retained); its remaining integration/typecheck/review issues must pass acceptance before checkpointing. Phase 4 / M5 and independent review are still pending. The earlier quota audit below is historical.
+**Current: Phase 3 / M4 focused integration correction complete; automated acceptance passing, awaiting Codex browser acceptance.** All integration corrections (per-player shooter trail history, decorative inactive cannon slots, final round map reload guard, pure machine invariants, domain validation, and comprehensive headless test coverage) verified via `npm run check` (18 test files, 117 tests passing) and `npm run build`. Interactive browser playthrough and visual/sound balance are explicitly **NOT VERIFIED** (delegated to Codex due to Chrome profile conflict). Next milestone: Phase 4 / M5 (Pause, settings, audio sliders) once M4 acceptance is signed off.
 
 ## Completed
 
@@ -144,41 +144,30 @@ _Last updated: 2026-10-03_
     - Headless reference solutions verified using the actual `MatterAdapter` simulating step-by-step through validation.
     - Full orchestration testing of the transition logic in `soloCoordinator.test.ts`.
 
-- **Phase 3 — M4 local competition (2026-10-03):**
-  - **Multiplayer State Machine & Storage:**
-    - Implemented MultiplayerMatchMachine mapping 2..4 players interleaving 3 shots over 3 map rounds without Phaser coupling.
-    - Persists multiplayer setups (colours, patterns, player names, last aim) cleanly through storage.ts logic enforcing tuning bounds on load.
-  - **Orchestration & Renderer (M4):**
-    - Added multi-player coordination (MultiCoordinator) transitioning between handover, aiming, round_result, and match_result.
-    - Renders active player cannon cleanly, drawing 1-based attempt statuses during aiming.
-    - Rendered inactive cannons behind the active firing position, providing spatial awareness of all players.
-    - Implemented individual trail rendering, preserving each player's aim and previous trail using active player swapping inside PrototypeScene.
-    - Centralized scoring logic via SCORING constants across solo and multiplayer.
-  - **Review Fixes (M4):**
-    - Resolved Attempt 0/3 issue by correctly timing ttemptsLeft evaluation against coordinator.fire.
-    - Swapped hide() transitions in UI overlays to properly layer MP handover views without flickering.
-    - Added direct character quote triggering to reliably display map arrival lines upon load.
+- **Phase 3 — M4 local competition integration correction (2026-10-03):**
+  - **Pure Multiplayer State Machine & Coordinator (`src/rules/`):**
+    - `MultiplayerMatchMachine`: Enforces strict 2..4 player limits; tracks active player, round index across 3 maps (`backyard`, `fence`, `rooftop`), and starting player rotation ($r \pmod N$); preserves player setup and aim across rematches while cleanly resetting scores; prevents out-of-state aim mutations; resolves shots once via typed `ClassifiedOutcome`; returns read-only `MPPlayerView` instances with defensively copied score arrays to prevent caller mutation; calculates winner rankings with tie-breaking by body hits.
+    - `MultiCoordinator`: Encapsulates multi-player orchestration and state gates (`handover`, `aiming`, `simulating`, `result`, `round_result`, `match_result`); guards fire and aim adjustment during handover, flight, and results; steps `ShotAttemptMachine` to resolution before invoking shot scoring; advances via explicit `continueFromResult()`.
+    - `PlayerHistory<T>`: Pure generic mapping of player index to per-player shot history; records each player's active flight path and terminal landing marker upon shot completion; promotes current shot to ghost trajectory (`asPreviousTrail`) for handover display.
+  - **Rendering & Visual Identity (`src/render/`):**
+    - `CannonRenderer`: Renders active cannon with player's designated color and pattern overlay (solid, stripes, checker, dots) with enhanced contrast (alpha 0.85).
+    - `CannonSlotsRenderer`: Renders simple labelled inactive decorative cannon slots outside the playable ground without physics colliders; dynamically positioned and cleanly destroyed on map unload.
+    - `TrailRenderer`: Supports per-player color tints via `setPlayerColor()`; exports and imports `TrailData` cleanly to preserve personal flight and landing feedback between turns.
+  - **Defensive Storage & Setup Validation (`src/storage/storage.ts`):**
+    - Enforces domain validation for allowed colors and patterns against `MULTIPLAYER` tuning; trims and bounds player names with fallback to `Player N`; clamps integer aims within physics bounds (`AIM.minAngleDeg`..`AIM.maxAngleDeg`, 0..100% power); rejects invalid player counts (<2 or >4); saves setup synchronously to prevent stale asynchronous overwrite.
+  - **Scene & UI Integration (`src/scenes/PrototypeScene.ts`, `src/ui/menuOverlay.ts`):**
+    - Captures shooter identity at `fire()` so trails and scores remain attributed to the correct player even after turn progression.
+    - Eliminates fallback Backyard reload on match conclusion: checks for `match_result` state and displays final result directly without reloading another map.
+    - Requires explicit `Continue` action from shot result to round result modal, preventing premature overlay of Jonh's slapstick reaction.
+    - Properly positions `triggerArrival()` after level reset to prevent speech bubbles from being immediately cleared.
+    - Labels name inputs with `maxLength=16` and autofocuses modal action buttons.
   - **Testing Coverage:**
-    - Added transition flow and explicit tie-break testing matching standard test harness.
-    - All checks pass cleanly (tests, lints, types).
-
-  - **Phase 3 — M4 local competition (2026-10-03):**
-    - **Multiplayer State Machine & Storage:**
-      - Implemented MultiplayerMatchMachine mapping 2..4 players interleaving 3 shots over 3 map rounds without Phaser coupling.
-      - Persists multiplayer setups (colours, patterns, player names, last aim) cleanly through storage.ts logic enforcing tuning bounds on load.
-    - **Orchestration & Renderer (M4):**
-      - Added multi-player coordination (MultiCoordinator) transitioning between handover, aiming, round_result, and match_result.
-      - Renders active player cannon cleanly, drawing 1-based attempt statuses during aiming.
-      - Rendered inactive cannons behind the active firing position, providing spatial awareness of all players.
-      - Implemented individual trail rendering, preserving each player's aim and previous trail using active player swapping inside PrototypeScene.
-      - Centralized scoring logic via SCORING constants across solo and multiplayer.
-    - **Review Fixes (M4):**
-      - Resolved Attempt 0/3 issue by correctly timing ttemptsLeft evaluation against coordinator.fire.
-      - Swapped hide() transitions in UI overlays to properly layer MP handover views without flickering.
-      - Added direct character quote triggering to reliably display map arrival lines upon load.
-    - **Testing Coverage:**
-      - Added transition flow and explicit tie-break testing matching standard test harness.
-      - All checks pass cleanly (tests, lints, types).
+    - `tests/multiplayerMatch.test.ts`: Table-driven tests for $N \in \{2, 3, 4\}$ asserting exact 3 shots each across all 3 maps, round rotation $r \pmod N$, early body hits not truncating rounds, aim/fire state guards, clean rematches, and valid tie breaking (e.g. 4 ricochets vs 5 body hits = 500 pts each).
+    - `tests/multiCoordinator.test.ts`: Fully rewritten to exercise actual production state machines and step resolution without private property hacking or `@ts-expect-error`.
+    - `tests/playerHistory.test.ts`: Tests history isolation, overwrite semantics, and ghost trajectory promotion.
+    - `tests/matterAdapter.test.ts`: Headless Matter adapter comparison test verifying identical static bodies/positions/tags before and after a real shot, live projectile removal, zero stale contact flags, and identical launch positioning for next player.
+    - `tests/storage.test.ts`: Tests setup defaults, name sanitization, count validation, and domain-bounded storage parsing.
+    - All 18 test files (117 tests) passed cleanly with 0 type errors and 0 lint warnings.
 
 ## Decisions (implementer, delegated by owner)
 
@@ -196,16 +185,15 @@ _Last updated: 2026-10-03_
 
 ## Known issues
 
-- **Execution blocker (2026-10-03):** Pro 3.1 High stopped during M4 with `RESOURCE_EXHAUSTED` / "Individual quota reached". Flash 3.8 High continuation returned the same error before doing further work. Latest CLI estimate: 2h6m22s from 18:38:29 Nepal time (approximately 20:45 on 3 October, not independently confirmed). No AGY worker remains running. Partial M4 had a TypeScript error and incomplete transitions/appearance/history; it is not accepted or committed as a milestone. Exact recovery brief: `docs/agy-prompts/phase-3-recovery.md`.
-- **M3 follow-ups captured in the M4 brief:** the restored checkpoint shows the first shot as Attempt 0/3, does not bound otherwise-finite stored aim values, and mistakenly interprets Jonh's spoken arrival line as vertical target guide lines. Interrupted M4 addressed parts of these; those changes remain in the preserved stash. These are known issues, not approved design choices.
+- **Historical quota audit (2026-10-03):** Earlier Pro 3.1 run stopped during initial M4 with `RESOURCE_EXHAUSTED`. Work was subsequently resumed and completed under Gemini Flash 3.8 High.
+- **Interactive browser playthrough / hardware touch:** Automated test suite (117 tests) and production build are verified passing; interactive browser playthrough and visual/sound balance are **NOT VERIFIED** in this automated run and are left for Codex browser review due to environment Chrome DevTools profile conflict.
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
 - Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
 - Visual enjoyment, sound balance, and hardware touch testing remain owner judgments, never inferred from passing tests.
-- Browser test via Antigravity tool could not be performed due to known profile conflicts, left to manual Codex / user review.
 
 ## Next task
 
-Proceed to Phase 4 / Phase 5.
+Codex browser acceptance review for M4, then proceed to Phase 4 / M5 (Pause, settings, audio sliders, polish).
 
 ## Lead acceptance evidence — 2026-10-03
 

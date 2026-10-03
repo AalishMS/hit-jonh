@@ -1,3 +1,6 @@
+import { AIM, MULTIPLAYER, SCORING } from '../config/tuning';
+import type { ClassifiedOutcome } from '../sim/classification';
+
 export type MPState = 'handover' | 'aiming' | 'simulating' | 'result' | 'round_result' | 'match_result';
 
 export interface MPPlayerSetup {
@@ -8,68 +11,108 @@ export interface MPPlayerSetup {
   lastPower: number;
 }
 
-export interface MPPlayerRecord extends MPPlayerSetup {
+interface MPPlayerRecord extends MPPlayerSetup {
   id: number;
   totalScore: number;
   bodyHits: number; // for tie breaking
   roundScores: number[];
 }
 
-export interface ShotOutcome {
-  score: number;
-  isBodyHit: boolean;
+/** Read-only copy of a player; mutating it never changes the match. */
+export interface MPPlayerView extends Readonly<MPPlayerSetup> {
+  readonly id: number;
+  readonly totalScore: number;
+  readonly bodyHits: number;
+  readonly roundScores: readonly number[];
 }
 
-// We use SCORING from config/tuning.ts
+// Points per outcome come from SCORING in config/tuning.ts.
+const OUTCOME_POINTS: Record<ClassifiedOutcome, number> = {
+  ricochet_body: SCORING.ricochetBodyPoints,
+  body: SCORING.bodyPoints,
+  hat_only: SCORING.hatOnlyPoints,
+  miss: SCORING.missPoints,
+};
 
-export const MP_MAPS = ['backyard', 'fence', 'rooftop'];
-const SHOTS_PER_ROUND = 3;
+export const MP_MAPS: readonly string[] = MULTIPLAYER.maps;
+
+/** Clamps aim to the supported integer range. */
+export function normalizeAim(angle: number, power: number): { angle: number; power: number } {
+  return {
+    angle: Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, Math.round(angle))),
+    power: Math.max(0, Math.min(100, Math.round(power))),
+  };
+}
+
+function toView(p: MPPlayerRecord): MPPlayerView {
+  return { ...p, roundScores: [...p.roundScores] };
+}
 
 export class MultiplayerMatchMachine {
   private _state: MPState = 'handover';
   private _players: MPPlayerRecord[] = [];
-  
+
   private _roundIndex = 0;
   private _shotIndex = 0; // 0 to (shotsPerRound * players - 1)
-  
-  constructor(setups: MPPlayerSetup[]) {
-    this._players = setups.map((s, i) => ({
-      ...s,
-      id: i,
-      totalScore: 0,
-      bodyHits: 0,
-      roundScores: [0, 0, 0]
-    }));
+  private _shooterIndex: number | null = null;
+
+  constructor(setups: readonly MPPlayerSetup[]) {
+    if (setups.length < MULTIPLAYER.minPlayers || setups.length > MULTIPLAYER.maxPlayers) {
+      throw new RangeError(
+        `Multiplayer needs ${MULTIPLAYER.minPlayers}..${MULTIPLAYER.maxPlayers} players, got ${setups.length}`,
+      );
+    }
+    this._players = setups.map((s, i) => {
+      const aim = normalizeAim(s.lastAngle, s.lastPower);
+      return {
+        name: s.name,
+        color: s.color,
+        pattern: s.pattern,
+        lastAngle: aim.angle,
+        lastPower: aim.power,
+        id: i,
+        totalScore: 0,
+        bodyHits: 0,
+        roundScores: MP_MAPS.map(() => 0),
+      };
+    });
   }
 
   get state(): MPState { return this._state; }
-  get players(): MPPlayerRecord[] { return this._players; }
+  get players(): readonly MPPlayerView[] { return this._players.map(toView); }
+  /** Name, appearance and saved aim of every player, for persistence. */
+  get setups(): MPPlayerSetup[] {
+    return this._players.map(p => ({
+      name: p.name, color: p.color, pattern: p.pattern, lastAngle: p.lastAngle, lastPower: p.lastPower,
+    }));
+  }
   get roundIndex(): number { return this._roundIndex; }
   get currentMapId(): string { return MP_MAPS[this._roundIndex] ?? 'backyard'; }
-  
+
   // Who is currently shooting?
   get activePlayerIndex(): number {
     const N = this._players.length;
-    if (N === 0) return 0;
     const startPlayer = this._roundIndex % N;
     return (startPlayer + this._shotIndex) % N;
   }
-  
-  get activePlayer(): MPPlayerRecord {
-    return this._players[this.activePlayerIndex]!;
+
+  get activePlayer(): MPPlayerView {
+    return toView(this._players[this.activePlayerIndex]!);
   }
-  
+
+  /** Who fired the latest shot (set at Fire; stays valid after the turn advances). */
+  get lastShooterIndex(): number | null { return this._shooterIndex; }
+
   // Which shot attempt is the current player taking in this round? (0, 1, 2)
   get activePlayerShotNumber(): number {
-    const N = this._players.length;
-    return Math.floor(this._shotIndex / N);
+    return Math.floor(this._shotIndex / this._players.length);
   }
 
   // To allow checking if round is over
   get isRoundComplete(): boolean {
-    return this._shotIndex >= SHOTS_PER_ROUND * this._players.length;
+    return this._shotIndex >= MULTIPLAYER.shotsPerRound * this._players.length;
   }
-  
+
   get isMatchComplete(): boolean {
     return this._roundIndex >= MP_MAPS.length;
   }
@@ -79,41 +122,46 @@ export class MultiplayerMatchMachine {
       this._state = 'aiming';
     }
   }
-  
-  updateAim(angle: number, power: number): void {
-    const player = this.activePlayer;
-    player.lastAngle = angle;
-    player.lastPower = power;
+
+  /** Saves the active player's aim; only accepted while aiming. */
+  updateAim(angle: number, power: number): boolean {
+    if (this._state !== 'aiming') return false;
+    const aim = normalizeAim(angle, power);
+    const player = this._players[this.activePlayerIndex]!;
+    player.lastAngle = aim.angle;
+    player.lastPower = aim.power;
+    return true;
   }
 
-  fire(): boolean {
-    if (this._state !== 'aiming') return false;
+  /** Saves the aim, records the shooter, then enters simulating. */
+  fire(angle: number, power: number): boolean {
+    if (!this.updateAim(angle, power)) return false;
+    this._shooterIndex = this.activePlayerIndex;
     this._state = 'simulating';
     return true;
   }
 
-  resolveShot(outcomePoints: number, isBodyHit: boolean): void {
-    if (this._state !== 'simulating') return;
-    
-    const player = this.activePlayer;
-    player.roundScores[this._roundIndex] = (player.roundScores[this._roundIndex] || 0) + outcomePoints;
-    player.totalScore += outcomePoints;
-    if (isBodyHit) {
+  /** Scores the shot once for the player recorded at Fire; ignored unless a shot is simulating. */
+  resolveShot(outcome: ClassifiedOutcome): boolean {
+    if (this._state !== 'simulating' || this._shooterIndex === null) return false;
+
+    const player = this._players[this._shooterIndex]!;
+    const points = OUTCOME_POINTS[outcome];
+    player.roundScores[this._roundIndex] = (player.roundScores[this._roundIndex] ?? 0) + points;
+    player.totalScore += points;
+    if (outcome === 'ricochet_body' || outcome === 'body') {
       player.bodyHits += 1;
     }
-    
+
     this._shotIndex++;
-    
-    if (this.isRoundComplete) {
-      this._state = 'round_result';
-    } else {
-      this._state = 'result';
-    }
+    this._state = 'result';
+    return true;
   }
-  
-  nextTurn(): void {
+
+  /** Result -> Handover (shots remain) or Result -> RoundResult (round complete). */
+  continueFromResult(): void {
     if (this._state === 'result') {
-      this._state = 'handover';
+      this._state = this.isRoundComplete ? 'round_result' : 'handover';
     }
   }
 
@@ -129,7 +177,7 @@ export class MultiplayerMatchMachine {
     }
   }
 
-  getWinners(): MPPlayerRecord[] {
+  getWinners(): MPPlayerView[] {
     let maxScore = -1;
     for (const p of this._players) {
       if (p.totalScore > maxScore) {
@@ -137,24 +185,27 @@ export class MultiplayerMatchMachine {
       }
     }
     const highestScorers = this._players.filter(p => p.totalScore === maxScore);
-    
+
     let maxBodyHits = -1;
     for (const p of highestScorers) {
       if (p.bodyHits > maxBodyHits) {
         maxBodyHits = p.bodyHits;
       }
     }
-    return highestScorers.filter(p => p.bodyHits === maxBodyHits);
+    return highestScorers.filter(p => p.bodyHits === maxBodyHits).map(toView);
   }
 
+  /** MatchResult -> Handover: clears scores, keeps names, colours and aim. */
   rematch(): void {
+    if (this._state !== 'match_result') return;
     this._state = 'handover';
     this._roundIndex = 0;
     this._shotIndex = 0;
+    this._shooterIndex = null;
     for (const p of this._players) {
       p.totalScore = 0;
       p.bodyHits = 0;
-      p.roundScores = [0, 0, 0];
+      p.roundScores = MP_MAPS.map(() => 0);
     }
   }
 }

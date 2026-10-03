@@ -1,5 +1,5 @@
 import { MAPS } from '../levels';
-import { AIM } from '../config/tuning';
+import { AIM, MULTIPLAYER } from '../config/tuning';
 
 export interface LevelScore {
   bestShots: number | null;
@@ -12,8 +12,8 @@ export interface PlayerSetup {
   name: string;
   color: number;
   pattern: string;
-  lastAngle?: number;
-  lastPower?: number;
+  lastAngle: number;
+  lastPower: number;
 }
 
 export interface Settings {
@@ -43,6 +43,53 @@ function getFreshData(): SaveData {
     solo: {},
     settings: { ...DEFAULT_SETTINGS },
   };
+}
+
+/** Fresh default setups for every player slot; callers may mutate the result. */
+export function defaultPlayerSetups(): PlayerSetup[] {
+  return Array.from({ length: MULTIPLAYER.maxPlayers }, (_, i) => ({
+    name: `Player ${i + 1}`,
+    color: MULTIPLAYER.colors[i]!,
+    pattern: MULTIPLAYER.patterns[i]!,
+    lastAngle: 45,
+    lastPower: 50,
+  }));
+}
+
+/** Trims a name, caps its length and falls back to "Player N" when blank or not text. */
+export function sanitizePlayerName(raw: unknown, index: number): string {
+  const name = typeof raw === 'string' ? raw.trim().substring(0, MULTIPLAYER.maxNameLength).trim() : '';
+  return name || `Player ${index + 1}`;
+}
+
+function sanitizePlayerSetup(raw: Record<string, unknown>, index: number): PlayerSetup {
+  const defaults = defaultPlayerSetups()[index]!;
+  const color = typeof raw.color === 'number' && (MULTIPLAYER.colors as readonly number[]).includes(raw.color)
+    ? raw.color : defaults.color;
+  const pattern = typeof raw.pattern === 'string' && (MULTIPLAYER.patterns as readonly string[]).includes(raw.pattern)
+    ? raw.pattern : defaults.pattern;
+
+  let lastAngle = typeof raw.lastAngle === 'number' && Number.isFinite(raw.lastAngle)
+    ? Math.round(raw.lastAngle) : defaults.lastAngle;
+  lastAngle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, lastAngle));
+
+  let lastPower = typeof raw.lastPower === 'number' && Number.isFinite(raw.lastPower)
+    ? Math.round(raw.lastPower) : defaults.lastPower;
+  lastPower = Math.max(0, Math.min(100, lastPower));
+
+  return { name: sanitizePlayerName(raw.name, index), color, pattern, lastAngle, lastPower };
+}
+
+/** Returns validated setups, or null when the list is not 2..4 well-formed entries. */
+function sanitizePlayerSetups(raw: unknown): PlayerSetup[] | null {
+  if (!Array.isArray(raw)) return null;
+  if (raw.length < MULTIPLAYER.minPlayers || raw.length > MULTIPLAYER.maxPlayers) return null;
+  const setups: PlayerSetup[] = [];
+  for (const [i, entry] of raw.entries()) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    setups.push(sanitizePlayerSetup(entry as Record<string, unknown>, i));
+  }
+  return setups;
 }
 
 export function loadSaveData(): SaveData {
@@ -117,29 +164,8 @@ export function loadSaveData(): SaveData {
     }
 
     // Validate lastMP
-    if (Array.isArray(parsedObj.lastMP)) {
-      const validSetups: PlayerSetup[] = [];
-      const allowedPatterns = new Set(['solid', 'stripes', 'dots', 'checks']);
-      for (const p of parsedObj.lastMP) {
-        if (!p || typeof p !== 'object') continue;
-        const name = typeof p.name === 'string' ? p.name.substring(0, 16) : 'Player';
-        const color = typeof p.color === 'number' && Number.isFinite(p.color) ? p.color : 0xff4444;
-        const pattern = typeof p.pattern === 'string' && allowedPatterns.has(p.pattern) ? p.pattern : 'solid';
-        
-        let lastAngle = typeof p.lastAngle === 'number' && Number.isFinite(p.lastAngle) 
-          ? Math.round(p.lastAngle) : 45;
-        lastAngle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, lastAngle));
-          
-        let lastPower = typeof p.lastPower === 'number' && Number.isFinite(p.lastPower) 
-          ? Math.round(p.lastPower) : 50;
-        lastPower = Math.max(0, Math.min(100, lastPower));
-
-        validSetups.push({ name, color, pattern, lastAngle, lastPower });
-      }
-      if (validSetups.length >= 2 && validSetups.length <= 4) {
-        data.lastMP = validSetups;
-      }
-    }
+    const validSetups = sanitizePlayerSetups(parsedObj.lastMP);
+    if (validSetups) data.lastMP = validSetups;
 
     return data;
   } catch (e) {
@@ -187,6 +213,15 @@ export function saveSoloAim(mapId: string, angle: number, power: number): void {
 export function saveSettings(settings: Partial<Settings>): void {
   const data = loadSaveData();
   data.settings = { ...data.settings, ...settings };
+  writeSaveData(data);
+}
+
+/** Validates and persists the multiplayer setup (names, appearance, aim) from a fresh read. */
+export function saveMultiplayerSetup(setups: readonly PlayerSetup[]): void {
+  const validated = sanitizePlayerSetups(setups);
+  if (!validated) return;
+  const data = loadSaveData();
+  data.lastMP = validated;
   writeSaveData(data);
 }
 

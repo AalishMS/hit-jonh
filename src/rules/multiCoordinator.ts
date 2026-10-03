@@ -1,6 +1,6 @@
 import { ShotAttemptMachine } from './shotAttempt';
-import { MultiplayerMatchMachine } from './multiplayerMatch';
-import { AIM } from '../config/tuning';
+import { MultiplayerMatchMachine, normalizeAim } from './multiplayerMatch';
+import type { ClassifiedOutcome } from '../sim/classification';
 
 export interface MultiCoordinatorCallbacks {
   onStateChange: () => void;
@@ -18,11 +18,18 @@ export class MultiCoordinator {
     return this.attemptMachine.canFire && this.multiMachine.state === 'aiming';
   }
 
+  /** Handover -> Aiming for the player named on the handover screen. */
+  beginTurn(currentAngle: number, currentPower: number): void {
+    this.multiMachine.startAiming();
+    this.reset(currentAngle, currentPower);
+  }
+
   fire(angle: number, power: number): void {
     if (!this.canFire()) return;
-    this.attemptMachine.fire(angle, power);
-    this.multiMachine.fire();
-    this.callbacks.onShotFired(angle, power);
+    const aim = normalizeAim(angle, power);
+    if (!this.multiMachine.fire(aim.angle, aim.power)) return;
+    this.attemptMachine.fire(aim.angle, aim.power);
+    this.callbacks.onShotFired(aim.angle, aim.power);
     this.callbacks.onStateChange();
   }
 
@@ -32,15 +39,18 @@ export class MultiCoordinator {
 
   adjustAim(currentAngle: number, currentPower: number, deltaAngle: number, deltaPower: number): { angle: number, power: number } | null {
     if (!this.canAdjustAim()) return null;
-    const angle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, Math.round(currentAngle + deltaAngle)));
-    const power = Math.max(0, Math.min(100, Math.round(currentPower + deltaPower)));
-    this.attemptMachine.setAim(angle, power);
-    return { angle, power };
+    const aim = normalizeAim(currentAngle + deltaAngle, currentPower + deltaPower);
+    this.attemptMachine.setAim(aim.angle, aim.power);
+    this.multiMachine.updateAim(aim.angle, aim.power);
+    return aim;
   }
 
-  resolveShot(outcomePoints: number, isBodyHit: boolean): void {
-    this.multiMachine.resolveShot(outcomePoints, isBodyHit);
+  /** Scores a finished shot once; ignored unless the attempt resolved and the match awaits that score. */
+  resolveShot(outcome: ClassifiedOutcome): boolean {
+    if (this.attemptMachine.state !== 'resolved') return false;
+    if (!this.multiMachine.resolveShot(outcome)) return false;
     this.callbacks.onStateChange();
+    return true;
   }
 
   canReset(): boolean {
@@ -49,14 +59,17 @@ export class MultiCoordinator {
 
   reset(currentAngle: number, currentPower: number): void {
     if (!this.canReset()) return;
-    
-    if (this.multiMachine.state === 'result') {
-      this.multiMachine.nextTurn();
+
+    // Result -> Handover, or Result -> RoundResult after the round's last shot.
+    this.multiMachine.continueFromResult();
+    const state = this.multiMachine.state;
+    if (state === 'round_result' || state === 'match_result') {
+      this.callbacks.onStateChange();
+      return;
     }
-    
+
     this.attemptMachine.reset();
     this.attemptMachine.setAim(currentAngle, currentPower);
     this.callbacks.onStateChange();
   }
 }
-

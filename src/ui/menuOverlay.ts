@@ -1,7 +1,8 @@
 import { MAPS } from '../levels';
-import { loadSaveData } from '../storage/storage';
+import { MULTIPLAYER } from '../config/tuning';
+import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup } from '../storage/storage';
 
-import type { MPPlayerSetup, MPPlayerRecord } from '../rules/multiplayerMatch';
+import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
 
 export interface MenuCallbacks {
   onMapSelected: (mapId: string) => void;
@@ -122,31 +123,13 @@ export class MenuOverlay {
     this.content.appendChild(title);
 
     let playerCount = 2;
-    // Load last MP setup if available
-    const data = loadSaveData();
-    const loadedSetups = data.lastMP;
-    
-    const defaultSetups: MPPlayerSetup[] = [
-      { name: 'Player 1', color: 0xff4444, pattern: 'solid', lastAngle: 45, lastPower: 50 },
-      { name: 'Player 2', color: 0x4444ff, pattern: 'stripes', lastAngle: 45, lastPower: 50 },
-      { name: 'Player 3', color: 0x44ff44, pattern: 'dots', lastAngle: 45, lastPower: 50 },
-      { name: 'Player 4', color: 0xffaa00, pattern: 'checks', lastAngle: 45, lastPower: 50 }
-    ];
-    
-    const playerSetups = defaultSetups.map(s => ({ ...s }));
-    if (loadedSetups && loadedSetups.length >= 2) {
-       playerCount = Math.min(4, loadedSetups.length);
-       for (let i = 0; i < playerCount; i++) {
-         const loaded = loadedSetups[i];
-         if (loaded) {
-           playerSetups[i] = {
-             ...defaultSetups[i],
-             ...loaded,
-             lastAngle: loaded.lastAngle ?? defaultSetups[i]!.lastAngle,
-             lastPower: loaded.lastPower ?? defaultSetups[i]!.lastPower,
-           };
-         }
-       }
+    // Load last MP setup if available (storage already validated count, appearance, names and aim)
+    const loadedSetups = loadSaveData().lastMP;
+
+    const playerSetups: MPPlayerSetup[] = defaultPlayerSetups();
+    if (loadedSetups) {
+      playerCount = loadedSetups.length;
+      loadedSetups.forEach((loaded, i) => { playerSetups[i] = { ...loaded }; });
     }
 
     const countContainer = document.createElement('div');
@@ -182,28 +165,32 @@ export class MenuOverlay {
         row.style.gap = '10px';
         row.style.alignItems = 'center';
 
+        const nameLabel = document.createElement('label');
+        nameLabel.htmlFor = `mp-name-${i}`;
+        nameLabel.textContent = `Player ${i + 1} name`;
+
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
+        nameInput.id = `mp-name-${i}`;
+        nameInput.maxLength = MULTIPLAYER.maxNameLength;
         nameInput.value = playerSetups[i]!.name;
-        nameInput.onchange = (e) => playerSetups[i]!.name = (e.target as HTMLInputElement).value || `Player ${i+1}`;
-        
-        row.append(nameInput);
+        nameInput.onchange = (e) => playerSetups[i]!.name = sanitizePlayerName((e.target as HTMLInputElement).value, i);
+
+        row.append(nameLabel, nameInput);
         list.appendChild(row);
       }
     };
     renderList();
 
-    countMinus.onclick = () => { if (playerCount > 2) { playerCount--; renderList(); } };
-    countPlus.onclick = () => { if (playerCount < 4) { playerCount++; renderList(); } };
+    countMinus.onclick = () => { if (playerCount > MULTIPLAYER.minPlayers) { playerCount--; renderList(); } };
+    countPlus.onclick = () => { if (playerCount < MULTIPLAYER.maxPlayers) { playerCount++; renderList(); } };
 
     const startBtn = document.createElement('button');
     startBtn.className = 'btn';
     startBtn.textContent = 'Start Match';
     startBtn.onclick = () => {
-      const finalSetups = playerSetups.slice(0, playerCount);
-      const toSave = loadSaveData();
-      toSave.lastMP = finalSetups;
-      import('../storage/storage').then(s => s.writeSaveData(toSave)); // Hack to avoid circular issues if any, but regular import is fine.
+      const finalSetups = playerSetups.slice(0, playerCount).map((s, i) => ({ ...s, name: sanitizePlayerName(s.name, i) }));
+      saveMultiplayerSetup(finalSetups);
       this.hide();
       this.callbacks.onStartMultiplayer?.(finalSetups);
     };
@@ -217,7 +204,7 @@ export class MenuOverlay {
     this.content.appendChild(backBtn);
   }
 
-  showMPHandover(player: MPPlayerRecord, mapName: string, attemptNum: number): void {
+  showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number): void {
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -227,7 +214,7 @@ export class MenuOverlay {
     this.content.appendChild(title);
 
     const info = document.createElement('p');
-    info.textContent = `Map: ${mapName} | Shot: ${attemptNum}/3`;
+    info.textContent = `Map: ${mapName} | Shot: ${attemptNum}/${MULTIPLAYER.shotsPerRound}`;
     this.content.appendChild(info);
 
     const btn = document.createElement('button');
@@ -238,9 +225,10 @@ export class MenuOverlay {
       this.callbacks.onMultiplayerHandoverContinue?.();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(btn);
+    btn.focus();
   }
 
-  showMPRoundResult(players: MPPlayerRecord[], roundIndex: number): void {
+  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number): void {
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -259,15 +247,16 @@ export class MenuOverlay {
 
     const btn = document.createElement('button');
     btn.className = 'btn';
-    btn.textContent = 'Next Round';
+    btn.textContent = roundIndex >= MULTIPLAYER.maps.length - 1 ? 'Final Result' : 'Next Round';
     btn.addEventListener('click', () => {
       this.hide();
       this.callbacks.onMultiplayerNextRound?.();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(btn);
+    btn.focus();
   }
 
-  showMPMatchResult(winners: MPPlayerRecord[], players: MPPlayerRecord[]): void {
+  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[]): void {
     this.container.style.display = 'flex';
     this.clear();
     this.clickAbortController = new AbortController();
@@ -292,6 +281,7 @@ export class MenuOverlay {
       this.callbacks.onMultiplayerRematch?.();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(rematchBtn);
+    rematchBtn.focus();
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'btn btn-menu';

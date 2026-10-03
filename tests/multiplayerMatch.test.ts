@@ -1,150 +1,225 @@
 import { describe, it, expect } from 'vitest';
-import { MultiplayerMatchMachine } from '../src/rules/multiplayerMatch';
-import { SCORING } from '../src/config/tuning';
+import { MultiplayerMatchMachine, MP_MAPS, type MPPlayerSetup } from '../src/rules/multiplayerMatch';
+import { MULTIPLAYER } from '../src/config/tuning';
+import type { ClassifiedOutcome } from '../src/sim/classification';
 
 describe('MultiplayerMatchMachine', () => {
-  it('initializes correctly with 2 players', () => {
-    const machine = new MultiplayerMatchMachine([
-      { name: 'A', color: 0, pattern: 'solid', lastAngle: 45, lastPower: 50 },
-      { name: 'B', color: 1, pattern: 'stripes', lastAngle: 45, lastPower: 50 }
-    ]);
-    expect(machine.state).toBe('handover');
-    expect(machine.roundIndex).toBe(0);
-    expect(machine.currentMapId).toBe('backyard');
-    expect(machine.activePlayerIndex).toBe(0);
+  function makeSetups(n: number): MPPlayerSetup[] {
+    const defaultPatterns = MULTIPLAYER.patterns;
+    const defaultColors = MULTIPLAYER.colors;
+    return Array.from({ length: n }, (_, i) => ({
+      name: `Player ${i + 1}`,
+      color: defaultColors[i]!,
+      pattern: defaultPatterns[i]!,
+      lastAngle: 40 + i * 5,
+      lastPower: 50 + i * 5,
+    }));
+  }
+
+  it('validates player count bounds (2..4)', () => {
+    expect(() => new MultiplayerMatchMachine(makeSetups(1))).toThrow(RangeError);
+    expect(() => new MultiplayerMatchMachine(makeSetups(5))).toThrow(RangeError);
+    expect(() => new MultiplayerMatchMachine(makeSetups(2))).not.toThrow();
+    expect(() => new MultiplayerMatchMachine(makeSetups(3))).not.toThrow();
+    expect(() => new MultiplayerMatchMachine(makeSetups(4))).not.toThrow();
   });
 
-  it('rotates players correctly over a round', () => {
-    const machine = new MultiplayerMatchMachine([
-      { name: 'A', color: 0, pattern: 'solid', lastAngle: 45, lastPower: 50 },
-      { name: 'B', color: 1, pattern: 'stripes', lastAngle: 45, lastPower: 50 }
-    ]);
+  // Table-driven N = 2, 3, 4
+  const playerCounts = [2, 3, 4] as const;
+  describe.each(playerCounts)('with N = %d players', (N) => {
+    it('executes EXACT 3 shots each across all 3 maps, starts each round with r % N, and early hits do not truncate the round', () => {
+      const setups = makeSetups(N);
+      const machine = new MultiplayerMatchMachine(setups);
 
-    expect(machine.activePlayer.name).toBe('A');
-    
-    // P0 turn 1
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(0, false);
-    expect(machine.state).toBe('result');
-    machine.nextTurn();
-    
-    // P1 turn 1
-    expect(machine.state).toBe('handover');
-    expect(machine.activePlayer.name).toBe('B');
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(SCORING.bodyPoints, true);
-    machine.nextTurn();
-    
-    // P0 turn 2
-    expect(machine.activePlayer.name).toBe('A');
-    expect(machine.activePlayerShotNumber).toBe(1);
-    
-    // Fast forward to end of round
-    for (let i = 0; i < 4; i++) {
-      machine.startAiming();
-      machine.fire();
-      machine.resolveShot(0, false);
-      if (i < 3) machine.nextTurn();
-    }
-    
-    expect(machine.state).toBe('round_result');
-    expect(machine.activePlayer.totalScore).toBe(0); // B's last shot
+      expect(machine.state).toBe('handover');
+      expect(machine.roundIndex).toBe(0);
+      expect(machine.currentMapId).toBe(MP_MAPS[0]);
+
+      // Loop through all 3 maps / rounds
+      for (let round = 0; round < 3; round++) {
+        expect(machine.roundIndex).toBe(round);
+        expect(machine.currentMapId).toBe(MP_MAPS[round]);
+
+        const expectedStartingPlayer = round % N;
+        const totalShotsInRound = MULTIPLAYER.shotsPerRound * N; // 3 * N
+        const playerShotCounts = new Array(N).fill(0);
+
+        for (let shotIndex = 0; shotIndex < totalShotsInRound; shotIndex++) {
+          const expectedPlayerIndex = (expectedStartingPlayer + shotIndex) % N;
+          expect(machine.activePlayerIndex).toBe(expectedPlayerIndex);
+          expect(machine.state).toBe('handover');
+
+          // Handover guards: cannot fire or aim
+          expect(machine.fire(45, 50)).toBe(false);
+          expect(machine.updateAim(45, 50)).toBe(false);
+
+          machine.startAiming();
+          expect(machine.state).toBe('aiming');
+
+          // Aim adjustment accepted in aiming
+          expect(machine.updateAim(50, 60)).toBe(true);
+
+          // Fire transitions to simulating
+          expect(machine.fire(52, 62)).toBe(true);
+          expect(machine.state).toBe('simulating');
+          expect(machine.lastShooterIndex).toBe(expectedPlayerIndex);
+
+          // Simulating guards: cannot update aim or fire again
+          expect(machine.updateAim(45, 50)).toBe(false);
+          expect(machine.fire(45, 50)).toBe(false);
+
+          // Resolve shot: early body hits on shot 0 do NOT truncate the round
+          const outcome: ClassifiedOutcome = (shotIndex === 0) ? 'body' : 'miss';
+          expect(machine.resolveShot(outcome)).toBe(true);
+          expect(machine.state).toBe('result');
+
+          // Duplicate scoring rejected
+          expect(machine.resolveShot('body')).toBe(false);
+
+          // Result guards: cannot update aim or fire
+          expect(machine.updateAim(45, 50)).toBe(false);
+          expect(machine.fire(45, 50)).toBe(false);
+
+          playerShotCounts[expectedPlayerIndex]++;
+
+          // Advance from result
+          machine.continueFromResult();
+
+          if (shotIndex < totalShotsInRound - 1) {
+            expect(machine.isRoundComplete).toBe(false);
+            expect(machine.state).toBe('handover');
+          }
+        }
+
+        // Each player must have had EXACTLY 3 shots in this round
+        for (let p = 0; p < N; p++) {
+          expect(playerShotCounts[p]).toBe(3);
+        }
+
+        expect(machine.isRoundComplete).toBe(true);
+        expect(machine.state).toBe('round_result');
+
+        // Next round transition
+        machine.nextRound();
+
+        if (round < 2) {
+          expect(machine.isMatchComplete).toBe(false);
+          expect(machine.state).toBe('handover');
+        } else {
+          expect(machine.isMatchComplete).toBe(true);
+          expect(machine.state).toBe('match_result');
+        }
+      }
+
+      // Rematch resets scores while preserving names, appearances, and saved aims
+      const originalNames = machine.players.map(p => p.name);
+      const originalColors = machine.players.map(p => p.color);
+      const originalPatterns = machine.players.map(p => p.pattern);
+
+      machine.rematch();
+      expect(machine.state).toBe('handover');
+      expect(machine.roundIndex).toBe(0);
+      expect(machine.currentMapId).toBe(MP_MAPS[0]);
+
+      for (let p = 0; p < N; p++) {
+        const player = machine.players[p]!;
+        expect(player.totalScore).toBe(0);
+        expect(player.bodyHits).toBe(0);
+        expect(player.roundScores).toEqual([0, 0, 0]);
+        expect(player.name).toBe(originalNames[p]);
+        expect(player.color).toBe(originalColors[p]);
+        expect(player.pattern).toBe(originalPatterns[p]);
+        expect(player.lastAngle).toBe(52); // preserved from last fire
+        expect(player.lastPower).toBe(62); // preserved from last fire
+      }
+    });
   });
 
-  it('rotates starting player per round', () => {
-    const machine = new MultiplayerMatchMachine([
-      { name: 'A', color: 0, pattern: 'solid', lastAngle: 45, lastPower: 50 },
-      { name: 'B', color: 1, pattern: 'stripes', lastAngle: 45, lastPower: 50 },
-      { name: 'C', color: 2, pattern: 'dots', lastAngle: 45, lastPower: 50 }
-    ]);
+  it('determines winner ties using valid outcomes through full match (4 ricochet vs 5 body)', () => {
+    // 2 players across 3 rounds (6 shots each)
+    const machine = new MultiplayerMatchMachine(makeSetups(2));
 
-    // Round 0
-    expect(machine.activePlayer.name).toBe('A');
-    for (let i = 0; i < 9; i++) {
-      machine.startAiming();
-      machine.fire();
-      machine.resolveShot(0, false);
-      machine.nextTurn();
-    }
-    machine.nextRound();
-    
-    // Round 1
-    expect(machine.roundIndex).toBe(1);
-    expect(machine.currentMapId).toBe('fence');
-    expect(machine.activePlayer.name).toBe('B');
-    for (let i = 0; i < 9; i++) {
-      machine.startAiming();
-      machine.fire();
-      machine.resolveShot(0, false);
-      machine.nextTurn();
-    }
-    machine.nextRound();
+    // Player 0 will achieve 4 ricochet_body (4 * 125 = 500 pts, 4 bodyHits) + 5 misses = 500 pts
+    // Player 1 will achieve 5 body hits (5 * 100 = 500 pts, 5 bodyHits) + 4 misses = 500 pts
+    let p0HitsLeft = 4;
+    let p1HitsLeft = 5;
 
-    // Round 2
-    expect(machine.roundIndex).toBe(2);
-    expect(machine.activePlayer.name).toBe('C');
-    for (let i = 0; i < 9; i++) {
-      machine.startAiming();
-      machine.fire();
-      machine.resolveShot(0, false);
-      machine.nextTurn();
+    for (let round = 0; round < 3; round++) {
+      const startP = round % 2;
+      for (let shot = 0; shot < 6; shot++) {
+        const shooter = (startP + shot) % 2;
+        machine.startAiming();
+        machine.fire(45, 50);
+
+        let outcome: ClassifiedOutcome = 'miss';
+        if (shooter === 0 && p0HitsLeft > 0) {
+          outcome = 'ricochet_body';
+          p0HitsLeft--;
+        } else if (shooter === 1 && p1HitsLeft > 0) {
+          outcome = 'body';
+          p1HitsLeft--;
+        }
+
+        machine.resolveShot(outcome);
+        machine.continueFromResult();
+      }
+      machine.nextRound();
     }
-    
-    // Match complete
-    machine.nextRound();
+
     expect(machine.state).toBe('match_result');
+    const p0 = machine.players[0]!;
+    const p1 = machine.players[1]!;
+
+    expect(p0.totalScore).toBe(500);
+    expect(p0.bodyHits).toBe(4);
+    expect(p1.totalScore).toBe(500);
+    expect(p1.bodyHits).toBe(5);
+
+    // Tie broken by body hits: Player 1 has 5 body hits vs 4 body hits
+    const winners = machine.getWinners();
+    expect(winners.length).toBe(1);
+    expect(winners[0]!.name).toBe('Player 2');
   });
 
-  it('determines winner correctly, breaking ties with body hits', () => {
-    const machine = new MultiplayerMatchMachine([
-      { name: 'A', color: 0, pattern: 'solid', lastAngle: 45, lastPower: 50 },
-      { name: 'B', color: 1, pattern: 'stripes', lastAngle: 45, lastPower: 50 }
-    ]);
+  it('handles shared win when both score and body hits are equal', () => {
+    const machine = new MultiplayerMatchMachine(makeSetups(2));
 
-    // A gets ricochet (125), but no body hit? Wait, ricochet_body is a body hit!
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(SCORING.ricochetBodyPoints, true);
-    machine.nextTurn();
+    // Both players achieve 4 ricochet hits = 500 pts each, 4 body hits each
+    let p0HitsLeft = 4;
+    let p1HitsLeft = 4;
 
-    // B gets body (100) + hat (20), but actually let's just use total score 125 with 2 body hits.
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(SCORING.bodyPoints, true);
-    machine.nextTurn();
+    for (let round = 0; round < 3; round++) {
+      const startP = round % 2;
+      for (let shot = 0; shot < 6; shot++) {
+        const shooter = (startP + shot) % 2;
+        machine.startAiming();
+        machine.fire(45, 50);
 
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(0, false);
-    machine.nextTurn();
+        let outcome: ClassifiedOutcome = 'miss';
+        if (shooter === 0 && p0HitsLeft > 0) {
+          outcome = 'ricochet_body';
+          p0HitsLeft--;
+        } else if (shooter === 1 && p1HitsLeft > 0) {
+          outcome = 'ricochet_body';
+          p1HitsLeft--;
+        }
 
-    // B gets hat? 25 isn't an outcome. Let's just say B gets hat (20). 100+20 = 120. B loses on score.
-    machine.startAiming();
-    machine.fire();
-    machine.resolveShot(25, false); // Just injecting score for test
-    machine.nextTurn();
+        machine.resolveShot(outcome);
+        machine.continueFromResult();
+      }
+      machine.nextRound();
+    }
 
-    // Force tie condition
-    machine.players[0]!.totalScore = 125;
-    machine.players[0]!.bodyHits = 1;
-    
-    machine.players[1]!.totalScore = 125;
-    machine.players[1]!.bodyHits = 2; // B has more body hits
-
-    let winners = machine.getWinners();
-    expect(winners.length).toBe(1);
-    expect(winners[0]!.name).toBe('B');
-
-    // Force shared tie
-    machine.players[0]!.bodyHits = 2;
-    winners = machine.getWinners();
+    const winners = machine.getWinners();
     expect(winners.length).toBe(2);
+    expect(winners.map(w => w.name)).toEqual(['Player 1', 'Player 2']);
+  });
+
+  it('prevents external mutation of internal player score arrays', () => {
+    const machine = new MultiplayerMatchMachine(makeSetups(2));
+    const players = machine.players;
+    // Attempting to mutate returned roundScores copy
+    (players[0]!.roundScores as number[])[0] = 999;
+    expect(machine.players[0]!.roundScores[0]).toBe(0);
   });
 });
-
-
-
-
-

@@ -72,8 +72,8 @@ export class CannonRenderer {
     this.graphics.strokePath();
 
     // Pattern overlay
-    this.graphics.fillStyle(0xffffff, 0.3); // Semi-transparent white for pattern
-    this.graphics.lineStyle(2, 0xffffff, 0.3);
+    this.graphics.fillStyle(0xffffff, 0.85); // Mostly opaque white so the pattern reads on every player colour
+    this.graphics.lineStyle(2, 0xffffff, 0.85);
 
     if (pattern === 'stripes') {
       for (let d = 0; d < len; d += 15) {

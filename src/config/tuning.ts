@@ -95,6 +95,29 @@ export const SCORING = {
   missPoints: 0,
 } as const;
 
+/** Local multiplayer format (SPEC §6) and the allowed player appearance domain. */
+export const MULTIPLAYER = {
+  minPlayers: 2,
+  maxPlayers: 4,
+  shotsPerRound: 3,
+  /** One map per round, in order. PROPOSED. */
+  maps: ['backyard', 'fence', 'rooftop'],
+  maxNameLength: 16,
+  /** Cannon colour palette; the index doubles as the default for that player slot. */
+  colors: [0xff4444, 0x4444ff, 0x44ff44, 0xffaa00],
+  /** Cannon patterns (never colour alone); the index doubles as the default for that player slot. */
+  patterns: ['solid', 'stripes', 'dots', 'checks'],
+  /** Decorative inactive cannon slots: render-only, in the earth strip below the ground surface. */
+  slots: {
+    startXPx: 24,
+    spacingPx: 280,
+    yPx: 538,
+    barrelWidthPx: 44,
+    barrelHeightPx: 14,
+    labelFontPx: 13,
+  },
+} as const;
+
 export interface MaterialProps {
   restitution: number;
   friction: number;

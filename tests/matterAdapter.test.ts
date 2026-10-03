@@ -511,5 +511,60 @@ describe('MatterAdapter', () => {
 
     expect(bodyResolved).toBe(true);
   });
+
+  it('resets cleanly after a real shot: identical static bodies/positions/tags, live projectile removed, no stale contact flags, identical launch position for next player', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+
+    // Snapshot initial static state
+    type BodySummary = { label: string; isStatic: boolean; position: { x: number; y: number } };
+    const initialBodies = (engine.world.bodies as BodySummary[]).map(b => ({
+      label: b.label,
+      isStatic: b.isStatic,
+      x: b.position.x,
+      y: b.position.y,
+    }));
+    expect(initialBodies.length).toBe(3); // ground, jonhBody, jonhHat
+
+    // Player 1 fires from cannon spawn
+    const muzzle1 = { x: 150, y: 550 };
+    adapter.spawnProjectile(muzzle1.x, muzzle1.y, 7.5, { x: 20, y: -10 });
+    expect(engine.world.bodies.length).toBe(4);
+
+    // Simulate several steps until contact / flight
+    for (let i = 0; i < 30; i++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres);
+    }
+
+    // Shot completes -> scene reset clears projectile and adapter state
+    adapter.removeProjectile();
+    expect(engine.world.bodies.length).toBe(3);
+
+    // Compare static bodies after reset to initial
+    const postResetBodies = (engine.world.bodies as BodySummary[]).map(b => ({
+      label: b.label,
+      isStatic: b.isStatic,
+      x: b.position.x,
+      y: b.position.y,
+    }));
+    expect(postResetBodies).toEqual(initialBodies);
+
+    // Re-spawn projectile for next player from the exact same launch position
+    const proj2 = adapter.spawnProjectile(muzzle1.x, muzzle1.y, 7.5, { x: 15, y: -8 });
+    expect(engine.world.bodies.length).toBe(4);
+    expect(proj2.position.x).toBe(muzzle1.x);
+    expect(proj2.position.y).toBe(muzzle1.y);
+
+    // Step once: verify no stale contact flags from previous player's shot
+    const state2 = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+    expect(state2.hitJonh).toBe(false);
+    expect(state2.hitHat).toBe(false);
+    expect(state2.hitGround).toBe(false);
+    expect(state2.firstGroundContact).toBeNull();
+    expect(state2.obstacleContacts).toEqual([]);
+    expect(state2.hadRicochetBeforeBody).toBe(false);
+    expect(state2.impactSpeedMs).toBe(0);
+  });
 });
 

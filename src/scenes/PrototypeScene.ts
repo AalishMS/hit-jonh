@@ -1,15 +1,17 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD, SCORING } from '../config/tuning';
+import { AIM, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { InputCoordinator } from '../input/controls';
 import { MAPS } from '../levels';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
 import { CannonRenderer } from '../render/cannonRenderer';
+import { CannonSlotsRenderer } from '../render/cannonSlotsRenderer';
 import { DebugRenderer } from '../render/debugRenderer';
 import { JonhRenderer } from '../render/jonhRenderer';
 import { SceneryRenderer } from '../render/sceneryRenderer';
-import { TrailRenderer } from '../render/trailRenderer';
+import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
+import { PlayerHistory } from '../rules/playerHistory';
 import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { SoloChallengeMachine } from '../rules/soloChallenge';
@@ -26,7 +28,7 @@ import {
 } from '../sim/units';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay } from '../ui/menuOverlay';
-import { loadSaveData, recordSoloResult, saveSoloAim } from '../storage/storage';
+import { loadSaveData, recordSoloResult, saveMultiplayerSetup, saveSoloAim } from '../storage/storage';
 import type { LevelData } from '../levels/types';
 
 export class PrototypeScene extends Phaser.Scene {
@@ -55,10 +57,14 @@ export class PrototypeScene extends Phaser.Scene {
   private currentLevel!: LevelData;
   private sceneryRenderer!: SceneryRenderer;
   private cannonRenderer!: CannonRenderer;
+  private slotsRenderer: CannonSlotsRenderer | null = null;
   private jonhRenderer!: JonhRenderer;
   private ballRenderer!: BallRenderer;
   private trailRenderer!: TrailRenderer;
   private debugRenderer!: DebugRenderer;
+
+  private trailHistory = new PlayerHistory<TrailData>();
+  private shotShooterIndex: number | null = null;
 
   private currentAngleDeg = 45;
   private currentPowerPercent = 50;
@@ -121,16 +127,19 @@ export class PrototypeScene extends Phaser.Scene {
       },
       onStartMultiplayer: (players) => this.startMultiplayer(players),
       onMultiplayerHandoverContinue: () => {
-        this.multiMachine.startAiming();
-        this.reset();
+        this.multiCoordinator.beginTurn(this.currentAngleDeg, this.currentPowerPercent);
       },
       onMultiplayerNextRound: () => {
         this.multiMachine.nextRound();
-        this.loadMultiplayerMap(this.multiMachine.currentMapId);
+        if (this.multiMachine.state !== 'match_result') {
+          this.trailHistory.clear();
+          this.loadMultiplayerMap(this.multiMachine.currentMapId);
+        }
         this.updateUIPerMultiState();
       },
       onMultiplayerRematch: () => {
         this.multiMachine.rematch();
+        this.trailHistory.clear();
         this.loadMultiplayerMap(this.multiMachine.currentMapId);
         this.updateUIPerMultiState();
       }
@@ -266,7 +275,6 @@ export class PrototypeScene extends Phaser.Scene {
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h);
     this.jonhRenderer.draw(false);
-    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
@@ -289,6 +297,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
 
     this.reset();
+    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
     this.updateUIPerSoloState();
   }
 
@@ -297,7 +306,7 @@ export class PrototypeScene extends Phaser.Scene {
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
     if (res) {
       this.currentAngleDeg = res.angle;
-      this.cannonRenderer.draw(this.currentAngleDeg);
+      this.drawCannon();
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
     }
   }
@@ -326,7 +335,10 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.activeMode === 'solo') {
       this.htmlControls.setFeedback(`Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
     } else {
-      this.htmlControls.setFeedback(`${this.multiMachine.activePlayer.name}'s shot: Cannonball in flight...`, 'simulating');
+      this.shotShooterIndex = this.multiMachine.lastShooterIndex;
+      const shooter = this.multiMachine.players[this.shotShooterIndex!]!;
+      this.trailRenderer.setPlayerColor(shooter.color);
+      this.htmlControls.setFeedback(`${shooter.name}'s shot: Cannonball in flight...`, 'simulating');
     }
 
     this.trailRenderer.startNewShot();
@@ -344,6 +356,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeCoordinator.reset(this.currentAngleDeg, this.currentPowerPercent);
 
     if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') return;
+    if (this.activeMode === 'multi' && (this.multiMachine.state === 'round_result' || this.multiMachine.state === 'match_result')) return;
 
     this.audioManager.unlock();
     this.physicsAdapter.clear();
@@ -360,7 +373,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.ballRenderer.setVisible(false);
     this.jonhRenderer.resetToIdle();
     this.jonhRenderer.draw(false);
-    this.cannonRenderer.draw(this.currentAngleDeg);
+    this.drawCannon();
     this.trailRenderer.onAttemptReset();
     
     if (this.activeMode === 'solo') {
@@ -462,16 +475,11 @@ export class PrototypeScene extends Phaser.Scene {
     const isBodyHit = classification.isHit;
 
     if (isBodyHit) this.audioManager.playImpact('body');
-    
-    let outcomePoints = 0;
-    if (classification.outcome === 'ricochet_body') outcomePoints = SCORING.ricochetBodyPoints;
-    else if (classification.outcome === 'body') outcomePoints = SCORING.bodyPoints;
-    else if (classification.outcome === 'hat_only') outcomePoints = SCORING.hatOnlyPoints;
 
     if (this.activeMode === 'solo') {
       this.soloCoordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
     } else if (this.activeMode === 'multi') {
-      this.multiCoordinator.resolveShot(outcomePoints, isBodyHit);
+      this.multiCoordinator.resolveShot(classification.outcome);
     }
 
     const feedback = classifyShotOutcome(
@@ -492,6 +500,9 @@ export class PrototypeScene extends Phaser.Scene {
       landing?.yPx ?? state.yPx,
       `${feedback.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
     );
+    if (this.activeMode === 'multi' && this.shotShooterIndex !== null) {
+      this.trailHistory.record(this.shotShooterIndex, this.trailRenderer.exportData());
+    }
 
     if (isBodyHit) {
       this.jonhRenderer.triggerHit(state.impactSpeedMs, quote);
@@ -529,6 +540,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.menuOverlay.destroy();
     if (this.sceneryRenderer) this.sceneryRenderer.destroy();
     if (this.cannonRenderer) this.cannonRenderer.destroy();
+    if (this.slotsRenderer) this.slotsRenderer.destroy();
+    this.slotsRenderer = null;
     if (this.jonhRenderer) this.jonhRenderer.destroy();
     if (this.ballRenderer) this.ballRenderer.destroy();
     if (this.trailRenderer) this.trailRenderer.destroy();
@@ -538,8 +551,19 @@ export class PrototypeScene extends Phaser.Scene {
   private startMultiplayer(players: MPPlayerSetup[]): void {
     this.activeMode = 'multi';
     this.multiMachine = new MultiplayerMatchMachine(players);
+    this.trailHistory.clear();
     this.loadMultiplayerMap(this.multiMachine.currentMapId);
     this.updateUIPerMultiState();
+  }
+
+  /** Draws the cannon in the active player's colour and pattern (solo keeps the default look). */
+  private drawCannon(): void {
+    if (this.activeMode === 'multi') {
+      const player = this.multiMachine.activePlayer;
+      this.cannonRenderer.draw(this.currentAngleDeg, player.color, player.pattern);
+    } else {
+      this.cannonRenderer.draw(this.currentAngleDeg);
+    }
   }
 
   private loadMultiplayerMap(mapId: string): void {
@@ -552,6 +576,8 @@ export class PrototypeScene extends Phaser.Scene {
     // Clean up old renderers
     if (this.sceneryRenderer) this.sceneryRenderer.destroy();
     if (this.cannonRenderer) this.cannonRenderer.destroy();
+    if (this.slotsRenderer) this.slotsRenderer.destroy();
+    this.slotsRenderer = null;
     if (this.jonhRenderer) this.jonhRenderer.destroy();
     if (this.ballRenderer) this.ballRenderer.destroy();
     if (this.trailRenderer) this.trailRenderer.destroy();
@@ -573,7 +599,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.multiCoordinator = new MultiCoordinator(this.attemptMachine, this.multiMachine, {
       onStateChange: () => this.updateUIPerMultiState(),
       onShotFired: (angle, power) => {
-        this.multiMachine.updateAim(angle, power);
+        // The machine already stored this aim at Fire; persist the whole setup from a fresh read.
+        saveMultiplayerSetup(this.multiMachine.setups);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
         const speed = powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
@@ -590,6 +617,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
+    this.slotsRenderer = new CannonSlotsRenderer(this);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h);
     this.jonhRenderer.draw(false);
     if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
@@ -600,43 +628,52 @@ export class PrototypeScene extends Phaser.Scene {
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
+    // Nothing from the previous map may leak into this one.
+    this.stepper.reset();
     this.classifier.reset();
+    this.lastProjectileState = null;
+    this.groundFeedbackShown = false;
+    this.hatReactionTriggered = false;
+    this.overheadReactionTriggered = false;
+    this.activeReactionQuote = null;
+    this.shotShooterIndex = null;
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
 
-    this.trailRenderer.startNewShot();
-    this.groundFeedbackShown = false;
-    this.jonhRenderer.resetToIdle();
-    this.jonhRenderer.draw(false);
-    this.cannonRenderer.draw(45); // default
-    this.trailRenderer.onAttemptReset();
+    this.drawCannon();
   }
 
   private updateUIPerMultiState(): void {
-    if (this.multiMachine.state === 'handover') {
-      const player = this.multiMachine.activePlayer;
+    const match = this.multiMachine;
+    if (match.state === 'handover') {
+      const player = match.activePlayer;
       this.currentAngleDeg = player.lastAngle;
       this.currentPowerPercent = player.lastPower;
       
-      this.cannonRenderer.draw(this.currentAngleDeg);
+      this.drawCannon();
+      this.slotsRenderer?.draw(match.players, match.activePlayerIndex);
+      // Only this player's own previous trail, in their colour.
+      this.trailRenderer.setPlayerColor(player.color);
+      const history = this.trailHistory.get(match.activePlayerIndex);
+      this.trailRenderer.importData(history ? asPreviousTrail(history) : null);
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
       
-      this.menuOverlay.showMPHandover(player, this.currentLevel.name, this.multiMachine.activePlayerShotNumber + 1);
+      this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
-    } else if (this.multiMachine.state === 'aiming') {
+    } else if (match.state === 'aiming') {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
-      this.htmlControls.setFeedback(`${this.multiMachine.activePlayer.name}'s turn (Shot ${this.multiMachine.activePlayerShotNumber + 1}/3)`, 'info');
-    } else if (this.multiMachine.state === 'round_result') {
-      this.menuOverlay.showMPRoundResult(this.multiMachine.players, this.multiMachine.roundIndex);
+      this.htmlControls.setFeedback(`${match.activePlayer.name}'s turn (Shot ${match.activePlayerShotNumber + 1}/${MULTIPLAYER.shotsPerRound})`, 'info');
+    } else if (match.state === 'round_result') {
+      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
-    } else if (this.multiMachine.state === 'match_result') {
-      this.menuOverlay.showMPMatchResult(this.multiMachine.getWinners(), this.multiMachine.players);
+    } else if (match.state === 'match_result') {
+      this.menuOverlay.showMPMatchResult(match.getWinners(), match.players);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
