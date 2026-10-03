@@ -1,52 +1,63 @@
 import { describe, expect, it } from 'vitest';
-import { BACKYARD_LEVEL } from '../src/levels/backyard';
+import Matter from '@matter-js';
+import { MAPS } from '../src/levels';
 import { validateLevel } from '../src/levels/validation';
-import { sweepCircleVsBox } from '../src/sim/swept';
-import { analyticPosition } from '../src/sim/ballistics';
-import { powerToLaunchSpeed } from '../src/sim/units';
+import { powerToLaunchSpeed, launchVelocityToWorld, metresToPixels, simYToWorldY } from '../src/sim/units';
 import { AIM, PHYSICS, PROJECTILE } from '../src/config/tuning';
+import { MatterAdapter } from '../src/physics/matterAdapter';
 
 describe('Level data validation', () => {
-  it('validates Backyard level passes all structural and thickness rules', () => {
-    const result = validateLevel(BACKYARD_LEVEL, {
-      maxSpeedMs: AIM.maxImpulseNs / PROJECTILE.massKg,
-      dtSeconds: PHYSICS.fixedStepSeconds,
-      minThicknessMetres: 0.2,
+  for (const level of MAPS) {
+    describe(`Level: ${level.name}`, () => {
+      it('passes all structural and thickness rules', () => {
+        const result = validateLevel(level, {
+          maxSpeedMs: AIM.maxImpulseNs / PROJECTILE.massKg,
+          dtSeconds: PHYSICS.fixedStepSeconds,
+          minThicknessMetres: 0.2,
+        });
+        expect(result.valid, result.errors.join(', ')).toBe(true);
+        expect(result.errors).toEqual([]);
+      });
+
+      it('proves reference solution hits Jonh in actual Matter adapter flight', () => {
+        for (const sol of level.referenceSolutions) {
+          const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });
+          const adapter = new MatterAdapter(engine.world, 50, 720);
+          adapter.setupLevel(level);
+
+          const speed = powerToLaunchSpeed(
+            sol.powerPercent,
+            AIM.minImpulseNs,
+            AIM.maxImpulseNs,
+            PROJECTILE.massKg,
+          );
+          const rad = (sol.angleDeg * Math.PI) / 180;
+          const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+          const startX = level.cannonSpawn.x + offset * Math.cos(rad);
+          const startY = level.cannonSpawn.y + offset * Math.sin(rad);
+          const startXPx = metresToPixels(startX, 50);
+          const startYPx = simYToWorldY(startY, 720, 50);
+
+          adapter.spawnProjectile(
+            startXPx,
+            startYPx,
+            PROJECTILE.radiusMetres * 50,
+            launchVelocityToWorld(speed, sol.angleDeg, 50)
+          );
+
+          let hitJonh = false;
+          for (let step = 0; step < 720; step++) {
+            Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+            const state = adapter.stepProjectile(level, PROJECTILE.radiusMetres);
+            if (state && state.hitJonh) {
+              hitJonh = true;
+              break;
+            }
+          }
+
+          expect(hitJonh, `reference ${sol.angleDeg}°/${sol.powerPercent}% failed to hit Jonh`).toBe(true);
+        }
+      });
     });
-    expect(result.valid).toBe(true);
-    expect(result.errors).toEqual([]);
-  });
-
-  it('proves reference solution hits Jonh in ballistic flight', () => {
-    const sol = BACKYARD_LEVEL.referenceSolutions[0]!;
-    const speed = powerToLaunchSpeed(
-      sol.powerPercent,
-      AIM.minImpulseNs,
-      AIM.maxImpulseNs,
-      PROJECTILE.massKg,
-    );
-    const rad = (sol.angleDeg * Math.PI) / 180;
-    const barrelLength = 1.2;
-    const x0 = BACKYARD_LEVEL.cannonSpawn.x + barrelLength * Math.cos(rad);
-    const y0 = BACKYARD_LEVEL.cannonSpawn.y + barrelLength * Math.sin(rad);
-    const vx = speed * Math.cos(rad);
-    const vy = speed * Math.sin(rad);
-
-    let hitJonh = false;
-    const dt = 1 / 120;
-    let prev = { x: x0, y: y0 };
-
-    for (let step = 0; step < 600; step++) {
-      const t = (step + 1) * dt;
-      const curr = analyticPosition(t, x0, y0, vx, vy, PHYSICS.gravity);
-      const hit = sweepCircleVsBox(prev, curr, PROJECTILE.radiusMetres, BACKYARD_LEVEL.jonhSpawn.bodyBox);
-      if (hit) {
-        hitJonh = true;
-        break;
-      }
-      prev = curr;
-    }
-
-    expect(hitJonh).toBe(true);
-  });
+  }
 });
