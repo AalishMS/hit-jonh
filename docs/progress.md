@@ -128,15 +128,21 @@ _Last updated: 2026-10-03_
     - Saves last-aim per map.
     - Migrates `hitJonh.v1.muted` gracefully.
     - Fallback and `warn`-only guard handling for QuotaExceeded errors in `localStorage`.
-  - **UI/Orchestration Integration (`src/ui/menuOverlay.ts`, `src/scenes/PrototypeScene.ts`):**
+  - **UI/Orchestration Integration (`src/ui/menuOverlay.ts`, `src/scenes/PrototypeScene.ts`, `src/rules/soloCoordinator.ts`):**
+    - Extracted `SoloCoordinator` to test production transitions and manage rules logic independently.
     - Dynamically swaps maps in Phaser without full page reloads by resetting renderer and physics cleanly.
-    - Displays a map select overlay.
+    - Displays a map select overlay with a Main Menu screen and proper back navigation.
+    - Blocks background game interaction when menus or result overlays are visible.
     - Shows remaining attempts (`Attempt X/3`), and changes quick-reset text to "Continue" between attempts.
-    - Ends in a challenge result overlay prompting "Retry Map" or "Change Map".
-    - Eliminated misleading "workflow copy" tests in `reactions.test.ts`; tested production logic explicitly in `soloChallenge.test.ts` and `levels.test.ts`.
+    - Ends in a challenge result overlay prompting "Retry Map" or "Change Map" after final shot continue, rather than relying on an unmanaged timeout.
+  - **Review Fixes (M3):**
+    - Corrected storage shape-safety to gracefully handle malformed JSON strings, untyped property access, clamp defaults, and safely render map scores in UI using textContent to prevent XSS. Migrated missing attempts from 999 to `null`.
+    - Disabled reset inputs during simulation flight to prevent broken states.
+    - Added comprehensive scenery generation for Rooftop and Fence obstacles matching physics colliders, retaining original prop offsets accurately on elevated grounds.
   - **Testing Coverage:**
-    - `npm run check` completed with 14 test files, 99 tests passed, 0 lint errors, 0 type errors.
+    - `npm run check` completed with 15 test files, 102 tests passed, 0 lint errors, 0 type errors.
     - Headless reference solutions verified using the actual `MatterAdapter` simulating step-by-step through validation.
+    - Full orchestration testing of the transition logic in `soloCoordinator.test.ts`.
 
 ## Decisions (implementer, delegated by owner)
 

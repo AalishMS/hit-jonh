@@ -1,5 +1,7 @@
+import { MAPS } from '../levels';
+
 export interface LevelScore {
-  bestShots: number;
+  bestShots: number | null;
   hasStyle: boolean;
   lastAngle: number;
   lastPower: number;
@@ -32,36 +34,87 @@ const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
 };
 
-export const defaultSaveData: SaveData = {
-  version: 'hitJonh.v1',
-  solo: {},
-  settings: { ...DEFAULT_SETTINGS },
-};
+function getFreshData(): SaveData {
+  return {
+    version: 'hitJonh.v1',
+    solo: {},
+    settings: { ...DEFAULT_SETTINGS },
+  };
+}
 
 export function loadSaveData(): SaveData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      // Migrate old mute setting if present
+      const data = getFreshData();
       const oldMuted = localStorage.getItem('hitJonh.v1.muted');
-      const data = { ...defaultSaveData, settings: { ...DEFAULT_SETTINGS } };
       if (oldMuted === 'true') data.settings.muted = true;
       if (oldMuted === 'false') data.settings.muted = false;
       return data;
     }
-    const parsed = JSON.parse(raw);
-    if (parsed.version !== 'hitJonh.v1') {
-      return { ...defaultSaveData };
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      console.warn('Malformed JSON in save data');
+      return getFreshData();
     }
-    return {
-      version: 'hitJonh.v1',
-      solo: parsed.solo || {},
-      settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
-      lastMP: parsed.lastMP,
-    };
+
+    if (!parsed || typeof parsed !== 'object') {
+      return getFreshData();
+    }
+    
+    const parsedObj = parsed as Record<string, unknown>;
+    if (parsedObj.version !== 'hitJonh.v1') {
+      return getFreshData();
+    }
+
+    const data = getFreshData();
+
+    // Validate settings
+    if (parsedObj.settings && typeof parsedObj.settings === 'object' && !Array.isArray(parsedObj.settings)) {
+      const pSet = parsedObj.settings as Record<string, unknown>;
+      data.settings.muted = typeof pSet.muted === 'boolean' ? pSet.muted : DEFAULT_SETTINGS.muted;
+      data.settings.volume = typeof pSet.volume === 'number' && Number.isFinite(pSet.volume) 
+        ? Math.max(0, Math.min(1, pSet.volume)) 
+        : DEFAULT_SETTINGS.volume;
+      data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
+    }
+
+    // Validate solo
+    if (parsedObj.solo && typeof parsedObj.solo === 'object' && !Array.isArray(parsedObj.solo)) {
+      const allowedMapIds = new Set(MAPS.map(m => m.id));
+      for (const [key, value] of Object.entries(parsedObj.solo as Record<string, unknown>)) {
+        if (!allowedMapIds.has(key) || !value || typeof value !== 'object' || Array.isArray(value)) continue;
+
+        const val = value as Record<string, unknown>;
+        let bestShots: number | null = null;
+        if (typeof val.bestShots === 'number') {
+          const bs = val.bestShots;
+          if (bs === 999) {
+            bestShots = null; // migrate sentinel
+          } else if (Number.isFinite(bs) && bs >= 1 && bs <= 3) {
+            bestShots = Math.floor(bs);
+          }
+        }
+
+        const hasStyle = typeof val.hasStyle === 'boolean' ? val.hasStyle : false;
+        
+        const lastAngle = typeof val.lastAngle === 'number' && Number.isFinite(val.lastAngle) 
+          ? val.lastAngle : 45;
+          
+        const lastPower = typeof val.lastPower === 'number' && Number.isFinite(val.lastPower) 
+          ? val.lastPower : 50;
+
+        data.solo[key] = { bestShots, hasStyle, lastAngle, lastPower };
+      }
+    }
+
+    return data;
   } catch (e) {
     console.warn('Failed to load save data, starting fresh', e);
-    return { ...defaultSaveData };
+    return getFreshData();
   }
 }
 
@@ -75,11 +128,12 @@ export function writeSaveData(data: SaveData): void {
 
 export function recordSoloResult(mapId: string, shots: number, isRicochet: boolean, angle: number, power: number): void {
   const data = loadSaveData();
-  const existing = data.solo[mapId];
+  let existing = data.solo[mapId];
   if (!existing) {
-    data.solo[mapId] = { bestShots: shots, hasStyle: isRicochet, lastAngle: angle, lastPower: power };
+    existing = { bestShots: shots, hasStyle: isRicochet, lastAngle: angle, lastPower: power };
+    data.solo[mapId] = existing;
   } else {
-    existing.bestShots = Math.min(existing.bestShots, shots);
+    existing.bestShots = existing.bestShots !== null ? Math.min(existing.bestShots, shots) : shots;
     existing.hasStyle = existing.hasStyle || isRicochet;
     existing.lastAngle = angle;
     existing.lastPower = power;
@@ -89,9 +143,10 @@ export function recordSoloResult(mapId: string, shots: number, isRicochet: boole
 
 export function saveSoloAim(mapId: string, angle: number, power: number): void {
   const data = loadSaveData();
-  const existing = data.solo[mapId];
+  let existing = data.solo[mapId];
   if (!existing) {
-    data.solo[mapId] = { bestShots: 999, hasStyle: false, lastAngle: angle, lastPower: power };
+    existing = { bestShots: null, hasStyle: false, lastAngle: angle, lastPower: power };
+    data.solo[mapId] = existing;
   } else {
     existing.lastAngle = angle;
     existing.lastPower = power;

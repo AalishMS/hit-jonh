@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { loadSaveData, recordSoloResult, saveSettings, saveSoloAim } from '../src/storage/storage';
 
+
 const localStorageMock = (function () {
   let store: Record<string, string> = {};
   return {
@@ -17,6 +18,11 @@ const localStorageMock = (function () {
 })();
 
 vi.stubGlobal('localStorage', localStorageMock);
+
+// Fake MAPS id so we can test validation mapping
+vi.mock('../src/levels', () => ({
+  MAPS: [{ id: 'backyard', name: 'Backyard' }, { id: 'fence', name: 'Fence' }]
+}));
 
 describe('Storage', () => {
   beforeEach(() => {
@@ -71,7 +77,7 @@ describe('Storage', () => {
     saveSoloAim('fence', 45, 100);
     const data = loadSaveData();
     expect(data.solo['fence']!.lastAngle).toBe(45);
-    expect(data.solo['fence']!.bestShots).toBe(999);
+    expect(data.solo['fence']!.bestShots).toBeNull();
   });
 
   it('guards localStorage access failures', () => {
@@ -79,5 +85,31 @@ describe('Storage', () => {
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(() => saveSettings({ muted: true })).not.toThrow();
     expect(consoleWarn).toHaveBeenCalled();
+  });
+
+  it('validates against bad data shapes safely', () => {
+    localStorage.setItem('hitJonh.v1', JSON.stringify({
+      version: 'hitJonh.v1',
+      solo: 'not_an_object',
+      settings: ['an_array_not_object']
+    }));
+    const data1 = loadSaveData();
+    expect(data1.solo).toEqual({});
+    expect(data1.settings.muted).toBe(false);
+
+    // Invalid map id, out of range values, NaN
+    localStorage.setItem('hitJonh.v1', JSON.stringify({
+      version: 'hitJonh.v1',
+      solo: {
+        'invalid_map': { bestShots: 1, hasStyle: false, lastAngle: 45, lastPower: 50 },
+        'backyard': { bestShots: 999, hasStyle: 'yes', lastAngle: 'NaN', lastPower: NaN }
+      }
+    }));
+    const data2 = loadSaveData();
+    expect(data2.solo['invalid_map']).toBeUndefined();
+    expect(data2.solo['backyard']!.bestShots).toBeNull(); // 999 migrated to null
+    expect(data2.solo['backyard']!.hasStyle).toBe(false); // bad type falls back
+    expect(data2.solo['backyard']!.lastAngle).toBe(45); // NaN falls back
+    expect(data2.solo['backyard']!.lastPower).toBe(50); // NaN falls back
   });
 });

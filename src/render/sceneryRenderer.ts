@@ -56,20 +56,12 @@ export class SceneryRenderer {
     this.graphics.fillRect(0, groundTopPx - 12, this.worldWidthPx, 12);
 
     // A little afternoon context, placed behind Jonh's chair.
+    // Only draw the tea table if Jonh is on the ground (no building obstacle under him)
     const jonhX = metresToPixels((level.jonhSpawn.bodyBox.minX + level.jonhSpawn.bodyBox.maxX) / 2, this.ppm);
-    this.graphics.fillStyle(LOOK.ink, 0.14);
-    this.graphics.fillEllipse(jonhX + 8, groundTopPx + 3, 120, 12);
-    this.graphics.fillEllipse(125, groundTopPx + 3, 90, 12);
-    this.graphics.lineStyle(3, LOOK.wood);
-    this.graphics.lineBetween(jonhX + 75, groundTopPx, jonhX + 75, groundTopPx - 31);
-    this.graphics.lineBetween(jonhX + 99, groundTopPx, jonhX + 99, groundTopPx - 31);
-    this.graphics.fillStyle(LOOK.wood);
-    this.graphics.fillRoundedRect(jonhX + 68, groundTopPx - 35, 39, 5, 2);
-    this.graphics.fillStyle(LOOK.paper);
-    this.graphics.fillRoundedRect(jonhX + 78, groundTopPx - 48, 13, 13, 2);
-    this.graphics.lineStyle(2, LOOK.paper);
-    this.graphics.strokeCircle(jonhX + 93, groundTopPx - 42, 4);
-
+    const jonhBaseWorldPx = simYToWorldY(level.jonhSpawn.bodyBox.minY, this.worldHeightPx, this.ppm);
+    
+    // Draw obstacles before ground so ground overlays bottom slightly if needed, or after ground?
+    // Let's draw obstacles after ground divider.
     // 4. Ground strip
     const groundHeightPx = metresToPixels(level.ground.maxY - level.ground.minY, this.ppm);
     // Grass top
@@ -84,6 +76,63 @@ export class SceneryRenderer {
     this.graphics.fillStyle(LOOK.wood, 0.3);
     for (let x = 20; x < this.worldWidthPx; x += 43) {
       this.graphics.fillEllipse(x, groundTopPx + 32 + (x % 19), 5, 2);
+    }
+
+    // 5. Obstacles
+    for (const obs of level.obstacles) {
+      const xPx = metresToPixels(obs.box.minX, this.ppm);
+      const wPx = metresToPixels(obs.box.maxX - obs.box.minX, this.ppm);
+      // y is inverted
+      const yPx = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
+      const hPx = metresToPixels(obs.box.maxY - obs.box.minY, this.ppm);
+
+      if (obs.material === 'wood') {
+        this.graphics.fillStyle(0x754a31, 1); // Dark wood
+        this.graphics.fillRect(xPx, yPx, wPx, hPx);
+        this.graphics.lineStyle(2, 0x3d2010, 1);
+        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
+        // Add vertical planks
+        for(let px = xPx + 15; px < xPx + wPx; px += 20) {
+           this.graphics.lineBetween(px, yPx, px, yPx + hPx);
+        }
+      } else if (obs.material === 'concrete') {
+        this.graphics.fillStyle(0x8a929e, 1); // Concrete grey
+        this.graphics.fillRect(xPx, yPx, wPx, hPx);
+        this.graphics.lineStyle(2, 0x474c54, 1);
+        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
+        // Add some concrete details
+        this.graphics.fillStyle(0x757b85, 1);
+        for(let cy = yPx + 30; cy < yPx + hPx; cy += 40) {
+          this.graphics.fillCircle(xPx + wPx/4, cy, 3);
+          this.graphics.fillCircle(xPx + 3*wPx/4, cy, 3);
+        }
+      } else {
+        this.graphics.fillStyle(LOOK.ink, 1);
+        this.graphics.fillRect(xPx, yPx, wPx, hPx);
+      }
+    }
+
+    // Scenery props near Jonh
+    this.graphics.fillStyle(LOOK.ink, 0.14);
+    this.graphics.fillEllipse(jonhX + 8, jonhBaseWorldPx + 3, 120, 12);
+    this.graphics.fillEllipse(125, groundTopPx + 3, 90, 12); // cannon shadow
+    this.graphics.lineStyle(3, LOOK.wood);
+    this.graphics.lineBetween(jonhX + 75, jonhBaseWorldPx, jonhX + 75, jonhBaseWorldPx - 31);
+    this.graphics.lineBetween(jonhX + 99, jonhBaseWorldPx, jonhX + 99, jonhBaseWorldPx - 31);
+    this.graphics.fillStyle(LOOK.wood);
+    this.graphics.fillRoundedRect(jonhX + 68, jonhBaseWorldPx - 35, 39, 5, 2);
+    this.graphics.fillStyle(LOOK.paper);
+    this.graphics.fillRoundedRect(jonhX + 78, jonhBaseWorldPx - 48, 13, 13, 2);
+    this.graphics.lineStyle(2, LOOK.paper);
+    this.graphics.strokeCircle(jonhX + 93, jonhBaseWorldPx - 42, 4);
+
+    // Arrival lines as per SPEC
+    if (level.arrivalLines) {
+      this.graphics.lineStyle(2, LOOK.accent, 0.4);
+      for (const line of level.arrivalLines) {
+        const lx = metresToPixels(line.x, this.ppm);
+        this.graphics.lineBetween(lx, 0, lx, this.worldHeightPx);
+      }
     }
   }
 

@@ -13,6 +13,7 @@ import { TrailRenderer } from '../render/trailRenderer';
 import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { SoloChallengeMachine } from '../rules/soloChallenge';
+import { SoloCoordinator } from '../rules/soloCoordinator';
 import { ShotClassifier } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -30,6 +31,7 @@ export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
   private attemptMachine!: ShotAttemptMachine;
   private soloMachine!: SoloChallengeMachine;
+  private coordinator!: SoloCoordinator;
   private physicsAdapter!: MatterAdapter;
   private inputCoordinator!: InputCoordinator;
   private htmlControls!: HTMLControls;
@@ -100,11 +102,10 @@ export class PrototypeScene extends Phaser.Scene {
       onRetry: () => {
         this.soloMachine.retry();
         this.reset();
-        this.updateUIPerSoloState();
       },
       onReturnToMenu: () => {
-        this.menuOverlay.showMapSelect();
         this.htmlControls.setCanFire(false);
+        this.menuOverlay.showMapSelect();
       }
     });
 
@@ -112,7 +113,7 @@ export class PrototypeScene extends Phaser.Scene {
       onFire: () => this.fire(),
       onReset: () => this.reset(),
       onContinue: () => {
-        if (this.attemptMachine.state === 'resolved' && this.soloMachine.state === 'result') {
+        if (this.attemptMachine?.state === 'resolved') {
           this.reset();
         }
       },
@@ -121,9 +122,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.htmlControls.setMuted(isMuted);
       },
       onAimChange: (deltaAngle, deltaPower) => {
-        if (this.attemptMachine.state === 'resolved' && this.soloMachine.state === 'result') {
-          this.reset();
-        }
+        if (this.attemptMachine?.state !== 'aiming') return;
         if (deltaAngle !== 0) {
           const nextAngle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, this.currentAngleDeg + deltaAngle));
           this.setAngle(nextAngle);
@@ -154,9 +153,13 @@ export class PrototypeScene extends Phaser.Scene {
         if (this.debugRenderer) this.isDebugEnabled = this.debugRenderer.toggle();
         return;
       }
+      if (!this.currentLevel || this.menuOverlay.isVisible()) return;
       this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput);
     };
-    const onKeyUp = (e: KeyboardEvent) => this.inputCoordinator.handleKeyUp(e.code);
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!this.currentLevel || this.menuOverlay.isVisible()) return;
+      this.inputCoordinator.handleKeyUp(e.code);
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     this.cleanupHandlers.push(() => window.removeEventListener('keydown', onKeyDown));
@@ -173,9 +176,9 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
 
-    // Show Map Select initially
+    // Show Main Menu initially
     this.htmlControls.setCanFire(false);
-    this.menuOverlay.showMapSelect();
+    this.menuOverlay.showMainMenu();
   }
 
   private loadMap(mapId: string): void {
@@ -206,6 +209,27 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.boundsMarginMetres,
     );
     this.soloMachine = new SoloChallengeMachine(mapId);
+
+    this.coordinator = new SoloCoordinator(this.attemptMachine, this.soloMachine, {
+      onStateChange: () => this.updateUIPerSoloState(),
+      onShotFired: (angle, power) => {
+        saveSoloAim(this.soloMachine.mapId, angle, power);
+        
+        const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
+        const speed = powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
+        const vWorld = launchVelocityToWorld(speed, angle, WORLD.pixelsPerMetre);
+        const radiusPx = metresToPixels(PROJECTILE.radiusMetres, WORLD.pixelsPerMetre);
+
+        this.physicsAdapter.spawnProjectile(muzzle.x, muzzle.y, radiusPx, vWorld);
+        this.ballRenderer.draw(muzzle.x, muzzle.y);
+      },
+      onShowResult: (res) => {
+        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle);
+        this.htmlControls.setCanFire(false);
+        this.htmlControls.setFeedback('', 'info');
+        this.htmlControls.setResetLabel('Continue ↵');
+      }
+    });
 
     // Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
@@ -240,30 +264,30 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setAngle(angle: number): void {
-    if (!this.attemptMachine || this.attemptMachine.state === 'simulating' || this.soloMachine.state !== 'aiming') return;
-    if (this.attemptMachine.state === 'resolved') this.reset();
-    this.currentAngleDeg = angle;
-    this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
-    this.cannonRenderer.draw(this.currentAngleDeg);
-    this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
+    if (!this.coordinator) return;
+    const res = this.coordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
+    if (res) {
+      this.currentAngleDeg = res.angle;
+      this.cannonRenderer.draw(this.currentAngleDeg);
+      this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
+    }
   }
 
   private setPower(power: number): void {
-    if (!this.attemptMachine || this.attemptMachine.state === 'simulating' || this.soloMachine.state !== 'aiming') return;
-    if (this.attemptMachine.state === 'resolved') this.reset();
-    this.currentPowerPercent = power;
-    this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
-    this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
+    if (!this.coordinator) return;
+    const res = this.coordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, 0, power - this.currentPowerPercent);
+    if (res) {
+      this.currentPowerPercent = res.power;
+      this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
+    }
   }
 
   private fire(): void {
-    if (!this.attemptMachine || !this.attemptMachine.canFire || this.soloMachine.state !== 'aiming') return;
+    if (!this.coordinator || !this.coordinator.canFire()) return;
 
     this.audioManager.unlock();
     this.audioManager.playCannonFire();
 
-    this.attemptMachine.fire(this.currentAngleDeg, this.currentPowerPercent);
-    this.soloMachine.fire();
     this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
@@ -276,38 +300,35 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeReactionQuote = null;
     this.jonhRenderer.resetToIdle();
 
-    saveSoloAim(this.soloMachine.mapId, this.currentAngleDeg, this.currentPowerPercent);
-
-    const muzzle = this.cannonRenderer.getMuzzlePosition(this.currentAngleDeg, PROJECTILE.radiusMetres);
-    const speed = powerToLaunchSpeed(this.currentPowerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
-    const vWorld = launchVelocityToWorld(speed, this.currentAngleDeg, WORLD.pixelsPerMetre);
-    const radiusPx = metresToPixels(PROJECTILE.radiusMetres, WORLD.pixelsPerMetre);
-
-    this.physicsAdapter.spawnProjectile(muzzle.x, muzzle.y, radiusPx, vWorld);
-    this.ballRenderer.draw(muzzle.x, muzzle.y);
+    this.coordinator.fire(this.currentAngleDeg, this.currentPowerPercent);
   }
 
   reset(): void {
-    if (!this.physicsAdapter || !this.attemptMachine || this.soloMachine.state === 'solo_result') return;
+    if (!this.physicsAdapter || !this.coordinator) return;
+
+    if (!this.coordinator.canReset()) return;
+    this.coordinator.reset(this.currentAngleDeg, this.currentPowerPercent);
+
+    if (this.soloMachine.state === 'solo_result') return;
 
     this.audioManager.unlock();
-    this.physicsAdapter.removeProjectile();
+    this.physicsAdapter.clear();
+    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.stepper.reset();
     this.classifier.reset();
+    
     this.lastProjectileState = null;
     this.groundFeedbackShown = false;
     this.hatReactionTriggered = false;
     this.overheadReactionTriggered = false;
     this.activeReactionQuote = null;
 
-    this.attemptMachine.reset();
-    this.attemptMachine.setAim(this.currentAngleDeg, this.currentPowerPercent);
-
     this.ballRenderer.setVisible(false);
     this.jonhRenderer.resetToIdle();
+    this.jonhRenderer.draw(false);
     this.cannonRenderer.draw(this.currentAngleDeg);
     this.trailRenderer.onAttemptReset();
-    this.soloMachine.startAiming();
-
+    
     this.updateUIPerSoloState();
   }
 
@@ -403,8 +424,8 @@ export class PrototypeScene extends Phaser.Scene {
     const isBodyHit = classification.isHit;
 
     if (isBodyHit) this.audioManager.playImpact('body');
-
-    this.soloMachine.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
+    
+    this.coordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
 
     const feedback = classifyShotOutcome(
       isBodyHit,
@@ -446,12 +467,9 @@ export class PrototypeScene extends Phaser.Scene {
       if (res.success) {
         recordSoloResult(this.currentLevel.id, res.shotsUsed, res.hasStyle, this.currentAngleDeg, this.currentPowerPercent);
       }
-      setTimeout(() => {
-        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle);
-      }, 1500); // Small delay to appreciate the final outcome
-    } else {
-      this.htmlControls.setResetLabel('Continue ↵');
     }
+    
+    this.htmlControls.setResetLabel('Continue ↵');
   }
 
   private cleanup(): void {
@@ -461,6 +479,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager.destroy();
     this.physicsAdapter.clear();
     this.htmlControls.destroy();
+    this.menuOverlay.destroy();
     if (this.sceneryRenderer) this.sceneryRenderer.destroy();
     if (this.cannonRenderer) this.cannonRenderer.destroy();
     if (this.jonhRenderer) this.jonhRenderer.destroy();
