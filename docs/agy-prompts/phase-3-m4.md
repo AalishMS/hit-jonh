@@ -1,0 +1,11 @@
+# Phase 3: M4 local competition
+
+Codex is the lead. Read AGENTS.md, SPEC.md, docs/progress.md and docs/remaining-work-plan.md. Implement only Phase 3/M4 using existing maps and solo infrastructure.
+
+Implement MultiSetup for 2–4 players with optional names/default Player N, individual cannon colours AND visually distinct patterns (not colour alone), persisted setup, personal aim and previous trails. All active shots launch from the same map cannon position; inactive decorative slots outside playfield. Use only the active player's last trail initially and log that as a reversible default for the OPEN visibility decision.
+
+Pure rules machine: 3 rounds Backyard -> Fence -> Rooftop, each player 3 shots per round interleaved, round r starts player r mod N. Complete every shot even after an early hit. Handover identifies next player before aiming. Enforce out-of-turn/fresh-press guards and one score per shot, highest outcome only, proposed 125/100/20/0 points. Round and match summaries; highest total, more body hits tie-break, shared win when still tied. Rematch starts clean with names/colours/patterns/aim preserved. Quit/navigation where existing infrastructure permits must clean transient resources.
+
+Before every shot restore all level bodies, hat/Jonh visuals, projectile, contacts, timers and pending score events to identical state. Preserve scores and each player's settings/trail. Make scene lifecycle clean across map changes and solo/MP changes. Ground never ricochet-eligible. Keep proposed defaults explicit. Do not implement M5 settings/pause or online/AI/practice/deferred scope.
+
+Meaningful tests for N=2/3/4 exact counts/order/round starts, early-hit round completion, out-of-turn fire, repeated callbacks and ties, actual adapter body-state reset comparisons, rematch scores/timers/bodies with aims kept. Browser walkthrough setup/handover/rounds/rematch if tools permit; report unavailable checks honestly. Run npm run check and npm run build with exact summary. Update docs/progress.md and make a small verified local checkpoint per AGENTS rule 11; no push/deploy. Preserve unrelated work/design brief. Report commit hash, changed files, evidence, decisions and limitations; STOP for lead acceptance.

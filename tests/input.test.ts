@@ -120,4 +120,21 @@ describe('InputCoordinator', () => {
     coordinator.handleKeyDown('KeyM', false, false);
     expect(muteCount).toBe(1);
   });
+
+  it('ignores all gameplay shortcuts (Enter, KeyM, KeyR, Arrows) when text input has focus', () => {
+    let triggered = false;
+    const coordinator = new InputCoordinator({
+      onFire: () => { triggered = true; },
+      onReset: () => { triggered = true; },
+      onContinue: () => { triggered = true; },
+      onToggleMute: () => { triggered = true; },
+      onAimChange: () => { triggered = true; },
+    });
+    coordinator.setCanFire(true);
+
+    for (const key of ['Space', 'Enter', 'KeyM', 'KeyR', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']) {
+      coordinator.handleKeyDown(key, false, true /* isTextInputFocused */);
+      expect(triggered, `Shortcut ${key} should be ignored while text input has focus`).toBe(false);
+    }
+  });
 });

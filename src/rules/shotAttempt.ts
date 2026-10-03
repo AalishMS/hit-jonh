@@ -12,6 +12,7 @@ export class ShotAttemptMachine {
   private _state: ShotState = 'aiming';
   private _outcome: ShotOutcome | null = null;
   private _missReason: MissReason | null = null;
+  private _hadHatHit = false;
   private _simulatedTime = 0;
   private _settledTime = 0;
 
@@ -36,6 +37,10 @@ export class ShotAttemptMachine {
 
   get missReason(): MissReason | null {
     return this._missReason;
+  }
+
+  get hadHatHit(): boolean {
+    return this._hadHatHit;
   }
 
   get simulatedTime(): number {
@@ -69,6 +74,7 @@ export class ShotAttemptMachine {
     this._state = 'simulating';
     this._outcome = null;
     this._missReason = null;
+    this._hadHatHit = false;
     this._simulatedTime = 0;
     this._settledTime = 0;
     return true;
@@ -81,11 +87,15 @@ export class ShotAttemptMachine {
 
     this._simulatedTime += dtSeconds;
 
+    if (snapshot.hitHat) {
+      this._hadHatHit = true;
+    }
+
     // 1. Valid hit
     if (snapshot.hitBody) {
       this._state = 'resolved';
       this._outcome = 'hit';
-      return { resolved: true, outcome: 'hit' };
+      return { resolved: true, outcome: 'hit', hadHatHit: this._hadHatHit };
     }
 
     // 2. Out of bounds (x < -margin or x > width + margin)
@@ -96,7 +106,12 @@ export class ShotAttemptMachine {
       this._state = 'resolved';
       this._outcome = 'miss';
       this._missReason = 'out_of_bounds';
-      return { resolved: true, outcome: 'miss', reason: 'out_of_bounds' };
+      return {
+        resolved: true,
+        outcome: 'miss',
+        reason: 'out_of_bounds',
+        hadHatHit: this._hadHatHit,
+      };
     }
 
     // 3. Settled
@@ -106,7 +121,12 @@ export class ShotAttemptMachine {
         this._state = 'resolved';
         this._outcome = 'miss';
         this._missReason = 'settled';
-        return { resolved: true, outcome: 'miss', reason: 'settled' };
+        return {
+          resolved: true,
+          outcome: 'miss',
+          reason: 'settled',
+          hadHatHit: this._hadHatHit,
+        };
       }
     } else {
       this._settledTime = 0;
@@ -117,7 +137,12 @@ export class ShotAttemptMachine {
       this._state = 'resolved';
       this._outcome = 'miss';
       this._missReason = 'timeout';
-      return { resolved: true, outcome: 'miss', reason: 'timeout' };
+      return {
+        resolved: true,
+        outcome: 'miss',
+        reason: 'timeout',
+        hadHatHit: this._hadHatHit,
+      };
     }
 
     return { resolved: false };
@@ -127,6 +152,7 @@ export class ShotAttemptMachine {
     this._state = 'aiming';
     this._outcome = null;
     this._missReason = null;
+    this._hadHatHit = false;
     this._simulatedTime = 0;
     this._settledTime = 0;
   }

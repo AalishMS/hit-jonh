@@ -160,4 +160,60 @@ describe('ShotAttemptMachine', () => {
     expect(machine.angleDeg).toBe(38);
     expect(machine.powerPercent).toBe(72);
   });
+
+  it('keeps simulating when hat is hit, and records hadHatHit', () => {
+    const machine = new ShotAttemptMachine(worldWidth);
+    machine.fire(45, 50);
+
+    // Hat hit alone does not resolve the shot
+    const resHat = machine.step(1 / 120, {
+      x: 18,
+      y: 3.5,
+      speed: 12,
+      hitBody: false,
+      hitHat: true,
+    });
+    expect(resHat.resolved).toBe(false);
+    expect(machine.state).toBe('simulating');
+    expect(machine.hadHatHit).toBe(true);
+
+    // Later settles out of bounds
+    const resOob = machine.step(1 / 120, {
+      x: 30,
+      y: 1,
+      speed: 12,
+      hitBody: false,
+    });
+    expect(resOob.resolved).toBe(true);
+    if (resOob.resolved && resOob.outcome === 'miss') {
+      expect(resOob.hadHatHit).toBe(true);
+    }
+  });
+
+  it('resolves as body hit when hat is hit then body is hit', () => {
+    const machine = new ShotAttemptMachine(worldWidth);
+    machine.fire(45, 50);
+
+    // First hat
+    machine.step(1 / 120, {
+      x: 18,
+      y: 3.5,
+      speed: 12,
+      hitBody: false,
+      hitHat: true,
+    });
+    // Then body
+    const resBody = machine.step(1 / 120, {
+      x: 18,
+      y: 2.5,
+      speed: 10,
+      hitBody: true,
+    });
+
+    expect(resBody.resolved).toBe(true);
+    if (resBody.resolved) {
+      expect(resBody.outcome).toBe('hit');
+      expect(resBody.hadHatHit).toBe(true);
+    }
+  });
 });

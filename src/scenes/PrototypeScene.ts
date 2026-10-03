@@ -12,6 +12,7 @@ import { SceneryRenderer } from '../render/sceneryRenderer';
 import { TrailRenderer } from '../render/trailRenderer';
 import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
+import { ShotClassifier } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
   launchVelocityToWorld,
@@ -33,6 +34,7 @@ export class PrototypeScene extends Phaser.Scene {
   private htmlControls!: HTMLControls;
   private audioManager!: AudioManager;
   private reactionSelector = new JonhReactionSelector();
+  private classifier = new ShotClassifier();
 
   private sceneryRenderer!: SceneryRenderer;
   private cannonRenderer!: CannonRenderer;
@@ -200,6 +202,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setAngle(angle: number): void {
+    if (this.attemptMachine.state === 'simulating') return;
     if (this.attemptMachine.state === 'resolved') {
       this.reset();
     }
@@ -210,6 +213,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private setPower(power: number): void {
+    if (this.attemptMachine.state === 'simulating') return;
     if (this.attemptMachine.state === 'resolved') {
       this.reset();
     }
@@ -225,6 +229,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager.playCannonFire();
 
     this.attemptMachine.fire(this.currentAngleDeg, this.currentPowerPercent);
+    this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
     this.htmlControls.setFeedback('Cannonball in flight! Tracking...', 'simulating');
@@ -254,9 +259,11 @@ export class PrototypeScene extends Phaser.Scene {
   reset(): void {
     this.audioManager.unlock();
 
-    // 1. Remove projectile body
+    // 1. Remove projectile body and reset state
     this.physicsAdapter.removeProjectile();
+    this.classifier.reset();
     this.lastProjectileState = null;
+    this.groundFeedbackShown = false;
 
     // 2. Reset attempt state machine (preserves angle & power)
     this.attemptMachine.reset();
@@ -311,6 +318,7 @@ export class PrototypeScene extends Phaser.Scene {
             y: state.ySim,
             speed: state.speedMs,
             hitBody: state.hitJonh,
+            hitHat: state.hitHat,
           });
 
           if (result.resolved) {
@@ -359,49 +367,90 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private handleResolution(
-    result: { resolved: true; outcome: 'hit' | 'miss'; reason?: string },
+    result: { resolved: true; outcome: 'hit' | 'miss'; reason?: string; hadHatHit?: boolean },
     state: ProjectileState,
   ): void {
-    const isHit = result.outcome === 'hit';
+    // 1. Record contacts into ShotClassifier for pure classification
+    for (const obs of state.obstacleContacts) {
+      this.classifier.recordContact({
+        role: 'obstacle',
+        id: obs.id,
+        ricochet: obs.ricochet,
+      });
+    }
+    if (state.hitGround) {
+      this.classifier.recordContact({ role: 'ground' });
+    }
+    if (state.hitHat || result.hadHatHit) {
+      this.classifier.recordContact({ role: 'jonhHat' });
+    }
+    if (state.hitJonh) {
+      this.classifier.recordContact({ role: 'jonhBody' });
+    }
+    if (state.passedOverhead) {
+      this.classifier.recordOverhead();
+    }
 
-    // Play impact audio
-    if (isHit) {
+    const classification = this.classifier.classify(true);
+    const isBodyHit = classification.isHit; // true for body and ricochet_body
+
+    // 2. Play impact audio
+    if (isBodyHit) {
       this.audioManager.playImpact('body');
     }
 
-    // Classify shot outcome for player feedback
-    const classification = classifyShotOutcome(
-      isHit,
-      isHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
+    // 3. Select feedback and quote
+    const feedback = classifyShotOutcome(
+      isBodyHit,
+      isBodyHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
       BACKYARD_LEVEL.jonhSpawn.bodyBox.minX,
       BACKYARD_LEVEL.jonhSpawn.bodyBox.maxX,
+      {
+        classifiedOutcome: classification.outcome,
+        passedOverhead: state.passedOverhead,
+        obstacleContacts: state.obstacleContacts,
+      },
     );
-    const quote = this.reactionSelector.selectReaction(classification.category);
+    const quote = this.reactionSelector.selectReaction(feedback.category);
 
-    // Terminal landing position feedback
-    const landing = !isHit ? state.firstGroundContact : null;
+    // 4. Terminal landing position feedback
+    const landing = !isBodyHit ? state.firstGroundContact : null;
     this.trailRenderer.setLandingMarker(
-      landing?.xPx ?? state.xPx, landing?.yPx ?? state.yPx,
-      `${classification.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
+      landing?.xPx ?? state.xPx,
+      landing?.yPx ?? state.yPx,
+      `${feedback.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
     );
     this.inputCoordinator.setCanFire(false);
 
-    if (isHit) {
+    // 5. Trigger specific Jonh visual reaction and HTML feedback
+    if (isBodyHit) {
       this.jonhRenderer.triggerHit(state.impactSpeedMs, quote);
       this.htmlControls.setFeedback(
-        `${classification.label} · “${quote}”`,
+        `${feedback.label} (${classification.points} pts) · “${quote}”`,
         'hit',
       );
+    } else if (classification.outcome === 'hat_only') {
+      this.jonhRenderer.triggerHatHit(quote);
+      this.htmlControls.setFeedback(
+        `${feedback.label} (${classification.points} pts) · ${feedback.detail} Jonh: “${quote}”`,
+        'hit',
+      );
+    } else if (feedback.category === 'overhead') {
+      this.jonhRenderer.triggerOverhead(quote);
+      this.htmlControls.setFeedback(
+        `${feedback.label} · ${feedback.detail} Jonh: “${quote}”`,
+        'miss',
+      );
     } else {
-      const correction = classification.category === 'short'
+      const correction = feedback.category === 'short'
         ? this.currentPowerPercent === 100
           ? 'At full power, try an angle closer to 45°.'
           : 'Try a little more power at this angle.'
-        : classification.category === 'over'
+        : feedback.category === 'over'
           ? 'Try a little less power at this angle.'
-          : classification.detail;
+          : feedback.detail;
       this.htmlControls.setFeedback(
-        `${classification.label} · ${correction} Jonh: “${quote}”`,
+        `${feedback.label} · ${correction} Jonh: “${quote}”`,
         'miss',
       );
     }

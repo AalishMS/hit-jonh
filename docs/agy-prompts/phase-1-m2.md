@@ -1,0 +1,11 @@
+# Phase 1: finish M2
+
+The owner asked: "make a phase based plan + prompt for the remaining work. Then use the antigravity CLI through agy command to do them. For antigravity, models gemini flash 3.8 and gemini pro 3.1 are available choose whatever model you want for the task and use it with high effort. You are the main orchestrator here."
+
+You are the implementation worker; Codex is the lead. Read AGENTS.md, SPEC.md, docs/progress.md and docs/remaining-work-plan.md. Implement only Phase 1/M2 closure, no M3 maps or menus. The owner has resumed remaining work; appearance approval remains a playtest judgment.
+
+Complete actual contact propagation and pure classification for body (100 proposed MP points), ricochet body (125), hat-only (20), miss (0), highest only, body finalizes once. Preserve hit/miss compatibility where useful. Hat-only must wait until the shot ends; hat then body becomes body. Ground never qualifies for ricochet. Test obstacles through fixtures; eligibility stays per-level data and proposed.
+
+Wire hat removal/near miss and overhead newspaper/glaring reactions to the real shot loop. Keep Jonh collider stationary, impact speed from before bounce, first ground marker, prior aim/trail, independent cosmetic RNG, no consecutive dialogue repeats, immediate/skippable feedback and <=1.5s reactions. Record obstacle contacts for later Fence hit feedback. Reset all contact/classification/reaction state every attempt. Guard angle/power changes and fire by aiming state; shortcuts obey fresh press and text focus rules. No unrelated redesign or physics tuning.
+
+Add meaningful classification/hat-then-body/duplicate callbacks/reset and adapter integration regressions. Run npm run check and npm run build; provide exact summaries. Browser verify if available; otherwise say not verified and why. Update docs/progress.md honestly, including corrections to earlier completion claims. AGENTS.md rule 11 explicitly authorizes checkpoint verified work with Git: make a small local commit after checks pass. Include the plan/prompt documents in the initial checkpoint. No push or deployment. Leave hit-jonh-game-design.md untouched, preserve unrelated files. Report commit hash, changed files, test evidence, choices and remaining issues, then STOP so Codex can assess.

@@ -1,4 +1,6 @@
-export type ReactionCategory = 'hit' | 'short' | 'over' | 'miss';
+import { SCORING } from '../config/tuning';
+
+export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss';
 
 export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
   hit: [
@@ -7,6 +9,21 @@ export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
     'Right in the marmalade.',
     "I'm sure that violates local bylaws.",
     'Uncalled for, frankly.',
+  ],
+  hat: [
+    'Was that meant for me?',
+    'My hat!',
+    'Mind the haberdashery.',
+    'Close, but no tea.',
+  ],
+  overhead: [
+    'Low-flying iron today.',
+    'Going for the neighbours, are we?',
+    'Take your time. Apparently you need it.',
+    'Mind the gutters!',
+  ],
+  fence: [
+    'That was my good fence.',
   ],
   short: [
     'A bit short, was it not?',
@@ -71,20 +88,83 @@ export class JonhReactionSelector {
   }
 }
 
+export interface ShotOutcomeExtra {
+  classifiedOutcome?: 'ricochet_body' | 'body' | 'hat_only' | 'miss';
+  passedOverhead?: boolean;
+  obstacleContacts?: ReadonlyArray<{ id: string; ricochet: boolean }>;
+}
+
+export interface ClassifiedShotFeedback {
+  category: ReactionCategory;
+  label: string;
+  detail: string;
+  points: number;
+}
+
 /**
- * Classifies a shot outcome for readable player feedback (SPEC §3.1, §14).
+ * Classifies a shot outcome for readable player feedback (SPEC §3.1, §10.1, §14).
+ * Supports body, ricochet body, hat-only, obstacle/fence contacts, overhead, and short/over misses.
  */
 export function classifyShotOutcome(
   isHit: boolean,
   terminalXSim: number,
   jonhMinXSim: number,
   jonhMaxXSim: number,
-): { category: ReactionCategory; label: string; detail: string } {
-  if (isHit) {
+  extra?: ShotOutcomeExtra,
+): ClassifiedShotFeedback {
+  if (extra?.classifiedOutcome === 'ricochet_body') {
+    return {
+      category: 'hit',
+      label: 'RICOCHET HIT',
+      detail: 'Jonh was struck after a qualifying ricochet!',
+      points: SCORING.ricochetBodyPoints,
+    };
+  }
+
+  if (extra?.classifiedOutcome === 'body' || isHit) {
     return {
       category: 'hit',
       label: 'DIRECT HIT',
       detail: 'Jonh was struck directly!',
+      points: SCORING.bodyPoints,
+    };
+  }
+
+  if (extra?.classifiedOutcome === 'hat_only') {
+    return {
+      category: 'hat',
+      label: 'HAT HIT',
+      detail: 'Hat knocked off, but Jonh avoided the body hit.',
+      points: SCORING.hatOnlyPoints,
+    };
+  }
+
+  if (extra?.obstacleContacts && extra.obstacleContacts.length > 0) {
+    const isFence = extra.obstacleContacts.some((o) =>
+      o.id.toLowerCase().includes('fence'),
+    );
+    if (isFence) {
+      return {
+        category: 'fence',
+        label: 'FENCE HIT',
+        detail: 'Hit the fence before reaching Jonh.',
+        points: SCORING.missPoints,
+      };
+    }
+    return {
+      category: 'miss',
+      label: 'OBSTACLE HIT',
+      detail: 'Struck an obstacle before reaching Jonh.',
+      points: SCORING.missPoints,
+    };
+  }
+
+  if (extra?.passedOverhead) {
+    return {
+      category: 'overhead',
+      label: 'OVERHEAD',
+      detail: 'Cannonball sailed cleanly over Jonh.',
+      points: SCORING.missPoints,
     };
   }
 
@@ -93,6 +173,7 @@ export function classifyShotOutcome(
       category: 'short',
       label: 'SHORT',
       detail: 'Cannonball fell short before reaching Jonh.',
+      points: SCORING.missPoints,
     };
   }
 
@@ -101,6 +182,7 @@ export function classifyShotOutcome(
       category: 'over',
       label: 'OVER JONH',
       detail: 'Cannonball overshot and flew past Jonh.',
+      points: SCORING.missPoints,
     };
   }
 
@@ -108,5 +190,6 @@ export function classifyShotOutcome(
     category: 'miss',
     label: 'MISS',
     detail: 'Cannonball missed Jonh.',
+    points: SCORING.missPoints,
   };
 }

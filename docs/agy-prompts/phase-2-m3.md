@@ -1,0 +1,11 @@
+# Phase 2: M3 solo and maps
+
+Codex is the lead. Read AGENTS.md, SPEC.md, docs/progress.md and docs/remaining-work-plan.md. Implement only Phase 2/M3, preserving accepted M2 work. The owner's request authorizes sequential execution of remaining phases; defaults remain proposed.
+
+Create Fence Dispute and Rooftop Lunch as data-only levels with visible physical obstacles, centralized materials, scene arrival lines and referenceSolutions proven through the actual Matter adapter. Validate thickness and all spawns/bounds. Same cannon pivot; top viewport escape allowed. Keep current garden art readable on all maps; solid-looking playfield obstacles need matching collision.
+
+Implement main menu -> SoloSetup -> Aiming, pure three-attempt solo state machine, intermediate Result/Continue, SoloResult success or three misses, Retry and map selection without reload. Every map unlocked. Body or ricochet body succeeds immediately; hat-only does not. Stars 3/2/1 by successful attempt, separate ricochet style marker. Before every attempt reset all bodies, contacts, timers, events and reactions to level data, retaining solo per-map aim and last trail. Accept aim/fire only in aiming; never implicitly reset by editing a result screen. Continue must be immediate and fresh-press safe.
+
+Create defensive versioned hitJonh.v1 JSON storage for best results, solo aim and existing mute/settings. Migrate compatible existing mute storage, ignore malformed or unsupported data and guard storage access failures. Best is fewest shots and style is retained if ever earned; failure must not replace a best. Do not add MP, pause, practice or other deferred scope.
+
+Test challenge success/failure/retry/idempotency, all actual adapter reference solutions, level validation, persistence reload/corruption/access failures and reset. Browser check full solo loop if available; say not verified with reason for unavailable checks. Run npm run check and npm run build, report exact summaries. Update progress done/current/known issues/decisions/next task. AGENTS rule 11 authorizes a small local checkpoint commit after passing checks; no push/deploy. Leave design brief untouched and preserve unrelated changes. Report commit hash, changed files, evidence and remaining issues; STOP for lead acceptance.

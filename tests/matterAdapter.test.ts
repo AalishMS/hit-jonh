@@ -6,6 +6,7 @@ import { AIM, PHYSICS, PROJECTILE, WORLD } from '../src/config/tuning';
 import { launchVelocityToWorld, metresToPixels, simYToWorldY, powerToLaunchSpeed } from '../src/sim/units';
 import { FixedStepper } from '../src/sim/fixedStep';
 import { ShotAttemptMachine } from '../src/rules/shotAttempt';
+import { ShotClassifier } from '../src/sim/classification';
 
 describe('MatterAdapter', () => {
   function makeAdapter() {
@@ -207,5 +208,180 @@ describe('MatterAdapter', () => {
         }
       }
     }
+  });
+
+  it('detects hat sensor contact without reflecting projectile velocity', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+
+    // Hat is at x=17.7-18.3m, y=3.4-3.7m (projectile radius 0.15m -> center at 3.62m stays above bodyBox maxY 3.4m)
+    const startXPx = metresToPixels(17.0, 50);
+    const startYPx = simYToWorldY(3.62, 720, 50);
+
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, launchVelocityToWorld(20, 0, 50));
+    let state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+    for (let i = 0; i < 10; i++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+      if (state.hitHat) break;
+    }
+
+    expect(state.hitHat).toBe(true);
+    expect(state.hitJonh).toBe(false);
+    // Sensor collider does not reflect projectile velocity (still moving right, vx > 0)
+    expect(state.vxSim).toBeGreaterThan(0);
+  });
+
+  it('detects hat-then-body contact when trajectory cuts across both', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+
+    // Spawn right above hat angled downward into body
+    // Jonh hat: x=[17.7, 18.3], y=[3.4, 3.7]; body: y=[1.6, 3.4]
+    const startXPx = metresToPixels(17.8, 50);
+    const startYPx = simYToWorldY(3.8, 720, 50);
+
+    // Move straight down into hat and body
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, { x: 0, y: 15 });
+    let state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+    for (let i = 0; i < 10; i++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+      if (state.hitJonh) break;
+    }
+
+    expect(state.hitHat).toBe(true);
+    expect(state.hitJonh).toBe(true);
+  });
+
+  it('records obstacle contacts and ricochet eligibility from level fixture', () => {
+    const { engine, adapter } = makeAdapter();
+    const obstacleLevel = {
+      ...BACKYARD_LEVEL,
+      obstacles: [
+        {
+          id: 'test_fence',
+          box: { minX: 10.0, maxX: 10.4, minY: 1.6, maxY: 3.5 },
+          material: 'wood',
+          ricochet: true,
+        },
+      ],
+    };
+    adapter.setupLevel(obstacleLevel);
+
+    // Fire directly into the obstacle
+    const startXPx = metresToPixels(9.5, 50);
+    const startYPx = simYToWorldY(2.5, 720, 50);
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, launchVelocityToWorld(15, 0, 50));
+
+    let state = adapter.stepProjectile(obstacleLevel, PROJECTILE.radiusMetres)!;
+    for (let i = 0; i < 10; i++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      state = adapter.stepProjectile(obstacleLevel, PROJECTILE.radiusMetres)!;
+      if (state.obstacleContacts.length > 0) break;
+    }
+
+    expect(state.obstacleContacts.length).toBe(1);
+    expect(state.obstacleContacts[0]).toEqual({
+      id: 'test_fence',
+      ricochet: true,
+      material: 'wood',
+    });
+    expect(state.hadRicochetBeforeBody).toBe(true);
+  });
+
+  it('detects overhead pass when projectile clears Jonh without contact', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+
+    // Jonh is at x=17.6-18.4, hat top is at y=3.7m
+    // Pass at y=4.5m (well clear of hat and body)
+    const startXPx = metresToPixels(17.0, 50);
+    const startYPx = simYToWorldY(4.5, 720, 50);
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, launchVelocityToWorld(20, 0, 50));
+
+    let state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+    for (let i = 0; i < 10; i++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+      if (state.passedOverhead) break;
+    }
+
+    expect(state.passedOverhead).toBe(true);
+    expect(state.hitJonh).toBe(false);
+    expect(state.hitHat).toBe(false);
+  });
+
+  it('resets all contact and reaction state cleanly on removeProjectile', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+
+    // Cause a hit
+    adapter.spawnProjectile(850, 600, 7.5, { x: 80, y: 0 });
+    Matter.Engine.update(engine, 1000 / 120);
+    adapter.stepProjectile(BACKYARD_LEVEL, 0.15);
+
+    adapter.removeProjectile();
+    // Re-spawn clear projectile
+    adapter.spawnProjectile(100, 200, 7.5, { x: 5, y: 0 });
+    const fresh = adapter.stepProjectile(BACKYARD_LEVEL, 0.15)!;
+
+    expect(fresh.hitJonh).toBe(false);
+    expect(fresh.hitHat).toBe(false);
+    expect(fresh.passedOverhead).toBe(false);
+    expect(fresh.impactSpeedMs).toBe(0);
+    expect(fresh.obstacleContacts).toEqual([]);
+    expect(fresh.hadRicochetBeforeBody).toBe(false);
+  });
+
+  it('integrates adapter contacts, state machine, and pure classifier for full shot lifecycle', () => {
+    const { engine, adapter } = makeAdapter();
+    adapter.setupLevel(BACKYARD_LEVEL);
+    const machine = new ShotAttemptMachine(BACKYARD_LEVEL.bounds.maxX);
+    const classifier = new ShotClassifier();
+
+    // 1. Hat-only shot
+    machine.fire(45, 50);
+    const startXPx = metresToPixels(17.0, 50);
+    const startYPx = simYToWorldY(3.62, 720, 50);
+    adapter.spawnProjectile(startXPx, startYPx, 7.5, launchVelocityToWorld(20, 0, 50));
+
+    let resolved = false;
+    for (let step = 0; step < 120 && !resolved; step++) {
+      Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+      const state = adapter.stepProjectile(BACKYARD_LEVEL, PROJECTILE.radiusMetres)!;
+      if (state.hitHat) classifier.recordContact({ role: 'jonhHat' });
+      if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });
+      if (state.hitGround) classifier.recordContact({ role: 'ground' });
+      for (const obs of state.obstacleContacts) {
+        classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
+      }
+
+      const res = machine.step(PHYSICS.fixedStepSeconds, {
+        x: state.xSim,
+        y: state.ySim,
+        speed: state.speedMs,
+        hitBody: state.hitJonh,
+        hitHat: state.hitHat,
+      });
+
+      if (res.resolved) {
+        resolved = true;
+        const classification = classifier.classify(true);
+        expect(classification.outcome).toBe('hat_only');
+        expect(classification.points).toBe(20);
+        expect(classification.isHit).toBe(false);
+      }
+    }
+    expect(resolved).toBe(true);
+
+    // 2. Clean reset
+    adapter.removeProjectile();
+    machine.reset();
+    classifier.reset();
+    expect(classifier.hasHatHit).toBe(false);
+    expect(classifier.hasBodyHit).toBe(false);
+    expect(machine.state).toBe('aiming');
+    expect(machine.canFire).toBe(true);
   });
 });

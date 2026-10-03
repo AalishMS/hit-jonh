@@ -9,9 +9,10 @@ export interface ProjectileSnapshot {
   y: number;
   speed: number;
   hitBody: boolean;
+  hitHat?: boolean;
 }
 
 export type StepResult =
   | { resolved: false }
-  | { resolved: true; outcome: 'hit' }
-  | { resolved: true; outcome: 'miss'; reason: MissReason };
+  | { resolved: true; outcome: 'hit'; hadHatHit?: boolean }
+  | { resolved: true; outcome: 'miss'; reason: MissReason; hadHatHit?: boolean };

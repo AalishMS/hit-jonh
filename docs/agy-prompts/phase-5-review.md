@@ -1,0 +1,7 @@
+# Phase 5: independent release review
+
+Fresh read-only review for Codex, the main orchestrator. Read AGENTS.md, SPEC.md, docs/remaining-work-plan.md, docs/progress.md and docs/release-verification.md. Review all changes from baseline ec0e120 to current HEAD plus working tree. Fetch git diff/log/status yourself and read callers/surrounding code. Do not modify or commit files.
+
+Review correctness (game transitions, duplicate scoring, hat-then-body, real ricochet ordering, player counts/rotations, reset/rematch, pause/focus, storage failure, resource cleanup), repo standards (cited rules/module boundaries/fixed stepping/tuning), SPEC alignment (missing first-release requirements or unsupported completion claims), and security (names/storage/untrusted text sinks). Verify meaningful tests and browser evidence, noting scope limits. Prioritize realistic user-visible bugs and regressions; do not list stylistic preferences as requirements. Actual tests/checks may be run as needed.
+
+Return: Verdict approve/request changes/comment with justification; severity-ranked Findings each with file:line, short title, concrete trigger, impact and supporting evidence; What I could not verify (mandatory even if no findings). Ground never ricochet, no firing outside aiming, MP rounds complete all players, pause freezes timers, persisted defaults remain proposed. Do not assume subjective art/audio or hardware checks passed.

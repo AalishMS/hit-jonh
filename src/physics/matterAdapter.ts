@@ -1,6 +1,7 @@
 import Matter, { type Body, type World } from '@matter-js';
-import { MATERIALS, PHYSICS } from '../config/tuning';
+import { LOOK, MATERIALS, PHYSICS } from '../config/tuning';
 import type { LevelData } from '../levels/types';
+import type { Box2D } from '../sim/swept';
 import { sweepCircleVsBox } from '../sim/swept';
 import {
   metresToPixels,
@@ -20,9 +21,13 @@ export interface ProjectileState {
   vySim: number;
   speedMs: number;
   hitJonh: boolean;
+  hitHat: boolean;
   hitGround: boolean;
+  passedOverhead: boolean;
   impactSpeedMs: number;
   firstGroundContact: { xSim: number; xPx: number; yPx: number } | null;
+  obstacleContacts: Array<{ id: string; ricochet: boolean; material: string }>;
+  hadRicochetBeforeBody: boolean;
 }
 
 export class MatterAdapter {
@@ -34,10 +39,14 @@ export class MatterAdapter {
 
   private prevPosPx: { x: number; y: number } | null = null;
   private hasHitJonh = false;
+  private hasHitHat = false;
   private hasHitGround = false;
+  private passedOverhead = false;
   private previousVelocity = { x: 0, y: 0 };
   private impactSpeedMs = 0;
   private firstGroundContact: ProjectileState['firstGroundContact'] = null;
+  private obstacleContacts: Array<{ id: string; ricochet: boolean; material: string }> = [];
+  private hadRicochetBeforeBody = false;
 
   constructor(
     private readonly matterWorld: World,
@@ -159,9 +168,13 @@ export class MatterAdapter {
   ): Body {
     this.removeProjectile();
     this.hasHitJonh = false;
+    this.hasHitHat = false;
     this.hasHitGround = false;
+    this.passedOverhead = false;
     this.impactSpeedMs = 0;
     this.firstGroundContact = null;
+    this.obstacleContacts = [];
+    this.hadRicochetBeforeBody = false;
     this.previousVelocity = { ...launchVelocityWorld };
 
     this.projectileBody = Matter.Bodies.circle(startXPx, startYPx, radiusPx, {
@@ -196,23 +209,66 @@ export class MatterAdapter {
       y: worldYToSimY(currPx.y, this.worldHeightPx, this.pixelsPerMetre),
     };
 
-    // Gather solid colliders for sweeping
-    const boxes = [
+    // 1. Hat sensor sweep (sensor collider: does not reflect velocity or block projectile)
+    if (level.jonhSpawn.hatBox) {
+      const hatHit = sweepCircleVsBox(prevSim, currSim, radiusMetres, level.jonhSpawn.hatBox);
+      if (hatHit && hatHit.t <= 1) {
+        this.hasHitHat = true;
+      }
+    }
+
+    // 2. Overhead pass detection
+    const jonhMinX = level.jonhSpawn.bodyBox.minX;
+    const jonhMaxX = level.jonhSpawn.bodyBox.maxX;
+    const jonhTopY = level.jonhSpawn.hatBox?.maxY ?? level.jonhSpawn.bodyBox.maxY;
+    const maxOverheadY = jonhTopY + LOOK.overheadAltitudeMarginMetres;
+
+    const minXSeg = Math.min(prevSim.x, currSim.x);
+    const maxXSeg = Math.max(prevSim.x, currSim.x);
+    const crossesJonhX = maxXSeg >= jonhMinX && minXSeg <= jonhMaxX;
+    const isAboveJonh = currSim.y > jonhTopY && currSim.y <= maxOverheadY;
+
+    if (crossesJonhX && isAboveJonh) {
+      this.passedOverhead = true;
+    }
+
+    // 3. Gather solid colliders for sweeping
+    const boxes: Array<{
+      box: Box2D;
+      label: 'ground' | 'jonhBody' | 'obstacle';
+      material: string;
+      id?: string;
+      ricochet?: boolean;
+    }> = [
       { box: level.ground, label: 'ground', material: level.ground.material },
       { box: level.jonhSpawn.bodyBox, label: 'jonhBody', material: 'jonhBody' },
-      ...level.obstacles.map(o => ({ box: o.box, label: 'obstacle', material: o.material })),
+      ...level.obstacles.map((o) => ({
+        box: o.box,
+        label: 'obstacle' as const,
+        material: o.material,
+        id: o.id,
+        ricochet: o.ricochet,
+      })),
     ];
 
     let earliestHit: {
       hit: NonNullable<ReturnType<typeof sweepCircleVsBox>>;
-      boxLabel: string;
+      boxLabel: 'ground' | 'jonhBody' | 'obstacle';
       material: string;
+      id?: string | undefined;
+      ricochet?: boolean | undefined;
     } | null = null;
     for (const b of boxes) {
       const hit = sweepCircleVsBox(prevSim, currSim, radiusMetres, b.box);
       if (hit && hit.t <= 1) { // Accept t=0 if it's currently penetrating
         if (!earliestHit || hit.t < earliestHit.hit.t) {
-          earliestHit = { hit, boxLabel: b.label, material: b.material };
+          earliestHit = {
+            hit,
+            boxLabel: b.label,
+            material: b.material,
+            id: b.id,
+            ricochet: b.ricochet,
+          };
         }
       }
     }
@@ -230,6 +286,19 @@ export class MatterAdapter {
           xPx: metresToPixels(earliestHit.hit.point.x, this.pixelsPerMetre),
           yPx: simYToWorldY(level.ground.maxY, this.worldHeightPx, this.pixelsPerMetre),
         };
+      }
+      if (earliestHit.boxLabel === 'obstacle') {
+        const obsId = earliestHit.id ?? 'obstacle';
+        if (!this.obstacleContacts.some((o) => o.id === obsId)) {
+          this.obstacleContacts.push({
+            id: obsId,
+            ricochet: Boolean(earliestHit.ricochet),
+            material: earliestHit.material,
+          });
+        }
+        if (earliestHit.ricochet && !this.hasHitJonh) {
+          this.hadRicochetBeforeBody = true;
+        }
       }
       if (earliestHit.boxLabel === 'jonhBody') this.hasHitJonh = true;
       if (earliestHit.boxLabel === 'ground') this.hasHitGround = true;
@@ -294,9 +363,13 @@ export class MatterAdapter {
       vySim: vyMs,
       speedMs,
       hitJonh: this.hasHitJonh,
+      hitHat: this.hasHitHat,
       hitGround: this.hasHitGround,
+      passedOverhead: this.passedOverhead,
       impactSpeedMs: this.impactSpeedMs,
       firstGroundContact: this.firstGroundContact,
+      obstacleContacts: [...this.obstacleContacts],
+      hadRicochetBeforeBody: this.hadRicochetBeforeBody,
     };
   }
 
@@ -307,9 +380,13 @@ export class MatterAdapter {
     }
     this.prevPosPx = null;
     this.hasHitJonh = false;
+    this.hasHitHat = false;
     this.hasHitGround = false;
+    this.passedOverhead = false;
     this.impactSpeedMs = 0;
     this.firstGroundContact = null;
+    this.obstacleContacts = [];
+    this.hadRicochetBeforeBody = false;
   }
 
   clear(): void {

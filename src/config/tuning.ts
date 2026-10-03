@@ -84,6 +84,15 @@ export const LOOK = {
   hatFlightSeconds: 0.85,
   paperFlightSeconds: 1,
   impactFlashSeconds: 0.22,
+  overheadGlareSeconds: 1.2,
+  overheadAltitudeMarginMetres: 2.8,
+} as const;
+
+export const SCORING = {
+  ricochetBodyPoints: 125,
+  bodyPoints: 100,
+  hatOnlyPoints: 20,
+  missPoints: 0,
 } as const;
 
 export interface MaterialProps {

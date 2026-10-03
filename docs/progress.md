@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Current milestone
 
-**Current: Backyard appearance and feedback improvement pass.** Feature expansion is paused until the owner enjoys replaying this scene. M0/M1 and the existing M2 reaction/audio work are retained; this pass adds no maps or challenge rules.
+**Current: Phase 1 (M2 closure) completed; ready for Phase 2 (M3 solo play and three maps).** Appearance approval remains an owner playtest judgment; M2 contact propagation, pure classification, hat/overhead reactions, and state reset are now fully wired and verified.
 
 ## Completed
 
@@ -75,6 +75,33 @@ _Last updated: 2026-10-03_
   - **Browser Verification:**
     - Verified in Chrome via Chrome DevTools MCP: UI controls, projectile flight, direct hits (45° / 40% and 73° / 70%), short misses (60° / 10%), overshot misses (45° / 50%), ghost trajectory display, AudioContext unlock upon interaction, and mute toggle all visually and programmatically inspected.
 
+- **Phase 1 — finish M2 outcomes and reactions (2026-10-03):**
+  - **Correction of earlier completion claim:** Earlier M2 notes recorded hat-only and overhead reactions as deferred/unresolved, and pure 4-way classification (body, ricochet body, hat-only, miss) was incomplete. Phase 1 closes these gaps completely.
+  - **Pure Classification & Scoring Module (`src/sim/classification.ts`):**
+    - Implemented `ShotClassifier` and `classifyShot` without Phaser imports (SPEC §7.1, §13.2).
+    - Proposed points centralized in `src/config/tuning.ts`: `body` (100 pts), `ricochet_body` (125 pts), `hat_only` (20 pts), `miss` (0 pts).
+    - Highest outcome wins once. Body contact finalizes scoring immediately; duplicate callbacks cannot change or repeat it.
+    - Hat-only contact waits until shot ends (settled, out of bounds, timeout). Hat-then-body resolves to body (or ricochet body if ricochet surface hit prior).
+    - Ground never qualifies for ricochet. Obstacle contacts and ricochet flags are tracked.
+  - **Physics Adapter Contact Propagation (`src/physics/matterAdapter.ts`):**
+    - Swept-circle collision detection against hat sensor (does not reflect projectile velocity).
+    - Overhead pass detection when projectile crosses Jonh's column above his head/hat within `LOOK.overheadAltitudeMarginMetres`.
+    - Obstacle contacts recorded with IDs, materials, and ricochet eligibility from level data.
+    - Full state reset (`removeProjectile`, `clear`) clears all contact, overhead, and ricochet records.
+  - **Slapstick Reactions & Renderer (`src/render/jonhRenderer.ts`):**
+    - Authored hat removal / near-miss reaction: Jonh stays seated in deckchair, newspaper lowered in disbelief, hat spins off along parabolic arc, speech bubble pops.
+    - Authored overhead reaction: Jonh stays seated with hat on, newspaper lowered to lap, glares sharply leftwards towards cannon with side-eye pupils and furrowed brows.
+    - Strict invariant maintained: Jonh physics colliders remain 100% stationary throughout all animations.
+    - Reaction duration <= 1.5s, immediate and skippable.
+  - **Dialogue & Feedback (`src/rules/reactions.ts`):**
+    - Added SPEC §10.1 pools for `hat`, `overhead`, and `fence` ("That was my good fence.").
+    - Guaranteed non-repetition across consecutive shots using cosmetic RNG.
+    - Rich feedback banner displays category, points, and correction guidance.
+  - **Input & State Guards (`src/scenes/PrototypeScene.ts`, `src/input/controls.ts`):**
+    - Angle and power tweaks guarded during simulation.
+    - Fresh press and text-focus shortcut rules strictly verified across all keys.
+    - Scene reset clears all contact, classification, and reaction state every attempt.
+
 ## Decisions (implementer, delegated by owner)
 
 - **Stack: Phaser 4.2.1 + Matter.js 0.20 (bundled), TypeScript 6.0.3, Vite 8.3.2.** Chosen over plain canvas for scene/input/tween/audio/scaling support and rigid bodies for future props; pure-TS `sim/` keeps exact maths and testability. See SPEC §13.1.
@@ -85,14 +112,14 @@ _Last updated: 2026-10-03_
 - **Impulse range 24–80 N·s (6–20 m/s)** so shots fit a 25.6 m world — `[PROPOSED]`.
 - **Procedural Web Audio synthesis**: Synthesizing cannon boom, body hit bonk, and ground thud via Web Audio API oscillators and filtered noise buffers prevents missing asset load errors and provides instant, zero-latency feedback without extra network requests.
 - **Ground rolling damping 0.985**: Resolves Matter.js frictionless rolling of rigid circles on flat surfaces without adding any air drag during free flight.
+- **Scoring and ricochet rules (Phase 1):** Body (100 pts), ricochet body (125 pts), hat-only (20 pts), miss (0 pts). Ground is never eligible for ricochet. Obstacle ricochet eligibility is determined per level data `ricochet: boolean`.
 
 ## Known issues
 
 - Phaser chunk is ~1.43 MB (≈375 kB gzipped); acceptable for now, revisit in M5.
 - Audio requires an initial user interaction (click/touch/key) per browser autoplay policies; verified that audio initializes cleanly after the first gesture.
-
-- Hat sensor exists, but hat-only and overhead reactions are not wired into the current shot loop. Obstacle outcome labels cannot be manually exercised on the Backyard because it has no obstacles. These existing gaps remain outside this appearance pass.
-- Cosmetic aftermath continues on render time; physics remains fixed-step. Sound quality and whether the humour is satisfying still require owner playtesting. Browser tools verified controls/timing/console, not listening quality.
+- Obstacle outcome labels cannot be manually exercised in the Backyard map because it has no obstacles; verified via level fixture integration tests in Vitest.
+- Visual enjoyment, sound balance, and hardware touch testing remain owner judgments, never inferred from passing tests.
 
 ## Prototype improvement pass — 2026-10-03
 
@@ -104,8 +131,9 @@ _Last updated: 2026-10-03_
 - **Browser playtest:** before/after weak 45°/0% → short, steep 85°/100% → short, maximum 45°/100% → over, successful 45°/40% → direct hit. Retry restores Jonh and keeps settings/trail. Sliders freeze in flight; mute controls update. Production preview also exercised and had no warning/error console entries. Screenshots: [before](playtest/before.jpg), [after](playtest/after.jpg), [hit](playtest/hit.jpg). A transient dev HMR error occurred while editing a file and was corrected before the clean production replay.
 - **Responsive verification:** final production hit at 45°/40% survived resizing to 500×800 mid-flight; sliders and all actions fit that viewport. Saved [narrow-viewport screenshot](playtest/mobile.jpg). Restored the default viewport afterward. Exact landing-coordinate equality on a live resize was not measured; outcome/coordinates across both logical heights and three frame rates are covered by headless tests.
 - **Review:** independent code review found a hit label overlapping Jonh and missing existing miss commentary. Labels now occupy the clear ground strip; short/over/miss quotes are retained alongside correction advice. No remaining actionable physics/reset regression was found.
-- **Open judgments:** art direction is proposed rather than owner-approved. Owner should assess character size (especially on narrow screens), palette, reaction exaggeration, and audio balance on their normal device before expansion resumes. Manual frame-throttling and touch-device hardware tests have not been performed; frame scheduling and reframing were verified headlessly. Hat-only/overhead reactions remain unresolved as noted above.
+- **Open judgments:** art direction is proposed rather than owner-approved. Owner should assess character size (especially on narrow screens), palette, reaction exaggeration, and audio balance on their normal device before expansion resumes. Manual frame-throttling and touch-device hardware tests have not been performed; frame scheduling and reframing were verified headlessly. Hat-only/overhead reactions resolved in Phase 1 M2 closure.
 
 ## Next task
 
-**Owner playtest of this scene:** tune appearance and hit feel from feedback. M3 (solo/maps) stays paused until the existing loop is approved.
+**Phase 2: M3 Solo Challenge and Three Maps.** Add Fence Dispute and Rooftop Lunch map definitions/rendering, map selection, 3-attempt solo challenge rules, star ratings, style markers, and versioned `localStorage` persistence.
+
