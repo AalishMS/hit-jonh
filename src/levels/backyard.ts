@@ -43,6 +43,11 @@ export const BACKYARD_LEVEL: LevelData = {
     },
   ],
   arrivalLine: 'Much quieter here.',
+  multiplayerPositions: [
+    { id: 'near', offsetX: -3, referenceSolutions: [{ angleDeg: 65, powerPercent: 31 }] },
+    { id: 'middle', offsetX: 0, referenceSolutions: [{ angleDeg: 65, powerPercent: 38 }] },
+    { id: 'far', offsetX: 3, referenceSolutions: [{ angleDeg: 65, powerPercent: 58 }] },
+  ],
   referenceSolutions: [
     { angleDeg: 45, powerPercent: 40 },
     { angleDeg: 65, powerPercent: 55 },

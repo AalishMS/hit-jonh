@@ -5,6 +5,7 @@ import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
 import { MAPS } from '../levels';
+import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
 import { CannonRenderer } from '../render/cannonRenderer';
@@ -62,6 +63,7 @@ export class PrototypeScene extends Phaser.Scene {
   private classifier = new ShotClassifier();
 
   private currentLevel!: LevelData;
+  private multiplayerPositionKey = '';
   private sceneryRenderer!: SceneryRenderer;
   private cannonRenderer!: CannonRenderer;
   private slotsRenderer: CannonSlotsRenderer | null = null;
@@ -703,7 +705,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.autoAdvance.cancel();
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
-    this.currentLevel = level;
+    this.currentLevel = levelAtMultiplayerPosition(level, this.multiMachine.activePositionId);
+    this.multiplayerPositionKey = `${mapId}:${this.multiMachine.activePositionId}`;
 
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
@@ -784,7 +787,8 @@ export class PrototypeScene extends Phaser.Scene {
 
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
-    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount}`,
+    if (match.state === 'handover') this.applyMultiplayerPosition();
+    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
       match.players, match.state === 'result' ? match.lastShooterIndex : match.activePlayerIndex);
     if (match.state === 'handover') {
       const player = match.activePlayer;
@@ -810,7 +814,8 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
-      this.htmlControls.setFeedback(`${match.activePlayer.name}'s turn (Shot ${match.activePlayerShotNumber + 1}/${MULTIPLAYER.shotsPerRound})`, 'info');
+      const movement = match.activeCycleIndex > 0 ? ' · Jonh has moved—adjust your aim' : '';
+      this.htmlControls.setFeedback(`${match.activePlayer.name}'s turn · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}${movement}`, 'info');
     } else if (match.state === 'round_result') {
       this.htmlControls.setControlsInert(true);
       this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount);
@@ -825,6 +830,28 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     }
+  }
+
+  /** Called only at handover; results and live shots retain their original colliders. */
+  private applyMultiplayerPosition(): void {
+    const match = this.multiMachine;
+    const key = `${match.currentMapId}:${match.activePositionId}`;
+    if (key === this.multiplayerPositionKey) return;
+    const base = MAPS.find(level => level.id === match.currentMapId)!;
+    this.currentLevel = levelAtMultiplayerPosition(base, match.activePositionId);
+    this.multiplayerPositionKey = key;
+    this.physicsAdapter.clear();
+    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.stepper.reset();
+    this.classifier.reset();
+    this.lastProjectileState = null;
+    this.ballRenderer.setVisible(false);
+    this.sceneryRenderer.draw(this.currentLevel);
+    this.jonhRenderer.destroy();
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
+      WORLD.pixelsPerMetre, WORLD.designHeightPx);
+    this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
+    this.jonhRenderer.draw(false);
   }
 
   private beginMultiplayerTurn(): void {

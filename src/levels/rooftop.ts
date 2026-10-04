@@ -48,6 +48,11 @@ export const ROOFTOP_LEVEL: LevelData = {
     }
   ],
   arrivalLine: 'Much quieter here.',
+  multiplayerPositions: [
+    { id: 'near', offsetX: -2, referenceSolutions: [{ angleDeg: 65, powerPercent: 56 }] },
+    { id: 'middle', offsetX: 0.5, referenceSolutions: [{ angleDeg: 75, powerPercent: 81 }] },
+    { id: 'far', offsetX: 3, referenceSolutions: [{ angleDeg: 65, powerPercent: 68 }] },
+  ],
   referenceSolutions: [
     { angleDeg: 45, powerPercent: 50 },
   ],

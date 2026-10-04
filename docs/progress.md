@@ -262,3 +262,21 @@ Independent code review found the keyboard Home regression and verified the corr
 
 See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger character animation/recorded vocals, richer obstacle layouts and optional practice mode. Current owner-requested functionality is complete; sensory playtesting can inform later tuning.
 
+## Multiplayer target cycles — 2026-10-04
+
+**Done/current:** Implemented the approved repeat-hit farming fix. Every map has three authored horizontal positions, independently shuffled without replacement for matches/rematches. Everyone faces the same position within a shot cycle. Jonh stays at the finished shot's position during results and relocates only at the next cycle's handover. Reset/pause do not change the schedule. Saved personal aim/trails remain; status shows the cycle and asks players to adjust after movement. Solo, scoring, obstacles and physics are unchanged. The schedule is match-local, with no save migration. SPEC records the new scene-reset exception.
+
+**Positions and decisions:** Backyard centres 15/18/21 m; Fence 14/17/20 m; Rooftop 16/18.5/21 m. Each effective level supplies matching renderer, Matter and swept geometry without modifying the base map. The tea table is placed to Jonh's left at the far Rooftop position so it stays on the roof. Each position has a physics-proven reference shot that misses both alternatives. Movement does not force misses: incidental rolling/ricochet hits at multiple positions are still possible under the unchanged physics rules.
+
+**Automated evidence:** Final `npm run check` passed typecheck/lint and **23 files / 155 tests**, Vitest duration **1.66 s**. Final `npm run build` passed: **68 modules transformed / 765 ms**. Added 15 tests covering N=2/3/4 cycle fairness, stable result positions, duplicate scoring, reset and pause/resume stability, injected shuffle randomness, selected-map rematch reshuffling, all nine supported/in-bounds/clear target positions, immutable base data and reference-shot cross-position replays. The initial sandboxed full check encountered the known Vitest worker temporary-cache ENOENT; the unchanged required command passed outside the sandbox. Node emitted its experimental localStorage warning during tests.
+
+**Production browser evidence:** Walkthrough at `http://127.0.0.1:4175` using `npm run preview`:
+
+- Rooftop-only six-shot match used near → far → middle positions. Both players hit near at 65°/56%; Player 1 repeated that aim at far after reset and pause/resume, missed and retained 100 points. Player 2 adjusted to 65°/68% and hit far. Middle reference 75°/81% hit for both. Final result was Player 2 350 points/3 hits, Player 1 225 points/2 hits. Rematch retained Rooftop/aim, cleared scores and returned to cycle 1.
+- After loading the final build, completed an 18-shot three-map tour. Backyard sequence far → near → middle; Fence far → middle → near; Rooftop middle → far → near. Observed all three cycles and alternating players, with Player 2 starting Fence and Player 1 starting Rooftop. Scores stayed equal at round boundaries: 250 → 575 → 925 each; final shared win with eight hits each (both first Backyard shots deliberately missed). Jonh/scenery remained aligned with the visible hit locations, each player's own trail persisted, and map transitions cleared old map trails.
+- Final Rooftop far screenshot verified the corrected tea table stays on the roof. Final tour rematch restored Backyard round 1/cycle 1, zero scores and saved 65°/56% aim. Captured browser warning/error logs were empty.
+
+**Review/known issues:** Independent code review found no blocking correctness issues; the rooftop scenery finding was corrected and re-reviewed. Full three/four-player browser matches, hardware touch and sensory/performance testing were not repeated in this pass; N=3/4 rule behavior is covered by automated tests. Visual enjoyment and target-difficulty balance still require owner playtesting.
+
+**Next task:** Owner playtest of target positions; no further gameplay changes are included in this milestone.
+

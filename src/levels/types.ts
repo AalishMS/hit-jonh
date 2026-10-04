@@ -21,6 +21,12 @@ export interface ReferenceSolution {
   powerPercent: number;
 }
 
+export interface MultiplayerPosition {
+  id: string;
+  offsetX: number;
+  referenceSolutions: ReferenceSolution[];
+}
+
 export interface LevelData {
   id: string;
   name: string;
@@ -30,5 +36,6 @@ export interface LevelData {
   jonhSpawn: JonhSpawnData;
   obstacles: ObstacleData[];
   referenceSolutions: ReferenceSolution[];
+  multiplayerPositions?: MultiplayerPosition[];
   arrivalLine?: string;
 }

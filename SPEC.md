@@ -76,7 +76,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; moving Jonh; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
 
 ## 5. Solo rules
 
@@ -95,6 +95,8 @@ Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extr
 - **Map selection [DECIDED]:** Available in multiplayer setup. **Format [PROPOSED]:** Choose a single-map match (one round) or the default three-map tour, Backyard → Fence → Rooftop. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
 - Starting player rotates between rounds: round *r* (0-based) starts with player index `r mod N`. **[DECIDED principle, PROPOSED formula]**
 - A round always completes every player's shots, even after an early hit. **[DECIDED]**
+- **Target cycles (owner-approved 4 October 2026) [DECIDED]:** Each round has three shot cycles, one shot per player per cycle. Jonh stays at the same position for every player in that cycle and throughout each shot's result/reaction. At handover into the next cycle he relocates to a different authored position. Each map's three positions are shuffled independently without replacement at match creation and rematch; the schedule is held in match memory, never in save data. Resetting aim and pausing do not change it. Solo remains unchanged.
+- Multiplayer target centres are Backyard **15, 18, 21 m**, Fence **14, 17, 20 m**, Rooftop **16, 18.5, 21 m**. Horizontal body/hat offsets and tested reference shots live in level data. Height, dimensions, obstacles, scoring and physics stay unchanged. Saved aim and personal trails persist as adjustment aids; cycle status explains that Jonh has moved. **[DECIDED]**
 - A brief handover screen names the next player, then automatically opens aiming; Ready now skips the wait. Their saved settings and last trail load automatically. Scores remain visible in the control strip.
 - Players **can** learn from each other's shots; this is intended. **[DECIDED]**
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
@@ -119,6 +121,8 @@ Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extr
 ### 7.2 Scene reset [DECIDED principle]
 
 Before **every** attempt (solo and MP): remove live projectiles, restore Jonh, hat, and every prop/obstacle to level-data spawn state, clear pending timers and score events from the previous shot. Preserve: each player's angle/power, each player's last trail and landing marker, scores. The map is unchanged within a round.
+
+**Multiplayer exception [DECIDED]:** Jonh and his nearby decorative scenery reset to the active cycle's authored position, rather than the solo spawn. The effective level is shared by rendering, Matter colliders and swept collision detection; original level data is never mutated. Position changes happen only in handover after all players complete the preceding cycle.
 
 **Restart / rematch:** clears all live bodies, timers, pending events, and scores; keeps player names, colours and aim settings **[PROPOSED]**.
 
@@ -347,7 +351,7 @@ Fence and Rooftop maps, map select, three-attempt challenge, stars, best results
 Player setup (2–4), handover, rotating order, scene reset, scores, round/match results, rematch.
 - For N = 2, 3, 4: every player fires exactly 3 shots per round × 3 rounds; start player rotates (automated).
 - No out-of-turn firing; no double scoring; tie-breaks correct (automated).
-- Scene reset restores identical spawn state before every shot (automated comparison of body states).
+- Scene reset restores identical spawn state within each target cycle; all players face the same position and three distinct positions occur per round (automated). Every authored position is supported, clear, in bounds and has a verified reference shot. Replaying reference shots against other positions checks repeat-hit farming.
 - Rematch starts clean (scores, timers, bodies) with settings kept (automated + manual).
 
 ### M5 — Polish and release readiness

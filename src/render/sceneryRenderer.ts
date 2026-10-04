@@ -56,9 +56,13 @@ export class SceneryRenderer {
     this.graphics.fillRect(0, groundTopPx - 12, this.worldWidthPx, 12);
 
     // A little afternoon context, placed behind Jonh's chair.
-    // Only draw the tea table if Jonh is on the ground (no building obstacle under him)
     const jonhX = metresToPixels((level.jonhSpawn.bodyBox.minX + level.jonhSpawn.bodyBox.maxX) / 2, this.ppm);
     const jonhBaseWorldPx = simYToWorldY(level.jonhSpawn.bodyBox.minY, this.worldHeightPx, this.ppm);
+    const support = level.obstacles.find(o => o.box.maxY === level.jonhSpawn.bodyBox.minY &&
+      o.box.minX <= level.jonhSpawn.bodyBox.minX && o.box.maxX >= level.jonhSpawn.bodyBox.maxX);
+    // Keep the table on the roof when Jonh sits near its right edge.
+    const tableAnchorX = support && jonhX + 107 > metresToPixels(support.box.maxX, this.ppm)
+      ? jonhX - 175 : jonhX;
     
     // Draw obstacles before ground so ground overlays bottom slightly if needed, or after ground?
     // Let's draw obstacles after ground divider.
@@ -133,14 +137,14 @@ export class SceneryRenderer {
     this.graphics.fillEllipse(jonhX + 8, jonhBaseWorldPx + 3, 120, 12);
     this.graphics.fillEllipse(125, groundTopPx + 3, 90, 12); // cannon shadow
     this.graphics.lineStyle(3, LOOK.wood);
-    this.graphics.lineBetween(jonhX + 75, jonhBaseWorldPx, jonhX + 75, jonhBaseWorldPx - 31);
-    this.graphics.lineBetween(jonhX + 99, jonhBaseWorldPx, jonhX + 99, jonhBaseWorldPx - 31);
+    this.graphics.lineBetween(tableAnchorX + 75, jonhBaseWorldPx, tableAnchorX + 75, jonhBaseWorldPx - 31);
+    this.graphics.lineBetween(tableAnchorX + 99, jonhBaseWorldPx, tableAnchorX + 99, jonhBaseWorldPx - 31);
     this.graphics.fillStyle(LOOK.wood);
-    this.graphics.fillRoundedRect(jonhX + 68, jonhBaseWorldPx - 35, 39, 5, 2);
+    this.graphics.fillRoundedRect(tableAnchorX + 68, jonhBaseWorldPx - 35, 39, 5, 2);
     this.graphics.fillStyle(LOOK.paper);
-    this.graphics.fillRoundedRect(jonhX + 78, jonhBaseWorldPx - 48, 13, 13, 2);
+    this.graphics.fillRoundedRect(tableAnchorX + 78, jonhBaseWorldPx - 48, 13, 13, 2);
     this.graphics.lineStyle(2, LOOK.paper);
-    this.graphics.strokeCircle(jonhX + 93, jonhBaseWorldPx - 42, 4);
+    this.graphics.strokeCircle(tableAnchorX + 93, jonhBaseWorldPx - 42, 4);
 
   }
 

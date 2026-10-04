@@ -1,5 +1,6 @@
 import { AIM, MULTIPLAYER, SCORING } from '../config/tuning';
 import type { ClassifiedOutcome } from '../sim/classification';
+import { MAPS } from '../levels';
 
 export type MPState = 'handover' | 'aiming' | 'simulating' | 'result' | 'round_result' | 'match_result';
 
@@ -55,13 +56,16 @@ export class MultiplayerMatchMachine {
   private _roundIndex = 0;
   private _shotIndex = 0; // 0 to (shotsPerRound * players - 1)
   private _shooterIndex: number | null = null;
+  private positionSchedules: string[][] = [];
 
-  constructor(setups: readonly MPPlayerSetup[], private readonly maps: readonly string[] = MP_MAPS) {
+  constructor(setups: readonly MPPlayerSetup[], private readonly maps: readonly string[] = MP_MAPS,
+    private readonly random: () => number = Math.random) {
     if (maps.length === 0 || maps.length > MP_MAPS.length ||
       new Set(maps).size !== maps.length || maps.some(id => !MP_MAPS.includes(id))) {
       throw new RangeError('Choose one or more distinct supported maps');
     }
     this.maps = [...maps];
+    this.shufflePositions();
     if (setups.length < MULTIPLAYER.minPlayers || setups.length > MULTIPLAYER.maxPlayers) {
       throw new RangeError(
         `Multiplayer needs ${MULTIPLAYER.minPlayers}..${MULTIPLAYER.maxPlayers} players, got ${setups.length}`,
@@ -94,6 +98,31 @@ export class MultiplayerMatchMachine {
   get roundIndex(): number { return this._roundIndex; }
   get currentMapId(): string { return this.maps[this._roundIndex] ?? this.maps[0]!; }
   get roundCount(): number { return this.maps.length; }
+
+  /** Resolution advances the turn counter; keep the finished position until handover. */
+  get activeCycleIndex(): number {
+    const shotIndex = this._state === 'result' ? this._shotIndex - 1 : this._shotIndex;
+    return Math.min(MULTIPLAYER.shotsPerRound - 1, Math.floor(shotIndex / this._players.length));
+  }
+
+  get activePositionId(): string {
+    const round = Math.min(this._roundIndex, this.maps.length - 1);
+    return this.positionSchedules[round]![this.activeCycleIndex]!;
+  }
+
+  private shufflePositions(): void {
+    this.positionSchedules = this.maps.map(mapId => {
+      const ids = MAPS.find(level => level.id === mapId)?.multiplayerPositions?.map(p => p.id);
+      if (!ids || ids.length !== MULTIPLAYER.shotsPerRound || new Set(ids).size !== ids.length) {
+        throw new RangeError(`Map ${mapId} needs one distinct position per shot cycle`);
+      }
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(this.random() * (i + 1));
+        [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+      }
+      return ids;
+    });
+  }
 
   // Who is currently shooting?
   get activePlayerIndex(): number {
@@ -208,6 +237,7 @@ export class MultiplayerMatchMachine {
     this._roundIndex = 0;
     this._shotIndex = 0;
     this._shooterIndex = null;
+    this.shufflePositions();
     for (const p of this._players) {
       p.totalScore = 0;
       p.bodyHits = 0;
