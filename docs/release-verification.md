@@ -62,3 +62,9 @@ Fresh independent AGY Pro High review approved the change, but overstated scene-
 - Browser walkthroughs cover the recorded cases, not every possible input sequence. Three/four-player full matches and all scoring tie variants are covered by pure tests rather than complete browser matches.
 
 The requested dev server remains available at http://localhost:5173. No implementation task remains in the requested scope; optional owner playtest can inform later tuning without treating proposed values as approved.
+
+## Usability pass verification — 4 October 2026
+
+The owner's new requirements supersede the manual Continue/default-map assumptions in the historical walkthrough above. Current production walkthrough: automatic two-player single-map match, all six alternating shots, clean selected-map rematch, solo automatic miss/hit/result/retry, canvas drag and flight lock, pause/resume, keyboard Home and Home during flight, and 500×800 four-player setup without horizontal overflow. Full details and final check/build summaries are in `docs/progress.md`; the remaining-work assessment is in `docs/game-audit.md`.
+
+The new home preview is `docs/hit-jonh-home.png`. Audio is synthesized, with hit yelps and a FAAH cue at visible canvas exits. Audible quality/balance and physical touch remain not verified. The current production preview is served at `http://127.0.0.1:4173`.

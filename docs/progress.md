@@ -1,12 +1,22 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-03_
+_Last updated: 2026-10-04_
 
 ## Current milestone
 
-**Current: M0–M5 implemented and accepted; all five remaining-work phases complete.** Lead acceptance covered production solo and multiplayer flows, pause/resume/quit, persisted settings, keyboard controls, narrow layout, boot failure/retry and Change Map navigation. Final `npm run check`: typecheck/lint passed, 19 test files and 129 tests passed (1.03s). Final `npm run build`: 64 modules transformed, built in 861ms. Browser coverage and unverified hardware/sensory checks are separated in `docs/release-verification.md`.
+**Current: Owner-requested usability pass complete on the M0–M5 foundation.** Canvas aiming, automatic shot/turn progression, an obstacle on every map, vocal sound effects, illustrated Home, gameplay Home navigation and multiplayer arena selection are implemented. Final `npm run check`: typecheck/lint passed, **21 test files / 140 tests passed** (1.28s). `npm run build`: **67 modules transformed, built in 1.15s**. Production browser verification is recorded below. The prior M0–M5 release evidence remains historical; it did not establish the subjective completeness of the UI or game feel. See `docs/game-audit.md` for the current remaining-work assessment.
 
 ## Completed
+
+- **Owner usability pass (2026-10-04):**
+  - Added pointer-captured vertical canvas aiming, including touch pointers; sliders and keyboard remain available. Aiming locks during shots, overlays and pause; active drags cancel on firing/pause/Home/window blur.
+  - Added a cancellable presentation timer: 1.4 s reaction/result, 1.2 s named handover, 2.4 s round summary. Pause freezes the timer; manual skip, Home, map changes and rematch cancel obsolete work. Final solo/match screens remain for retry/rematch.
+  - Confirmed the existing pure match rules already alternate players. Made the actual flow automatic and added an active-player/score strip. Multiplayer arena cards select one map (one round) or the three-map tour. Round counts, score arrays and rematch use the selected map list.
+  - Added a collidable garden shed to Backyard and windows/floors to the existing Rooftop building. Removed one obsolete low-angle Backyard reference; retained two proven arc solutions. New actual-Matter tests confirm all maps block a low maximum-power shot.
+  - Added alternating synthesized vocal yelps on body hits and a voiced/noise FAAH once per shot when the ball leaves any visible edge; top exits remain simulated normally. All effects share existing mute/volume controls.
+  - Rebuilt Home, mode selection, map cards, player setup and gameplay controls with a coherent ink/mint/indigo/yellow cartoon style. Added gameplay Home (also visible over game overlays) and keyboard focus containment for menus.
+  - Independent code review found a keyboard navigation regression: Space on Home could fire. Fixed native Enter/Space activation on non-Fire buttons, preserving physical Space tracking and Fire's fresh-release guard; added a regression test. Follow-up review reported no remaining actionable findings.
+  - Tests cover drag direction/range/resize maths, timer pause/cancel/one-time dispatch/background delay, selected-map alternation/rematch/validation, obstacle blockage, physics reset body counts and keyboard navigation. No dependency changes.
 
 - **M5 (2026-10-03): Polish and readiness.**
   - **Pure Session Coordinator (`src/rules/sessionCoordinator.ts`):** Framework-agnostic pause/resume/quit helper with pausable evaluation per SPEC §12 and accumulator resets at both boundaries. The scene directly gates its fixed-step and cosmetic update paths on pause/inactive state; helper advancement tests do not instantiate Phaser.
@@ -203,7 +213,7 @@ _Last updated: 2026-10-03_
 
 ## Next task
 
-No implementation task remains in the requested M0–M5 scope. Owner playtest for feel, sound balance and physical touch is the next optional validation; deferred SPEC features require a new request.
+Complete owner playtesting of pacing, audio and physical touch. Suggested next implementation: an interactive aiming tutorial, then more expressive character animation/recorded vocals and richer obstacle layouts. Optional practice mode remains deferred until requested. See `docs/game-audit.md`.
 
 ## Lead acceptance evidence — 2026-10-03
 
@@ -224,4 +234,31 @@ No implementation task remains in the requested M0–M5 scope. Owner playtest fo
 - **Environment and limits:** Requested dev server remains on port 5173. Captured normal browser warning/error logs were empty. Hardware/sensory/performance limits are listed above and in `docs/release-verification.md`.
 
 
+
+
+
+## Owner usability pass — 2026-10-04
+
+This pass implements the requested controls, pacing, obstacles, audio triggers, navigation and multiplayer setup changes. SPEC v0.2 records the owner-directed changes. No deferred gameplay systems were added.
+
+Automated evidence on the final functional source: `npm run check` passed typecheck/lint and **21 files / 140 tests**, in 1.28 s. `npm run build` passed, **67 modules transformed / 1.15 s**. An initial sandbox run could not share Vitest's temporary cache across workers (ENOENT); the normal command passed outside the sandbox. No test configuration or dependency was changed.
+
+Production browser walkthrough used the in-app browser at `http://127.0.0.1:4173`, served by `npm run preview`:
+
+| Case | Observed result |
+| --- | --- |
+| Home and mode/menu flow | Illustrated Home → Let's play → mode cards → solo/map selection or multiplayer setup. Saved screenshot: `docs/hit-jonh-home.png`. |
+| Canvas drag | Upward drag changed 45° → 61°; downward drag restored 45° in dev. Upward drag also changed 45° → 61° in production. A drag during an 85° shot left angle locked at 85°. |
+| Selected multiplayer map | Chose Rooftop only; gameplay showed Round 1/1. |
+| Automatic multiplayer flow | Played all six shots without Continue: Ace 1 → Bo 1 → Ace 2 → Bo 2 → Ace 3 → Bo 3. Automatic round summary/final result showed shared win, 375 points and three body hits each. |
+| Rematch | Retained Rooftop and player names/settings; reset both scores to zero and started Ace's shot 1/3. |
+| Keyboard Home | Enter on gameplay Home opened Home without firing. Space on Home also opened Home without firing. |
+| Solo automatic continuation | A 0% Fence miss automatically restored aiming with two attempts left. A 45° / 24% hit then automatically showed a two-star solo result. Retry restored three attempts, retaining 45° / 24%. Best two-shot/style result appeared in map selection. |
+| Pause | Paused the first solo shot in flight. After other work, the pause screen remained. Resume continued the same first attempt; no extra shot was consumed. Presentation timer pause/cancel behavior also has pure tests. |
+| Home during flight | Fired an 85° / 100% shot and immediately returned Home. Gameplay controls disappeared and no next turn/result displaced Home. |
+| Narrow layout | At 500×800, document/client/scroll width all equalled 500; canvas stayed logically 1280×560; gameplay action buttons measured 44 px high. Four-player setup retained all labelled names/patterns and map choices in a vertically scrolling panel, with no horizontal overflow. Viewport override reset afterwards. |
+
+Independent code review found the keyboard Home regression and verified the correction. Browser warning/error logs were empty in the recorded production flow. That does not verify audio balance: actual listening quality, physical touch hardware, hardware stress/performance and long-session memory profiling remain **not verified**. Full three/four-player browser matches were not replayed in this pass; the N=2/3/4 rule tests cover alternating order/counts and the earlier three-map browser walkthrough remains historical evidence.
+
+See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger character animation/recorded vocals, richer obstacle layouts and optional practice mode. Current owner-requested functionality is complete; sensory playtesting can inform later tuning.
 
