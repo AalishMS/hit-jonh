@@ -1,5 +1,6 @@
 import { MAPS } from '../levels';
 import { MULTIPLAYER } from '../config/tuning';
+import { HOME_ILLUSTRATION, MAP_DESCRIPTIONS, mapPreview } from './mapPreview';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
@@ -8,7 +9,7 @@ export interface MenuCallbacks {
   onMapSelected: (mapId: string) => void;
   onRetry: () => void;
   onReturnToMenu: () => void;
-  onStartMultiplayer?: (players: MPPlayerSetup[]) => void;
+  onStartMultiplayer?: (players: MPPlayerSetup[], maps: string[]) => void;
   onMultiplayerHandoverContinue?: () => void;
   onMultiplayerNextRound?: () => void;
   onMultiplayerRematch?: () => void;
@@ -17,7 +18,7 @@ export interface MenuCallbacks {
   onSettingsChange?: (settings: { muted: boolean; volume: number; reducedMotion: boolean }) => void;
 }
 
-export type MenuOverlayView = 'none' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause';
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause';
 
 export class MenuOverlay {
   private container: HTMLElement;
@@ -28,6 +29,17 @@ export class MenuOverlay {
   constructor(private parentElement: HTMLElement, private callbacks: MenuCallbacks) {
     this.container = document.createElement('div');
     this.container.className = 'menu-overlay';
+    this.container.setAttribute('role', 'dialog');
+    this.container.setAttribute('aria-modal', 'true');
+    this.container.setAttribute('aria-label', 'Hit Jonh menu');
+    this.container.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const focusable = [...this.content.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select')];
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    });
     
     this.content = document.createElement('div');
     this.content.className = 'menu-content';
@@ -42,6 +54,27 @@ export class MenuOverlay {
       this.clickAbortController = null;
     }
     this.content.innerHTML = '';
+    this.content.className = `menu-content view-${this.currentView}`;
+  }
+
+  showHome(): void {
+    this.currentView = 'home';
+    this.container.style.display = 'flex';
+    this.clear();
+    this.clickAbortController = new AbortController();
+    this.content.innerHTML = `<div class="home-copy">
+      <span class="eyebrow">A perfectly ordinary afternoon.</span>
+      <h1>HIT<br><span>JONH.</span></h1>
+      <p>He just wants to read the paper.<br>You have a cannon. Work it out.</p>
+      <button class="btn btn-primary" data-action="play">Let's play ↗</button>
+      <button class="btn btn-quiet" data-action="settings">Sound & settings</button>
+      <div class="home-note">Solo challenges · 2–4 friends · One very annoyed man</div>
+    </div><div class="home-art">${HOME_ILLUSTRATION}<span class="jonh-aside">“Lovely. A cannon.”</span></div>`;
+    this.content.querySelector('[data-action="play"]')?.addEventListener('click', () => this.showMainMenu(),
+      { signal: this.clickAbortController.signal });
+    this.content.querySelector('[data-action="settings"]')?.addEventListener('click', () => this.showSettings(),
+      { signal: this.clickAbortController.signal });
+    this.content.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus();
   }
 
   getView(): MenuOverlayView {
@@ -59,18 +92,18 @@ export class MenuOverlay {
     this.clickAbortController = new AbortController();
 
     const title = document.createElement('h1');
-    title.textContent = 'Hit Jonh';
+    title.textContent = 'Pick your trouble.';
     this.content.appendChild(title);
 
     const btnSolo = document.createElement('button');
-    btnSolo.className = 'btn';
-    btnSolo.textContent = 'Solo Challenge';
+    btnSolo.className = 'btn mode-card';
+    btnSolo.innerHTML = '<span class="mode-symbol">↗</span><strong>Solo Challenge</strong><small>Three shots. One peaceful afternoon to ruin.</small>';
     btnSolo.addEventListener('click', () => this.showMapSelect(), { signal: this.clickAbortController.signal });
     this.content.appendChild(btnSolo);
 
     const btnMulti = document.createElement('button');
-    btnMulti.className = 'btn';
-    btnMulti.textContent = 'Local Multiplayer';
+    btnMulti.className = 'btn mode-card';
+    btnMulti.innerHTML = '<span class="mode-symbol">⇄</span><strong>Local Multiplayer</strong><small>2–4 friends. Take one shot, pass the cannon.</small>';
     btnMulti.addEventListener('click', () => this.showMultiSetup(), { signal: this.clickAbortController.signal });
     this.content.appendChild(btnMulti);
 
@@ -80,6 +113,11 @@ export class MenuOverlay {
     btnSettings.style.marginTop = '10px';
     btnSettings.addEventListener('click', () => this.showSettings(), { signal: this.clickAbortController.signal });
     this.content.appendChild(btnSettings);
+    const home = document.createElement('button');
+    home.className = 'btn btn-quiet';
+    home.textContent = 'Home';
+    home.addEventListener('click', () => this.showHome(), { signal: this.clickAbortController.signal });
+    this.content.appendChild(home);
 
     btnSolo.focus();
   }
@@ -188,7 +226,7 @@ export class MenuOverlay {
     backBtn.className = 'btn btn-menu';
     backBtn.textContent = 'Back';
     backBtn.addEventListener('click', () => {
-      this.showMainMenu();
+      this.showHome();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(backBtn);
     backBtn.focus();
@@ -220,6 +258,7 @@ export class MenuOverlay {
       const btn = document.createElement('button');
       btn.className = 'map-btn';
       btn.dataset.map = map.id;
+      btn.innerHTML = mapPreview(map.id);
 
       const nameDiv = document.createElement('div');
       nameDiv.className = 'map-name';
@@ -230,6 +269,9 @@ export class MenuOverlay {
       scoreDiv.textContent = bestText;
 
       btn.appendChild(nameDiv);
+      const description = document.createElement('small');
+      description.textContent = MAP_DESCRIPTIONS[map.id]!;
+      btn.appendChild(description);
       btn.appendChild(scoreDiv);
 
       btn.addEventListener('click', () => {
@@ -261,8 +303,11 @@ export class MenuOverlay {
     this.clickAbortController = new AbortController();
 
     const title = document.createElement('h2');
-    title.textContent = 'Multiplayer Setup';
+    title.textContent = 'Pass the cannon.';
     this.content.appendChild(title);
+    const intro = document.createElement('p');
+    intro.textContent = 'One shot each, back and forth. Three shots per player on each map.';
+    this.content.appendChild(intro);
 
     let playerCount = 2;
     // Load last MP setup if available (storage already validated count, appearance, names and aim)
@@ -275,23 +320,27 @@ export class MenuOverlay {
     }
 
     const countContainer = document.createElement('div');
+    countContainer.className = 'player-count';
     countContainer.style.marginBottom = '20px';
     const countLabel = document.createElement('span');
     countLabel.textContent = `Players: ${playerCount} `;
     
     const countMinus = document.createElement('button');
     countMinus.textContent = '-';
+    countMinus.setAttribute('aria-label', 'Fewer players');
     countMinus.className = 'btn';
     countMinus.style.marginRight = '10px';
     
     const countPlus = document.createElement('button');
     countPlus.textContent = '+';
+    countPlus.setAttribute('aria-label', 'More players');
     countPlus.className = 'btn';
 
     countContainer.append(countMinus, countLabel, countPlus);
     this.content.appendChild(countContainer);
 
     const list = document.createElement('div');
+    list.className = 'player-setup-list';
     list.style.display = 'flex';
     list.style.flexDirection = 'column';
     list.style.gap = '10px';
@@ -301,22 +350,26 @@ export class MenuOverlay {
     const renderList = () => {
       list.innerHTML = '';
       countLabel.textContent = `Players: ${playerCount} `;
+      countMinus.disabled = playerCount === MULTIPLAYER.minPlayers;
+      countPlus.disabled = playerCount === MULTIPLAYER.maxPlayers;
       for (let i = 0; i < playerCount; i++) {
         const row = document.createElement('div');
+        row.className = 'player-setup-row';
+        row.style.setProperty('--player-color', `#${playerSetups[i]!.color.toString(16).padStart(6, '0')}`);
         row.style.display = 'flex';
         row.style.gap = '10px';
         row.style.alignItems = 'center';
 
         const nameLabel = document.createElement('label');
         nameLabel.htmlFor = `mp-name-${i}`;
-        nameLabel.textContent = `Player ${i + 1} name`;
+        nameLabel.textContent = `Player ${i + 1} · ${playerSetups[i]!.pattern}`;
 
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
         nameInput.id = `mp-name-${i}`;
         nameInput.maxLength = MULTIPLAYER.maxNameLength;
         nameInput.value = playerSetups[i]!.name;
-        nameInput.onchange = (e) => playerSetups[i]!.name = sanitizePlayerName((e.target as HTMLInputElement).value, i);
+        nameInput.oninput = () => { playerSetups[i]!.name = nameInput.value; };
 
         row.append(nameLabel, nameInput);
         list.appendChild(row);
@@ -327,14 +380,42 @@ export class MenuOverlay {
     countMinus.onclick = () => { if (playerCount > MULTIPLAYER.minPlayers) { playerCount--; renderList(); } };
     countPlus.onclick = () => { if (playerCount < MULTIPLAYER.maxPlayers) { playerCount++; renderList(); } };
 
+    let selectedMaps: string[] = [...MULTIPLAYER.maps];
+    const maps = document.createElement('fieldset');
+    maps.className = 'mp-map-picker';
+    const legend = document.createElement('legend');
+    legend.textContent = 'Choose your arena';
+    maps.appendChild(legend);
+    for (const choice of [{ id: 'all', name: 'All maps · three-round tour' }, ...MAPS]) {
+      const label = document.createElement('label');
+      label.className = 'arena-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'mp-map';
+      input.value = choice.id;
+      input.checked = choice.id === 'all';
+      input.addEventListener('change', () => {
+        selectedMaps = choice.id === 'all' ? [...MULTIPLAYER.maps] : [choice.id];
+      }, { signal: this.clickAbortController.signal });
+      label.appendChild(input);
+      const artwork = document.createElement('span');
+      artwork.innerHTML = mapPreview(choice.id === 'all' ? 'rooftop' : choice.id);
+      label.appendChild(artwork);
+      const name = document.createElement('strong');
+      name.textContent = choice.name;
+      label.appendChild(name);
+      maps.appendChild(label);
+    }
+    this.content.appendChild(maps);
+
     const startBtn = document.createElement('button');
-    startBtn.className = 'btn';
+    startBtn.className = 'btn btn-primary';
     startBtn.textContent = 'Start Match';
     startBtn.onclick = () => {
       const finalSetups = playerSetups.slice(0, playerCount).map((s, i) => ({ ...s, name: sanitizePlayerName(s.name, i) }));
       saveMultiplayerSetup(finalSetups);
       this.hide();
-      this.callbacks.onStartMultiplayer?.(finalSetups);
+      this.callbacks.onStartMultiplayer?.(finalSetups, selectedMaps);
     };
     this.content.appendChild(startBtn);
 
@@ -367,16 +448,20 @@ export class MenuOverlay {
 
     const btn = document.createElement('button');
     btn.className = 'btn';
-    btn.textContent = 'Continue';
+    btn.textContent = 'Ready now';
     btn.addEventListener('click', () => {
       this.hide();
       this.callbacks.onMultiplayerHandoverContinue?.();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(btn);
+    const countdown = document.createElement('p');
+    countdown.className = 'auto-note';
+    countdown.textContent = 'Your turn starts automatically…';
+    this.content.appendChild(countdown);
     btn.focus();
   }
 
-  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number): void {
+  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number = MULTIPLAYER.maps.length): void {
     this.currentView = 'round_result';
     this.container.style.display = 'flex';
     this.clear();
@@ -387,6 +472,7 @@ export class MenuOverlay {
     this.content.appendChild(title);
 
     const list = document.createElement('div');
+    list.className = 'score-list';
     for (const p of [...players].sort((a, b) => b.totalScore - a.totalScore)) {
       const row = document.createElement('div');
       row.textContent = `${p.name}: ${p.totalScore} pts (+${p.roundScores[roundIndex]})`;
@@ -396,12 +482,16 @@ export class MenuOverlay {
 
     const btn = document.createElement('button');
     btn.className = 'btn';
-    btn.textContent = roundIndex >= MULTIPLAYER.maps.length - 1 ? 'Final Result' : 'Next Round';
+    btn.textContent = roundIndex >= roundCount - 1 ? 'Final Result' : 'Next Round';
     btn.addEventListener('click', () => {
       this.hide();
       this.callbacks.onMultiplayerNextRound?.();
     }, { signal: this.clickAbortController.signal });
     this.content.appendChild(btn);
+    const countdown = document.createElement('p');
+    countdown.className = 'auto-note';
+    countdown.textContent = 'Continuing automatically…';
+    this.content.appendChild(countdown);
     btn.focus();
   }
 
@@ -416,6 +506,7 @@ export class MenuOverlay {
     this.content.appendChild(title);
 
     const list = document.createElement('div');
+    list.className = 'score-list';
     for (const p of [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore)) {
       const row = document.createElement('div');
       row.textContent = `${p.name}: ${p.totalScore} pts, ${p.bodyHits} hits`;

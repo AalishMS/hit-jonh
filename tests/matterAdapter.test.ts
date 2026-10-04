@@ -22,8 +22,8 @@ describe('MatterAdapter', () => {
     const { engine, adapter } = makeAdapter();
     adapter.setupLevel(BACKYARD_LEVEL);
 
-    // Ground, JonhBody, JonhHat = 3 bodies
-    expect(engine.world.bodies.length).toBe(3);
+    // Ground, Jonh body, hat, and the garden shed.
+    expect(engine.world.bodies.length).toBe(4);
 
     adapter.clear();
     expect(engine.world.bodies.length).toBe(0);
@@ -33,20 +33,20 @@ describe('MatterAdapter', () => {
     const { engine, adapter } = makeAdapter();
     adapter.setupLevel(BACKYARD_LEVEL);
 
-    // Initial bodies = 3
-    expect(engine.world.bodies.length).toBe(3);
+    // Four static bodies including the shed.
+    expect(engine.world.bodies.length).toBe(4);
 
     // First spawn
     adapter.spawnProjectile(100, 500, 7.5, { x: 10, y: -5 });
-    expect(engine.world.bodies.length).toBe(4);
+    expect(engine.world.bodies.length).toBe(5);
 
-    // Second spawn should replace the first, still 4 bodies total
+    // Second spawn should replace the first, still five bodies total.
     adapter.spawnProjectile(100, 500, 7.5, { x: 12, y: -6 });
-    expect(engine.world.bodies.length).toBe(4);
+    expect(engine.world.bodies.length).toBe(5);
 
-    // Remove projectile restores to 3
+    // Remove projectile restores the four static bodies.
     adapter.removeProjectile();
-    expect(engine.world.bodies.length).toBe(3);
+    expect(engine.world.bodies.length).toBe(4);
   });
 
   it('detects swept hit when stepping fast projectile across Jonh', () => {
@@ -524,12 +524,12 @@ describe('MatterAdapter', () => {
       x: b.position.x,
       y: b.position.y,
     }));
-    expect(initialBodies.length).toBe(3); // ground, jonhBody, jonhHat
+    expect(initialBodies.length).toBe(4); // ground, jonh body, hat, shed
 
     // Player 1 fires from cannon spawn
     const muzzle1 = { x: 150, y: 550 };
     adapter.spawnProjectile(muzzle1.x, muzzle1.y, 7.5, { x: 20, y: -10 });
-    expect(engine.world.bodies.length).toBe(4);
+    expect(engine.world.bodies.length).toBe(5);
 
     // Simulate several steps until contact / flight
     for (let i = 0; i < 30; i++) {
@@ -539,7 +539,7 @@ describe('MatterAdapter', () => {
 
     // Shot completes -> scene reset clears projectile and adapter state
     adapter.removeProjectile();
-    expect(engine.world.bodies.length).toBe(3);
+    expect(engine.world.bodies.length).toBe(4);
 
     // Compare static bodies after reset to initial
     const postResetBodies = (engine.world.bodies as BodySummary[]).map(b => ({
@@ -552,7 +552,7 @@ describe('MatterAdapter', () => {
 
     // Re-spawn projectile for next player from the exact same launch position
     const proj2 = adapter.spawnProjectile(muzzle1.x, muzzle1.y, 7.5, { x: 15, y: -8 });
-    expect(engine.world.bodies.length).toBe(4);
+    expect(engine.world.bodies.length).toBe(5);
     expect(proj2.position.x).toBe(muzzle1.x);
     expect(proj2.position.y).toBe(muzzle1.y);
 
@@ -567,4 +567,3 @@ describe('MatterAdapter', () => {
     expect(state2.impactSpeedMs).toBe(0);
   });
 });
-

@@ -38,6 +38,8 @@ describe('AudioManager', () => {
       audio.playCannonFire();
       audio.playImpact('body');
       audio.playImpact('ground');
+      audio.playJonhReaction();
+      audio.playOutOfBounds();
       audio.destroy();
     }).not.toThrow();
   });

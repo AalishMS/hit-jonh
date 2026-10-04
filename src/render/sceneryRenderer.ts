@@ -86,7 +86,20 @@ export class SceneryRenderer {
       const yPx = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
       const hPx = metresToPixels(obs.box.maxY - obs.box.minY, this.ppm);
 
-      if (obs.material === 'wood') {
+      if (obs.id === 'garden-shed') {
+        this.graphics.fillStyle(0xbd8c56);
+        this.graphics.fillRect(xPx, yPx, wPx, hPx);
+        this.graphics.lineStyle(3, LOOK.ink);
+        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
+        this.graphics.fillStyle(0x70523a);
+        this.graphics.fillRect(xPx, yPx, wPx, 12);
+        this.graphics.fillRect(xPx + wPx * 0.35, yPx + hPx * 0.5, wPx * 0.3, hPx * 0.5);
+        this.graphics.fillStyle(LOOK.sky);
+        this.graphics.fillRect(xPx + wPx * 0.2, yPx + hPx * 0.2, wPx * 0.6, hPx * 0.2);
+        this.graphics.strokeRect(xPx + wPx * 0.2, yPx + hPx * 0.2, wPx * 0.6, hPx * 0.2);
+        this.graphics.fillStyle(LOOK.hat);
+        this.graphics.fillCircle(xPx + wPx * 0.58, yPx + hPx * 0.75, 3);
+      } else if (obs.material === 'wood') {
         this.graphics.fillStyle(0x754a31, 1); // Dark wood
         this.graphics.fillRect(xPx, yPx, wPx, hPx);
         this.graphics.lineStyle(2, 0x3d2010, 1);
@@ -100,11 +113,14 @@ export class SceneryRenderer {
         this.graphics.fillRect(xPx, yPx, wPx, hPx);
         this.graphics.lineStyle(2, 0x474c54, 1);
         this.graphics.strokeRect(xPx, yPx, wPx, hPx);
-        // Add some concrete details
-        this.graphics.fillStyle(0x757b85, 1);
-        for(let cy = yPx + 30; cy < yPx + hPx; cy += 40) {
-          this.graphics.fillCircle(xPx + wPx/4, cy, 3);
-          this.graphics.fillCircle(xPx + 3*wPx/4, cy, 3);
+        // Windows make the existing solid collider read as a multistory house.
+        this.graphics.fillStyle(LOOK.sky);
+        for(let cy = yPx + 30; cy < yPx + hPx - 28; cy += 70) {
+          for (let cx = xPx + 30; cx < xPx + wPx - 30; cx += 75) {
+            this.graphics.fillRect(cx, cy, 35, 38);
+            this.graphics.strokeRect(cx, cy, 35, 38);
+            this.graphics.lineBetween(cx + 17, cy, cx + 17, cy + 38);
+          }
         }
       } else {
         this.graphics.fillStyle(LOOK.ink, 1);

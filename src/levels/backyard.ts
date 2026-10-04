@@ -34,11 +34,17 @@ export const BACKYARD_LEVEL: LevelData = {
       maxY: 3.7,
     },
   },
-  obstacles: [],
+  obstacles: [
+    {
+      id: 'garden-shed',
+      box: { minX: 10, maxX: 12.6, minY: 1.6, maxY: 4.3 },
+      material: 'wood',
+      ricochet: true,
+    },
+  ],
   arrivalLine: 'Much quieter here.',
   referenceSolutions: [
     { angleDeg: 45, powerPercent: 40 },
-    { angleDeg: 25, powerPercent: 55 },
     { angleDeg: 65, powerPercent: 55 },
   ],
 };

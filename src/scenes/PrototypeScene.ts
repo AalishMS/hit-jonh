@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, FLOW, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { CanvasAim } from '../input/canvasAim';
+import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
 import { MAPS } from '../levels';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
@@ -43,6 +45,9 @@ export class PrototypeScene extends Phaser.Scene {
   private sessionCoordinator!: SessionCoordinator;
   
   private activeMode: 'none' | 'solo' | 'multi' = 'none';
+  private readonly autoAdvance = new AutoAdvance();
+  private canvasAim!: CanvasAim;
+  private outOfCanvasSoundPlayed = false;
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -101,6 +106,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
+        this.canvasAim.cancel();
         this.inputCoordinator.setPaused(true);
         this.htmlControls.setControlsInert(true);
         this.menuOverlay.showPauseMenu();
@@ -137,6 +143,10 @@ export class PrototypeScene extends Phaser.Scene {
           return muted;
         },
         onPause: () => this.togglePause(),
+        onHome: () => {
+          if (this.sessionCoordinator.isPaused) this.sessionCoordinator.quit();
+          else this.performQuit();
+        },
       },
       this.currentAngleDeg,
       this.currentPowerPercent,
@@ -157,20 +167,9 @@ export class PrototypeScene extends Phaser.Scene {
       onReturnToMenu: () => {
         this.performQuit();
       },
-      onStartMultiplayer: (players) => this.startMultiplayer(players),
-      onMultiplayerHandoverContinue: () => {
-        this.inputCoordinator.setOverlayVisible(false);
-        this.multiCoordinator.beginTurn(this.currentAngleDeg, this.currentPowerPercent);
-      },
-      onMultiplayerNextRound: () => {
-        this.inputCoordinator.setOverlayVisible(false);
-        this.multiMachine.nextRound();
-        if (this.multiMachine.state !== 'match_result') {
-          this.trailHistory.clear();
-          this.loadMultiplayerMap(this.multiMachine.currentMapId);
-        }
-        this.updateUIPerMultiState();
-      },
+      onStartMultiplayer: (players, maps) => this.startMultiplayer(players, maps),
+      onMultiplayerHandoverContinue: () => this.beginMultiplayerTurn(),
+      onMultiplayerNextRound: () => this.nextMultiplayerRound(),
       onMultiplayerRematch: () => {
         this.inputCoordinator.setOverlayVisible(false);
         this.multiMachine.rematch();
@@ -215,6 +214,11 @@ export class PrototypeScene extends Phaser.Scene {
       onEscape: () => this.togglePause(),
     });
 
+    this.canvasAim = new CanvasAim(this.game.canvas,
+      () => this.activeMode !== 'none' && !this.sessionCoordinator.isPaused &&
+        !this.menuOverlay.isVisible() && this.activeCoordinator.canAdjustAim(),
+      () => this.currentAngleDeg, (angle) => this.setAngle(angle));
+
     // Gesture unlock
     const unlockAudio = () => this.audioManager.unlock();
     window.addEventListener('click', unlockAudio, { once: true });
@@ -238,7 +242,9 @@ export class PrototypeScene extends Phaser.Scene {
       const isOverlayOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
       this.inputCoordinator.setOverlayVisible(isOverlayOpen);
 
-      const handled = this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput);
+      const focused = e.target instanceof HTMLElement ? e.target : document.activeElement;
+      const isActionButton = focused instanceof HTMLButtonElement && focused.id !== 'fire-btn';
+      const handled = this.inputCoordinator.handleKeyDown(e.code, e.repeat, isInput, isActionButton);
       if (handled) {
         e.preventDefault();
       }
@@ -262,11 +268,11 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
 
-    // Show Main Menu initially, hide and disable gameplay controls
+    // Start at Home with gameplay controls hidden and disabled.
     this.htmlControls.setCanFire(false);
     this.htmlControls.setControlsInert(true);
     this.htmlControls.setVisible(false);
-    this.menuOverlay.showMainMenu();
+    this.menuOverlay.showHome();
   }
 
   private togglePause(): void {
@@ -284,6 +290,8 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private performQuit(): void {
+    this.autoAdvance.cancel();
+    this.canvasAim.cancel();
     this.inputCoordinator.setPaused(false);
     this.inputCoordinator.setCanFire(false);
     this.activeMode = 'none';
@@ -308,11 +316,12 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setControlsInert(true);
     this.htmlControls.setVisible(false);
     this.htmlControls.setFeedback('Jonh is reading. Set your angle and power.', 'info');
-    this.menuOverlay.showMainMenu();
+    this.menuOverlay.showHome();
   }
 
 
   private loadMap(mapId: string): void {
+    this.autoAdvance.cancel();
     this.activeMode = 'solo';
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
@@ -424,6 +433,9 @@ export class PrototypeScene extends Phaser.Scene {
   private fire(): void {
     if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() || !this.activeCoordinator || !this.activeCoordinator.canFire()) return;
 
+    this.canvasAim.cancel();
+    this.autoAdvance.cancel();
+    this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
     this.audioManager.playCannonFire();
 
@@ -454,6 +466,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || !this.physicsAdapter || !this.activeCoordinator) return;
 
     if (!this.activeCoordinator.canReset()) return;
+    this.autoAdvance.cancel();
     this.activeCoordinator.reset(this.currentAngleDeg, this.currentPowerPercent);
 
     if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') return;
@@ -490,6 +503,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
+      this.htmlControls.setMatchStatus(this.currentLevel.name, []);
       this.htmlControls.setFeedback(`Map: ${this.currentLevel.name}. ${this.soloMachine.attemptsLeft} attempt${this.soloMachine.attemptsLeft === 1 ? '' : 's'} left.`, 'info');
     }
   }
@@ -497,6 +511,11 @@ export class PrototypeScene extends Phaser.Scene {
   override update(_time: number, deltaMs: number): void {
     if (this.sessionCoordinator?.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine) return;
     const dtSeconds = deltaMs / MS_PER_SECOND;
+
+    const advance = this.autoAdvance.advance(dtSeconds);
+    if (advance === 'shot') { this.reset(); return; }
+    if (advance === 'handover') { this.beginMultiplayerTurn(); return; }
+    if (advance === 'round') { this.nextMultiplayerRound(); return; }
 
     this.jonhRenderer.update(dtSeconds);
     const steps = this.stepper.advance(dtSeconds);
@@ -508,6 +527,12 @@ export class PrototypeScene extends Phaser.Scene {
       if (this.attemptMachine.state === 'simulating') {
         const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
         if (state) {
+          // Sound follows the visible canvas; top exits still keep their valid flight path.
+          if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > WORLD.designWidthPx ||
+            state.yPx < 0 || state.yPx > WORLD.designHeightPx)) {
+            this.outOfCanvasSoundPlayed = true;
+            this.audioManager.playOutOfBounds();
+          }
           this.lastProjectileState = state;
           this.trailRenderer.addPoint(state.xPx, state.yPx);
           if (state.firstGroundContact && !this.groundFeedbackShown) {
@@ -576,7 +601,10 @@ export class PrototypeScene extends Phaser.Scene {
     const classification = this.classifier.classify(true);
     const isBodyHit = classification.isHit;
 
-    if (isBodyHit) this.audioManager.playImpact('body');
+    if (isBodyHit) {
+      this.audioManager.playImpact('body');
+      this.audioManager.playJonhReaction();
+    }
 
     if (this.activeMode === 'solo') {
       this.soloCoordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
@@ -629,10 +657,13 @@ export class PrototypeScene extends Phaser.Scene {
       }
     }
     
-    this.htmlControls.setResetLabel('Continue ↵');
+    this.htmlControls.setResetLabel('Next now ↵');
+    this.autoAdvance.schedule('shot', FLOW.shotResultSeconds);
   }
 
   private cleanup(): void {
+    this.autoAdvance.cancel();
+    this.canvasAim.destroy();
     for (const h of this.cleanupHandlers) h();
     this.cleanupHandlers = [];
 
@@ -650,9 +681,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.debugRenderer) this.debugRenderer.destroy();
   }
 
-  private startMultiplayer(players: MPPlayerSetup[]): void {
+  private startMultiplayer(players: MPPlayerSetup[], maps: string[]): void {
     this.activeMode = 'multi';
-    this.multiMachine = new MultiplayerMatchMachine(players);
+    this.multiMachine = new MultiplayerMatchMachine(players, maps);
     this.trailHistory.clear();
     this.loadMultiplayerMap(this.multiMachine.currentMapId);
     this.updateUIPerMultiState();
@@ -669,6 +700,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private loadMultiplayerMap(mapId: string): void {
+    this.autoAdvance.cancel();
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
     this.currentLevel = level;
@@ -752,6 +784,8 @@ export class PrototypeScene extends Phaser.Scene {
 
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
+    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount}`,
+      match.players, match.state === 'result' ? match.lastShooterIndex : match.activePlayerIndex);
     if (match.state === 'handover') {
       const player = match.activePlayer;
       this.currentAngleDeg = player.lastAngle;
@@ -767,6 +801,7 @@ export class PrototypeScene extends Phaser.Scene {
       
       this.htmlControls.setControlsInert(true);
       this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1);
+      this.autoAdvance.schedule('handover', FLOW.handoverSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -778,7 +813,8 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setFeedback(`${match.activePlayer.name}'s turn (Shot ${match.activePlayerShotNumber + 1}/${MULTIPLAYER.shotsPerRound})`, 'info');
     } else if (match.state === 'round_result') {
       this.htmlControls.setControlsInert(true);
-      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex);
+      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount);
+      this.autoAdvance.schedule('round', FLOW.roundResultSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -789,6 +825,27 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     }
+  }
+
+  private beginMultiplayerTurn(): void {
+    if (this.activeMode !== 'multi' || this.multiMachine.state !== 'handover') return;
+    this.autoAdvance.cancel();
+    this.menuOverlay.hide();
+    this.inputCoordinator.setOverlayVisible(false);
+    this.multiCoordinator.beginTurn(this.currentAngleDeg, this.currentPowerPercent);
+  }
+
+  private nextMultiplayerRound(): void {
+    if (this.activeMode !== 'multi' || this.multiMachine.state !== 'round_result') return;
+    this.autoAdvance.cancel();
+    this.menuOverlay.hide();
+    this.inputCoordinator.setOverlayVisible(false);
+    this.multiMachine.nextRound();
+    if (!this.multiMachine.isMatchComplete) {
+      this.trailHistory.clear();
+      this.loadMultiplayerMap(this.multiMachine.currentMapId);
+    }
+    this.updateUIPerMultiState();
   }
 
 }

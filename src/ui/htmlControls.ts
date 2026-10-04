@@ -1,5 +1,6 @@
 import { AIM, PROJECTILE } from '../config/tuning';
 import { powerToLaunchSpeed } from '../sim/units';
+import type { MPPlayerView } from '../rules/multiplayerMatch';
 
 export interface HTMLControlsCallbacks {
   onAngleChange: (angleDeg: number) => void;
@@ -9,6 +10,7 @@ export interface HTMLControlsCallbacks {
   onToggleDebug: (enabled: boolean) => void;
   onToggleMute: () => boolean;
   onPause?: () => void;
+  onHome?: () => void;
 }
 
 export class HTMLControls {
@@ -24,6 +26,8 @@ export class HTMLControls {
   private pauseButton!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
+  private homeButton: HTMLButtonElement;
+  private matchStatus!: HTMLElement;
 
   private cleanupListeners: Array<() => void> = [];
 
@@ -41,10 +45,18 @@ export class HTMLControls {
 
     this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
     parentElement.appendChild(this.container);
+    this.homeButton = document.createElement('button');
+    this.homeButton.className = 'btn game-home-button';
+    this.homeButton.textContent = '⌂ Home';
+    const onHome = () => this.callbacks.onHome?.();
+    this.homeButton.addEventListener('click', onHome);
+    this.cleanupListeners.push(() => this.homeButton.removeEventListener('click', onHome));
+    parentElement.appendChild(this.homeButton);
   }
 
   private render(angle: number, power: number, debug: boolean, muted: boolean): void {
     this.container.innerHTML = `
+      <div class="match-status" aria-label="Map and scores"></div>
       <div class="feedback-banner feedback-info" id="shot-feedback" role="status" aria-live="polite">Jonh is reading. Set your angle and power.</div>
       <div class="controls-row">
         <div class="control-group">
@@ -92,7 +104,7 @@ export class HTMLControls {
           </label>
         </div>
       </div>
-      <div class="control-help">← → angle · ↑ ↓ power · Enter to aim again · Previous shot stays visible</div>
+      <div class="control-help">Drag up / down on the field to aim · ← → angle · ↑ ↓ power · Shots advance automatically</div>
     `;
 
     this.angleSlider = this.container.querySelector('#angle-slider') as HTMLInputElement;
@@ -106,6 +118,7 @@ export class HTMLControls {
     this.pauseButton = this.container.querySelector('#pause-btn') as HTMLButtonElement;
     this.debugToggle = this.container.querySelector('#debug-toggle') as HTMLInputElement;
     this.feedbackBanner = this.container.querySelector('#shot-feedback') as HTMLElement;
+    this.matchStatus = this.container.querySelector('.match-status') as HTMLElement;
 
     // Attach listeners and track cleanup
     const onAngleInput = () => {
@@ -200,6 +213,21 @@ export class HTMLControls {
 
   setVisible(visible: boolean): void {
     this.container.style.display = visible ? '' : 'none';
+    this.homeButton.hidden = !visible;
+  }
+
+  setMatchStatus(mapName: string, players: readonly MPPlayerView[], activeIndex: number | null = null): void {
+    this.matchStatus.replaceChildren();
+    const label = document.createElement('strong');
+    label.textContent = mapName;
+    this.matchStatus.appendChild(label);
+    for (const player of players) {
+      const score = document.createElement('span');
+      score.className = `player-score${player.id === activeIndex ? ' active' : ''}`;
+      score.style.setProperty('--player-color', `#${player.color.toString(16).padStart(6, '0')}`);
+      score.textContent = `${player.id === activeIndex ? '▶ ' : ''}${player.name} · ${player.totalScore} pts`;
+      this.matchStatus.appendChild(score);
+    }
   }
 
   setDebugOptIn(optIn: boolean): void {
@@ -227,6 +255,7 @@ export class HTMLControls {
   }
 
   destroy(): void {
+    this.homeButton.remove();
     for (const cleanup of this.cleanupListeners) {
       cleanup();
     }

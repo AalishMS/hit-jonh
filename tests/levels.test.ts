@@ -19,6 +19,30 @@ describe('Level data validation', () => {
         expect(result.errors).toEqual([]);
       });
 
+      it('has a real obstacle that blocks a low maximum-power shot', () => {
+        expect(level.obstacles.length).toBeGreaterThan(0);
+        const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });
+        const adapter = new MatterAdapter(engine.world, 50, 720);
+        adapter.setupLevel(level);
+        const angle = 10;
+        const rad = angle * Math.PI / 180;
+        const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+        adapter.spawnProjectile(
+          metresToPixels(level.cannonSpawn.x + offset * Math.cos(rad), 50),
+          simYToWorldY(level.cannonSpawn.y + offset * Math.sin(rad), 720, 50),
+          PROJECTILE.radiusMetres * 50,
+          launchVelocityToWorld(AIM.maxImpulseNs / PROJECTILE.massKg, angle, 50),
+        );
+        let blocked = false;
+        for (let step = 0; step < 720; step++) {
+          Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
+          const state = adapter.stepProjectile(level, PROJECTILE.radiusMetres)!;
+          expect(state.hitJonh).toBe(false);
+          if (state.obstacleContacts.length > 0) { blocked = true; break; }
+        }
+        expect(blocked).toBe(true);
+      });
+
       it('proves reference solution hits Jonh in actual Matter adapter flight', () => {
         for (const sol of level.referenceSolutions) {
           const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });

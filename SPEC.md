@@ -1,6 +1,6 @@
 # Hit Jonh — Implementation Specification
 
-**Status:** Authoritative implementation specification, v0.1 (3 October 2026)
+**Status:** Authoritative implementation specification, v0.2 (4 October 2026)
 **Source:** Derived from `hit-jonh-game-design.md` (design brief v0.1). Where they disagree, this file wins; record any change in `docs/progress.md`.
 **Spelling:** The character and game are **Jonh** / **Hit Jonh**. Never "John".
 
@@ -35,20 +35,22 @@ A humorous 2D browser game. Players adjust a cannon's **angle** and **power** to
 
 ## 3. Core loop and controls
 
+**Owner-requested usability pass (4 October 2026) [DECIDED]:** Canvas drag aiming, automatic progression after shots, clearly alternating multiplayer turns, obstacles on every map, comic hit/FAAH sounds, a home screen above the mode menu, an in-game Home action, and multiplayer map selection. These replace conflicting earlier prototype defaults below. Deferred features remain outside this pass.
+
 ### 3.1 Loop [DECIDED]
 
 1. Read the scene → 2. Aim (angle, power) → 3. Fire (inputs frozen) → 4. Watch → 5. Resolve (classify, feedback, reaction) → 6. Continue (retry, hand over, next map).
 
-The player must be able to tell **short**, **over**, and **obstacle hit** apart. Results show a Continue action as soon as the outcome is known.
+The player must be able to tell **short**, **over**, and **obstacle hit** apart. Shot results advance automatically after a short reaction window; a Next now action can skip that wait. Terminal solo/match results stay visible for retry/rematch.
 
 ### 3.2 Controls
 
 | Action | Pointer / touch | Keyboard [PROPOSED] |
 | --- | --- | --- |
-| Angle | Angle slider | ← / → (1° per press) |
+| Angle | Drag up/down anywhere on canvas, or angle slider [DECIDED] | ← / → (1° per press) |
 | Power | Power slider | ↓ / ↑ (1 % per press) |
 | Fire | Fire button | Space |
-| Continue / hand over | Continue button | Enter |
+| Continue / hand over | Automatic after a short window; button skips wait | Enter skips the shot result |
 | Pause | Pause button | Escape |
 
 - Display angle in whole degrees and power as an integer percentage. **[DECIDED]**
@@ -90,10 +92,10 @@ Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extr
 
 - 2–4 players; each has a name (default "Player N", typing never required), a cannon colour **and** pattern (not colour alone), personal angle/power. **[DECIDED]**
 - All players fire from the **same launch position**; inactive cannons are drawn as decorative slots outside the playfield. **[DECIDED]**
-- **Match format [PROPOSED]:** 3 rounds, one map per round in order Backyard → Fence → Rooftop. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively.
+- **Map selection [DECIDED]:** Available in multiplayer setup. **Format [PROPOSED]:** Choose a single-map match (one round) or the default three-map tour, Backyard → Fence → Rooftop. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
 - Starting player rotates between rounds: round *r* (0-based) starts with player index `r mod N`. **[DECIDED principle, PROPOSED formula]**
 - A round always completes every player's shots, even after an early hit. **[DECIDED]**
-- A handover screen names the next player before they can aim; their saved settings and last trail load automatically.
+- A brief handover screen names the next player, then automatically opens aiming; Ready now skips the wait. Their saved settings and last trail load automatically. Scores remain visible in the control strip.
 - Players **can** learn from each other's shots; this is intended. **[DECIDED]**
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
 
@@ -222,6 +224,7 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
 
 - Weak vs strong hit threshold: impact speed **10 m/s** **[PROPOSED][TUNE]**.
 - Never repeat the same line on consecutive shots. Dialogue randomness uses a cosmetic RNG **separate from simulation**; it must never affect collisions or outcomes. **[DECIDED]**
+- Comic synthesized vocal yelps accompany body hits; a voiced FAAH cue plays once per shot when the ball leaves any visible canvas edge. Leaving the top still allows the ball to return and never changes scoring/end conditions. Mute and master volume apply to all cues. **[DECIDED sound triggers, PROPOSED synthesis]**
 - Reactions are brief (≤ 1.5 s before Continue is offered) and skippable. Reduced-motion disables camera shake and large screen-space effects.
 
 ## 11. Maps [PROPOSED geometry, TUNE]
@@ -232,33 +235,37 @@ Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bo
 
 | # | Map | Layout | Main skill |
 | --- | --- | --- | --- |
-| 1 | **Jonh's Backyard** | Flat grass. Jonh reads in a deckchair at x ≈ 18 m. No obstacles. | Learn range vs angle/power. |
+| 1 | **Jonh's Backyard** | Flat grass. A solid garden shed at x = 10–12.6 m, top y = 4.3 m, blocks low shots. Jonh reads at x ≈ 18 m. | Arc over the shed without overshooting. |
 | 2 | **The Fence Dispute** | Wooden fence at x ≈ 12 m, 1.8 m tall, 0.2 m thick. Jonh in his garden at x ≈ 17 m. Low shots hit the fence. | Clear an obstacle without overshooting. |
 | 3 | **Rooftop Lunch** | Concrete building spanning x ≈ 15–22 m, roof at 5 m above ground. Jonh eats lunch on the roof at x ≈ 18 m. Low shots hit the wall. | Hit a target at a different height. |
 
 Each map introduces exactly one new complication.
 
+Every map must have a collidable obstacle that blocks a low shot [DECIDED]. The shed's flat roof matches its rectangular collider; Rooftop's existing building is drawn with multiple floors/windows. Reference-solution and low-shot blockage tests verify the layouts.
+
 ## 12. Gameplay states and transitions
 
 ```mermaid
 stateDiagram-v2
-    [*] --> MainMenu
+    [*] --> Home
+    Home --> MainMenu : Let's play
+    MainMenu --> Home : Home
     MainMenu --> SoloSetup
     MainMenu --> MultiSetup
     MainMenu --> Settings
     Settings --> MainMenu
     SoloSetup --> Aiming : start map
     MultiSetup --> Handover : start match
-    Handover --> Aiming : Continue
+    Handover --> Aiming : automatic / Ready now
     Aiming --> Firing : Fire (fresh press)
     Firing --> Simulating : projectile spawned
     Simulating --> Result : outcome / out of bounds / settled / timeout
-    Result --> Aiming : solo, attempts left and no hit (scene reset)
-    Result --> Handover : MP, shots remain (scene reset)
-    Result --> SoloResult : solo hit or 3 attempts used
-    Result --> RoundResult : MP round complete
-    RoundResult --> Handover : next round (next map)
-    RoundResult --> MatchResult : last round
+    Result --> Aiming : automatic / skip, solo attempts remain (scene reset)
+    Result --> Handover : automatic / skip, MP shots remain (scene reset)
+    Result --> SoloResult : automatic / skip, solo hit or 3 attempts used
+    Result --> RoundResult : automatic / skip, MP round complete
+    RoundResult --> Handover : automatic / skip, next map
+    RoundResult --> MatchResult : automatic / skip, last round
     SoloResult --> Aiming : Retry (clean state)
     SoloResult --> SoloSetup
     MatchResult --> Handover : Rematch (clean state)
@@ -267,6 +274,7 @@ stateDiagram-v2
 
 Rules:
 - Only `Aiming` accepts angle/power changes and Fire. **[DECIDED]**
+- Presentation windows [TUNE]: shot result 1.4 s, handover 1.2 s, round summary 2.4 s. Timers freeze on pause and cancel on manual skip, Home, retry/rematch and map load. A visible Home button quits/cleans the session from gameplay and its overlays; startup opens the illustrated home screen above mode selection.
 - `Firing` is a short presentation state (muzzle flash, ≤ 0.2 s); inputs stay locked.
 - `Pause` can overlay `Aiming`, `Simulating`, `Result`; it freezes simulation and timers; Resume returns to the exact prior state; Quit returns to menu. **[DECIDED]**
 - Restart/rematch clears live bodies, trails as appropriate, score events, and pending timers. **[DECIDED]**
@@ -361,7 +369,7 @@ No calendar estimates until M1 is complete. **[DECIDED]**
 5. **[ASSUMPTION]** Placeholder vector-shape art until a style is chosen; cartoon style is proposed, not final.
 
 ### Open / to tune after the prototype
-1. **[OPEN]** Sliders vs. dragging the barrel vs. both.
+1. **[DECIDED, owner 4 October]** Keep accessible sliders and add up/down dragging anywhere on the canvas.
 2. **[OPEN]** Whether three solo shots is enough per map.
 3. **[OPEN]** Whether 100 / 125 / 20 / 0 rewards accuracy over bonus hunting; which surfaces are ricochet-eligible.
 4. **[OPEN]** Showing other players' trails in MP.

@@ -42,6 +42,8 @@ export const AIM = {
   minAngleDeg: 5,
   maxAngleDeg: 85,
   angleStepDeg: 1,
+  /** Dragging through half of the canvas height covers the entire angle range. */
+  dragDegreesPerCanvasHeight: 160,
   /** Power is shown as a percentage 0–100. */
   powerStepPercent: 1,
   barrelLengthMetres: 1.2,
@@ -60,6 +62,14 @@ export const SHOT = {
   settledSeconds: 0.5,
   timeoutSeconds: 15,
   boundsMarginMetres: 1,
+} as const;
+
+export const FLOW = {
+  shotResultSeconds: 1.4,
+  handoverSeconds: 1.2,
+  roundResultSeconds: 2.4,
+  /** Ignore background-tab catch-up for presentation timers. */
+  maxFrameSeconds: 0.1,
 } as const;
 
 /** Reversible art direction: a quiet, sunlit garden with inked cartoon figures. */

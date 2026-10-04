@@ -12,6 +12,47 @@ export class AudioManager {
   private _isMuted = false;
   private _volume = 1.0;
   private isUnlocked = false;
+  private reactionIndex = 0;
+
+  /** Alternating rubbery yelps, with a small pitch scoop for slapstick emphasis. */
+  playJonhReaction(): void {
+    const pitches = [230, 155, 290];
+    const pitch = pitches[this.reactionIndex++ % pitches.length]!;
+    this.playVocal(pitch, pitch * 0.55, 0.48);
+  }
+
+  /** A voiced "FAAH": airy F onset, open A formants, then a falling pitch. */
+  playOutOfBounds(): void {
+    if (this._isMuted || !this.ctx) return;
+    this.playNoiseBurst(this.ctx.currentTime, 0.12, 2200, 0.25);
+    this.playVocal(210, 65, 0.8, 0.08);
+  }
+
+  private playVocal(startPitch: number, endPitch: number, duration: number, delay = 0): void {
+    if (this._isMuted || !this.ctx || !this.masterGain) return;
+    const start = this.ctx.currentTime + delay;
+    const voice = this.ctx.createOscillator();
+    voice.type = 'sawtooth';
+    voice.frequency.setValueAtTime(startPitch, start);
+    voice.frequency.exponentialRampToValueAtTime(startPitch * 1.3, start + duration * 0.15);
+    voice.frequency.exponentialRampToValueAtTime(endPitch, start + duration);
+    // Parallel resonances shape a recognisable open-vowel sound.
+    for (const [frequency, level] of [[750, 0.2], [1200, 0.09], [2600, 0.025]]) {
+      const formant = this.ctx.createBiquadFilter();
+      formant.type = 'bandpass';
+      formant.frequency.setValueAtTime(frequency!, start);
+      formant.Q.setValueAtTime(4, start);
+      const envelope = this.ctx.createGain();
+      envelope.gain.setValueAtTime(0.001, start);
+      envelope.gain.exponentialRampToValueAtTime(level!, start + 0.04);
+      envelope.gain.exponentialRampToValueAtTime(0.001, start + duration);
+      voice.connect(formant);
+      formant.connect(envelope);
+      envelope.connect(this.masterGain);
+    }
+    voice.start(start);
+    voice.stop(start + duration);
+  }
 
   constructor() {
     const settings = this.loadAudioSettings();

@@ -72,7 +72,7 @@ export class InputCoordinator {
    * Processes keydown events. Returns true if the game handled the shortcut and
    * requests preventDefault(), false otherwise.
    */
-  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean): boolean {
+  handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean, isActionButtonFocused = false): boolean {
     // Physical state is ALWAYS tracked, even during text focus, pause, or overlays.
     if (code === 'Space') {
       this.isSpaceDown = true;
@@ -93,6 +93,9 @@ export class InputCoordinator {
     if (this.isPaused || this.isOverlayVisible) {
       return false;
     }
+
+    // Navigation/audio buttons retain native activation; Fire still uses the fresh-press guard.
+    if (isActionButtonFocused && (code === 'Enter' || code === 'Space')) return false;
 
     // Active gameplay controls
     if (code === 'Space') {
@@ -150,4 +153,3 @@ export class InputCoordinator {
     }
   }
 }
-

@@ -24,6 +24,36 @@ describe('MultiplayerMatchMachine', () => {
     expect(() => new MultiplayerMatchMachine(makeSetups(4))).not.toThrow();
   });
 
+  it('plays a selected map with alternating shots, then rematches on the same map', () => {
+    const mapChoice = ['rooftop'];
+    const machine = new MultiplayerMatchMachine(makeSetups(2), mapChoice);
+    mapChoice[0] = 'backyard';
+    expect(machine.currentMapId).toBe('rooftop');
+    expect(machine.roundCount).toBe(1);
+    const shooters: number[] = [];
+    for (let shot = 0; shot < 6; shot++) {
+      shooters.push(machine.activePlayerIndex);
+      machine.startAiming();
+      machine.fire(45, 50);
+      machine.resolveShot('body');
+      machine.continueFromResult();
+    }
+    expect(shooters).toEqual([0, 1, 0, 1, 0, 1]);
+    expect(machine.state).toBe('round_result');
+    machine.nextRound();
+    expect(machine.state).toBe('match_result');
+    expect(machine.players.map(p => p.totalScore)).toEqual([300, 300]);
+    machine.rematch();
+    expect(machine.currentMapId).toBe('rooftop');
+    expect(machine.players.map(p => p.roundScores)).toEqual([[0], [0]]);
+  });
+
+  it('rejects empty, duplicate and unsupported map choices', () => {
+    for (const maps of [[], ['unknown'], ['fence', 'fence']]) {
+      expect(() => new MultiplayerMatchMachine(makeSetups(2), maps)).toThrow(RangeError);
+    }
+  });
+
   // Table-driven N = 2, 3, 4
   const playerCounts = [2, 3, 4] as const;
   describe.each(playerCounts)('with N = %d players', (N) => {

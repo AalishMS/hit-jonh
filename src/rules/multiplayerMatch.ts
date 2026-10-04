@@ -56,7 +56,12 @@ export class MultiplayerMatchMachine {
   private _shotIndex = 0; // 0 to (shotsPerRound * players - 1)
   private _shooterIndex: number | null = null;
 
-  constructor(setups: readonly MPPlayerSetup[]) {
+  constructor(setups: readonly MPPlayerSetup[], private readonly maps: readonly string[] = MP_MAPS) {
+    if (maps.length === 0 || maps.length > MP_MAPS.length ||
+      new Set(maps).size !== maps.length || maps.some(id => !MP_MAPS.includes(id))) {
+      throw new RangeError('Choose one or more distinct supported maps');
+    }
+    this.maps = [...maps];
     if (setups.length < MULTIPLAYER.minPlayers || setups.length > MULTIPLAYER.maxPlayers) {
       throw new RangeError(
         `Multiplayer needs ${MULTIPLAYER.minPlayers}..${MULTIPLAYER.maxPlayers} players, got ${setups.length}`,
@@ -73,7 +78,7 @@ export class MultiplayerMatchMachine {
         id: i,
         totalScore: 0,
         bodyHits: 0,
-        roundScores: MP_MAPS.map(() => 0),
+        roundScores: this.maps.map(() => 0),
       };
     });
   }
@@ -87,7 +92,8 @@ export class MultiplayerMatchMachine {
     }));
   }
   get roundIndex(): number { return this._roundIndex; }
-  get currentMapId(): string { return MP_MAPS[this._roundIndex] ?? 'backyard'; }
+  get currentMapId(): string { return this.maps[this._roundIndex] ?? this.maps[0]!; }
+  get roundCount(): number { return this.maps.length; }
 
   // Who is currently shooting?
   get activePlayerIndex(): number {
@@ -114,7 +120,7 @@ export class MultiplayerMatchMachine {
   }
 
   get isMatchComplete(): boolean {
-    return this._roundIndex >= MP_MAPS.length;
+    return this._roundIndex >= this.maps.length;
   }
 
   startAiming(): void {
@@ -205,7 +211,7 @@ export class MultiplayerMatchMachine {
     for (const p of this._players) {
       p.totalScore = 0;
       p.bodyHits = 0;
-      p.roundScores = MP_MAPS.map(() => 0);
+      p.roundScores = this.maps.map(() => 0);
     }
   }
 }

@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from 'vitest';
 import { InputCoordinator, isTextInputElement } from '../src/input/controls';
 
 describe('InputCoordinator and Accidental-Action Rules', () => {
+  it('preserves native Home/Pause button activation without firing or skipping a shot', () => {
+    const onFire = vi.fn();
+    const onContinue = vi.fn();
+    const coordinator = new InputCoordinator({ onFire, onContinue, onReset: () => {}, onAimChange: () => {} });
+    coordinator.setCanFire(true);
+    expect(coordinator.handleKeyDown('Enter', false, false, true)).toBe(false);
+    expect(coordinator.handleKeyDown('Space', false, false, true)).toBe(false);
+    expect(onFire).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(coordinator.isPhysicalSpaceDown).toBe(true);
+    coordinator.setCanFire(false);
+    coordinator.setCanFire(true);
+    coordinator.handleKeyDown('Space', true, false);
+    expect(onFire).not.toHaveBeenCalled();
+    coordinator.handleKeyUp('Space');
+    coordinator.handleKeyDown('Space', false, false);
+    expect(onFire).toHaveBeenCalledOnce();
+  });
   it('triggers fire on fresh space press when aiming', () => {
     let fireCount = 0;
     const coordinator = new InputCoordinator({
