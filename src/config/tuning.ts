@@ -181,6 +181,7 @@ export const MATERIALS = {
   grass: { restitution: 0.2, friction: 0.8 },
   wood: { restitution: 0.3, friction: 0.6 },
   concrete: { restitution: 0.4, friction: 0.5 },
+  rubber: { restitution: 0.9, friction: 0.2 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;

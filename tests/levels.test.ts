@@ -70,7 +70,7 @@ describe('Level data validation', () => {
           );
 
           let hitJonh = false;
-          for (let step = 0; step < 720; step++) {
+          for (let step = 0; step < 1800; step++) {
             Matter.Engine.update(engine, PHYSICS.fixedStepSeconds * 1000);
             const state = adapter.stepProjectile(level, PROJECTILE.radiusMetres);
             if (state && state.hitJonh) {

@@ -126,6 +126,13 @@ export class SceneryRenderer {
             this.graphics.lineBetween(cx + 17, cy, cx + 17, cy + 38);
           }
         }
+      } else if (obs.material === 'rubber') {
+        this.graphics.fillStyle(0xd95c6f, 1); // Rubber pink/red
+        this.graphics.fillRect(xPx, yPx, wPx, hPx);
+        this.graphics.lineStyle(3, 0x822131, 1);
+        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
+        this.graphics.fillStyle(0xed8594, 1);
+        this.graphics.fillRect(xPx + 4, yPx + 4, wPx - 8, hPx * 0.1);
       } else {
         this.graphics.fillStyle(LOOK.ink, 1);
         this.graphics.fillRect(xPx, yPx, wPx, hPx);

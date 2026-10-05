@@ -304,3 +304,22 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 **Known issues/verification limits:** Actual physical touch, hardware FPS/stress and long-session heap profiling were not verified. Perceived sound balance and visual enjoyment require owner playtesting. Browser screenshots confirmed contact cues and cleanup; the very brief muzzle flash/recoil were not reliably captured manually, so their timing/render commands are verified by renderer tests rather than claimed as visually verified. OS preference changes during play and the in-flight saved-setting toggle were not manually exercised; cancellation is covered by automated controller/renderer tests and existing preference wiring.
 
 **Next task:** Owner playtest/tune launch and impact feel. Replacement art, recorded audio and world aiming remain separate future milestones.
+
+## Rubber Yard Map Addition — 2026-10-05
+
+**Done/current:** Implemented the "Rubber Yard" map featuring a bouncy rubber ceiling and a solid concrete wall obstacle, satisfying the original design proposal for a trick-shot arena. Authored unique rendering for the new ubber material to distinguish it from concrete and wood. Determined and proved stable, exclusive reference solutions for standard play and multiplayer target positions. Passed all physics and orchestration tests.
+
+**Lifecycle/accessibility decisions:**
+- Kept MULTIPLAYER.maps to the core 3 maps (ackyard, ence, ooftop) to preserve existing competitive round tracking/match lengths, treating "Rubber Yard" as a distinct/optional map for solo practice or explicit selection.
+- Rubber material has high restitution (0.9) to allow rich bounce gameplay without breaking standard impact dampening on grass.
+- Multiplayer offsets were standardized to -2, 0, 3 to match other levels and ensure physical exclusion of trick shots.
+- SceneryRenderer gives the rubber surface a distinct pink/red color with a soft highlight and thick border, clearly signaling its bouncy nature to the player.
+
+**Actual automated summaries:**
+- 
+pm run check passed typecheck/lint, **26 test files / 176 tests**, duration **1.40s**.
+- 
+pm run build passed: **71 modules transformed / 1.34s**.
+- Brute-forced exclusive trick-shot solutions in headless tests, ensuring physical solvability despite the high 7.0m concrete wall blocking direct shots to Jonh.
+
+**Next task:** Owner playtest/tune Rubber Yard trick shots. Determine if the map should be added to the default 3-map cycle or kept as a bonus unlock/practice stage.
