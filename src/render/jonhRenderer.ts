@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { LOOK } from '../config/tuning';
+import { JUICE, LOOK } from '../config/tuning';
 import type { JonhSpawnData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 
@@ -73,6 +73,13 @@ export class JonhRenderer {
     return false;
   }
 
+  get impactSquash(): number {
+    if (this.reactionMode !== 'hit' || this.isReducedMotionActive()) return 0;
+    const t = this.reactionTimerSeconds;
+    if (t < JUICE.compressionSeconds) return 1 - t / JUICE.compressionSeconds;
+    return -0.5 * Math.max(0, 1 - (t - JUICE.compressionSeconds) / JUICE.reboundSeconds);
+  }
+
   get isHit(): boolean {
     return this.reactionMode === 'hit';
   }
@@ -86,6 +93,9 @@ export class JonhRenderer {
   }
 
   update(deltaSeconds: number): void {
+    if (this.reactionMode === 'hit' && this.isReducedMotionActive()) {
+      this.reactionTimerSeconds = Math.max(this.reactionTimerSeconds, LOOK.hatFlightSeconds, LOOK.paperFlightSeconds);
+    }
     if (this.reactionMode === 'idle') {
       this.idleTimerSeconds += deltaSeconds;
     } else {
@@ -144,6 +154,12 @@ export class JonhRenderer {
     this.draw();
   }
 
+  settleImpact(): void {
+    if (!this.isHit) return;
+    this.reactionTimerSeconds = Math.max(LOOK.hatFlightSeconds, LOOK.paperFlightSeconds);
+    this.draw();
+  }
+
   draw(overrideHit?: boolean): void {
     if (overrideHit !== undefined) {
       this.reactionMode = overrideHit ? 'hit' : 'idle';
@@ -160,7 +176,20 @@ export class JonhRenderer {
 
     switch (this.reactionMode) {
       case 'hit':
-        this.drawKnockedDown(cx, groundY, bodyHeight);
+        if (!this.isReducedMotionActive() && this.reactionTimerSeconds < JUICE.compressionSeconds + JUICE.reboundSeconds + LOOK.tumbleSeconds) {
+          const t = Math.max(0, (this.reactionTimerSeconds - JUICE.compressionSeconds - JUICE.reboundSeconds) / LOOK.tumbleSeconds);
+          this.graphics.save();
+          this.graphics.translateCanvas(cx + t * JUICE.tumbleSlidePx, groundY);
+          this.graphics.rotateCanvas(t * Math.PI / 2);
+          this.graphics.scaleCanvas(1 + this.impactSquash * JUICE.squashAmount, 1 - this.impactSquash * JUICE.squashAmount);
+          this.graphics.translateCanvas(-cx, -groundY);
+          this.drawIdle(cx, groundY, bodyHeight);
+          this.graphics.restore();
+          this.speechText.setVisible(false);
+        } else {
+          this.speechText.setVisible(true);
+          this.drawKnockedDown(cx, groundY, bodyHeight);
+        }
         break;
       case 'hat':
         this.drawHatRemoved(cx, groundY, bodyHeight);
@@ -310,20 +339,6 @@ export class JonhRenderer {
     this.graphics.lineStyle(1, 0x4a4a4a, 1);
     this.graphics.fillRoundedRect(paperX, paperY, 16, 20, 2);
     this.graphics.strokeRoundedRect(paperX, paperY, 16, 20, 2);
-
-    // 5. Impact stars and comic dust
-    const starAlpha = Math.max(0, 1 - this.reactionTimerSeconds / 1.2);
-    if (starAlpha > 0) {
-      this.graphics.fillStyle(0xffd700, starAlpha);
-      this.graphics.fillCircle(headX - 6, headY - 24, 4);
-      this.graphics.fillCircle(headX + 12, headY - 20, 3.5);
-      this.graphics.fillCircle(headX + 5, headY - 32, 5);
-
-      // Dust puff at impact point
-      this.graphics.fillStyle(0xd0c4b0, starAlpha * 0.7);
-      this.graphics.fillCircle(cx + 8, groundY - 14, 12 * tumbleProgress);
-      this.graphics.fillCircle(cx + 20, groundY - 10, 9 * tumbleProgress);
-    }
 
     // 6. Speech Bubble
     this.drawSpeechBubble(cx, headX, headY, groundY, this.reactionQuote);

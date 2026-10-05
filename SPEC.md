@@ -231,6 +231,15 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
 - Comic synthesized vocal yelps accompany body hits; a voiced FAAH cue plays once per shot when the ball leaves any visible canvas edge. Leaving the top still allows the ball to return and never changes scoring/end conditions. Mute and master volume apply to all cues. **[DECIDED sound triggers, PROPOSED synthesis]**
 - Reactions are brief (≤ 1.5 s before Continue is offered) and skippable. Reduced-motion disables camera shake and large screen-space effects.
 
+### 10.2 Owner-approved launch and impact polish (5 October 2026) [DECIDED]
+
+- Effects-only milestone using the existing cartoon graphics and audio. Replacement art, recorded audio and world aiming remain outside this pass.
+- Accepted fire adds a muzzle flash, smoke puff and cosmetic barrel recoil. Physical muzzle, launch velocity and colliders are unchanged.
+- First confirmed body contact (direct or ricochet) resolves scoring immediately and ends that frame's physics loop. Freeze ball/Jonh's contact pose for 80 ms, then run their reaction at 35% speed for 240 ms before returning to normal. Scale elapsed time into `FixedStepper`; Matter always receives the unchanged fixed timestep. No slowdown before contact and no body effects for hat-only hits.
+- Camera shake (120 ms), zoom punch (1.03× returning over 180 ms), compression/rebound/tumble, ball squash, bounded dust/hat-coloured flecks/stars and a clamped, ink-outlined BONK label (700 ms) reinforce the hit. Values live in `JUICE` tuning and are [TUNE]. Hat/newspaper reactions remain; duplicate old dust/stars are removed.
+- The existing 1.4 s result window uses active real time including effects. Next now skips/settles effects immediately. Pause freezes every timeline; hidden-tab restoration discards catch-up. Home, reset, map load, handover, retry/rematch and shutdown restore camera and renderer transforms and clear effects.
+- Saved or OS reduced motion keeps existing reduced-motion reactions, audio and a static fading BONK label; suppresses freeze, slow motion, moving particles, recoil, squash and camera motion. Enabling it during effects immediately settles motion.
+
 ## 11. Maps [PROPOSED geometry, TUNE]
 
 World 25.6 m × 14.4 m. Ground top at y = 1.6 m. Cannon pivot at (2.5 m, ground + 0.6 m) on every map. All maps: fixed camera, simple background, readable obstacles, no invisible barriers, no solid-looking decoration without collision.

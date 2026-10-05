@@ -280,3 +280,27 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Next task:** Owner playtest of target positions; no further gameplay changes are included in this milestone.
 
+
+
+## Launch and impact polish — 2026-10-05
+
+**Done/current:** Completed the owner-approved effects milestone. Accepted fire adds flash/smoke and cosmetic barrel recoil. First confirmed body contact resolves scoring immediately and starts an 80 ms contact freeze, 240 ms reaction at 35% speed, then normal reaction. Matter still receives only the fixed timestep. The impact has a camera shake/zoom punch, contact compression/rebound/tumble, ball squash, bounded dust/hat-coloured flecks/stars and a clamped fading BONK label. Existing hat/newspaper flight remains; duplicated old dust/stars were removed. All effect tuning lives in JUICE. No replacement assets, audio changes or aiming changes were added.
+
+**Lifecycle/accessibility decisions:** Effects use explicitly advanced active presentation time rather than Phaser timer/tween clocks, so pause holds them exactly. The 1.4 s result window remains real-time and includes effects. Next now settles Jonh/ball and clears camera/effects; reset, Home, map loads, handovers, retry/rematch and shutdown use the same cleanup. Hidden-tab restoration discards the first catch-up frame. Saved/OS reduced motion suppresses moving effects and hit timing but keeps a static fading BONK and existing audio/reactions. Enabling it during a sequence cancels remaining motion. The impact label uses the existing system font; replacement typography is outside this milestone.
+
+**Corrections found during verification:** Skipping a successful shot could leave the terminal ball visually squashed; cleanup now redraws it normally and settles Jonh. Per-frame recoil drawing initially picked the next multiplayer player's cannon colour during results; it now retains the shooter's colour/pattern until handover.
+
+**Actual automated summaries:** Final npm run check passed typecheck/lint, **26 test files / 169 tests**, duration **1.45 s**. Production npm run build passed, **70 modules transformed / 897 ms**. git diff --check passed. Added timeline boundary/integration tests at 30/60/144 Hz, pause/reset/reduced-motion/duplicate impact coverage, renderer launch/camera restoration/cancellation/bounded particles/label clamping, and actual Matter replay comparisons for all three maps plus a hat-only case. Reference contacts, classifications, scores and one-shot results are identical across tested frame rates and effects modes. Headless reference incoming speeds include Backyard 11.794 m/s (strong) and Fence 8.347 m/s (weak). Initial sandbox Vitest failed with the historical shared temporary-cache ENOENT; the unchanged required command passed outside the sandbox. Node emitted the existing experimental localStorage warning.
+
+**Production browser evidence:** Walkthrough used npm run preview at http://127.0.0.1:4176. Screenshots were inspected inline during the walkthrough.
+
+- Fence 45°/24% showed BONK at contact and the 125-point ricochet/three-star result. Pausing immediately after contact held the same visible pose across subsequent work; Resume continued the result. Next now opened the result immediately; Retry retained aim.
+- Backyard 45°/40% produced DIRECT HIT (100 points) with BONK. Backyard 25°/62% produced HAT HIT (20 points), flying-hat reaction and no BONK/body effects. A 0% multiplayer miss produced SHORT and automatically restored Player 2's own aim.
+- Reduced-motion Fence hit showed the static label and settled Jonh, with no moving burst. Home during this result and during a later flight returned to Home without stale effects or delayed transitions.
+- At 500×800, document client/scroll widths were both 500. BONK remained inside the canvas and action controls remained usable. The viewport override was reset.
+- Final two-player Fence-only six-shot match used near → far → middle, reference aims 65°/34%, 65°/55%, 65°/44%. Both finished at 325 points and three body hits. Player 2's striped blue cannon remained blue during its hit despite the next player becoming active in the rules. Skips/handovers cleared effects, targets moved at cycle boundaries, personal trails persisted, and rematch restored cycle 1 with zero scores, clean scenery/trails and saved 65°/44% aim.
+- Captured browser warning/error logs were empty. The final preview remains available for owner playtesting.
+
+**Known issues/verification limits:** Actual physical touch, hardware FPS/stress and long-session heap profiling were not verified. Perceived sound balance and visual enjoyment require owner playtesting. Browser screenshots confirmed contact cues and cleanup; the very brief muzzle flash/recoil were not reliably captured manually, so their timing/render commands are verified by renderer tests rather than claimed as visually verified. OS preference changes during play and the in-flight saved-setting toggle were not manually exercised; cancellation is covered by automated controller/renderer tests and existing preference wiring.
+
+**Next task:** Owner playtest/tune launch and impact feel. Replacement art, recorded audio and world aiming remain separate future milestones.

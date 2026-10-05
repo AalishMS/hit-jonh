@@ -4,6 +4,8 @@ import type { Point2D } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 
 export class CannonRenderer {
+  private recoilX = 0;
+  private recoilY = 0;
   private graphics: Phaser.GameObjects.Graphics;
   private pivotXPx: number;
   private pivotYPx: number;
@@ -41,9 +43,18 @@ export class CannonRenderer {
     };
   }
 
+  setRecoil(pixels: number, angleDeg: number): void {
+    const radians = angleDeg * Math.PI / 180;
+    this.recoilX = -pixels * Math.cos(radians);
+    this.recoilY = pixels * Math.sin(radians);
+  }
+
   draw(angleDeg: number, color: number = 0x3a3f47, pattern: string = 'solid'): void {
     this.graphics.clear();
     const rad = (angleDeg * Math.PI) / 180;
+
+    this.graphics.save();
+    this.graphics.translateCanvas(this.recoilX, this.recoilY);
 
     // 1. Barrel (rotates around pivot)
     const cos = Math.cos(rad);
@@ -130,6 +141,8 @@ export class CannonRenderer {
       this.pivotXPx + pBand2.x,
       this.pivotYPx + pBand2.y,
     );
+
+    this.graphics.restore();
 
     // Initial aim guide line at muzzle (SPEC §3.2) - short directional indicator
     const guideStart = this.getMuzzlePosition(angleDeg, PROJECTILE.radiusMetres);

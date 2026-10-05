@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { LOOK, WORLD } from '../config/tuning';
+import { JUICE, LOOK, WORLD } from '../config/tuning';
 
 export class BallRenderer {
   private graphics: Phaser.GameObjects.Graphics;
@@ -22,7 +22,7 @@ export class BallRenderer {
     }
   }
 
-  draw(xPx: number, yPx: number): void {
+  draw(xPx: number, yPx: number, squash = 0): void {
     if (!this.visible) this.setVisible(true);
 
     this.graphics.clear();
@@ -38,6 +38,11 @@ export class BallRenderer {
       return;
     }
 
+    this.graphics.save();
+    this.graphics.translateCanvas(xPx, yPx);
+    this.graphics.scaleCanvas(1 + squash * JUICE.squashAmount, 1 - squash * JUICE.squashAmount);
+    xPx = 0; yPx = 0;
+
     // Dark iron ball
     this.graphics.fillStyle(0x22262c, 1);
     this.graphics.lineStyle(2, 0x111316, 1);
@@ -47,6 +52,7 @@ export class BallRenderer {
     // Specular shine highlight
     this.graphics.fillStyle(0x778899, 0.8);
     this.graphics.fillCircle(xPx - this.radiusPx * 0.35, yPx - this.radiusPx * 0.35, this.radiusPx * 0.3);
+    this.graphics.restore();
   }
 
   destroy(): void {
