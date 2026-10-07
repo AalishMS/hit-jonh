@@ -42,7 +42,9 @@ import {
 } from '../sim/units';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
-import { loadSaveData, recordSoloResult, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../storage/storage';
+import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
+import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
+import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
 
 export class PrototypeScene extends Phaser.Scene {
@@ -69,6 +71,11 @@ export class PrototypeScene extends Phaser.Scene {
   private impactQuality: HitQuality | null = null;
   private attract: { scenery: SceneryRenderer; jonh: JonhRenderer; cannon: CannonRenderer } | null = null;
   private soloResultExtras: SoloResultExtras = {};
+  private progress: Progress = freshProgress();
+  private pendingUnlocks: HatName[] = [];
+  /** Set while playing today's Daily Bonk (never overwrites solo bests). */
+  private daily: { key: string; positionId: string } | null = null;
+  private readonly hatImages = new Map<string, string>();
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
   private replayCountdown: number | null = null;
@@ -123,6 +130,7 @@ export class PrototypeScene extends Phaser.Scene {
   create(): void {
     const { designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
+    this.progress = loadProgress();
     this.audioManager = new AudioManager();
     if (import.meta.env.DEV) (window as unknown as { __HIT_JONH_AUDIO__: AudioManager }).__HIT_JONH_AUDIO__ = this.audioManager;
     this.effects = new ShotEffectsRenderer(this);
@@ -225,6 +233,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.attract?.jonh.setReducedMotion(settings.reducedMotion);
       },
       onClick: () => this.audioManager.playClick(),
+      onHomeExtras: (row, signal) => this.addHomeExtras(row, signal),
     });
     document.documentElement.classList.toggle('reduced-motion', loadSaveData().settings.reducedMotion);
 
@@ -346,6 +355,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private performQuit(): void {
+    this.daily = null;
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.cancel();
@@ -384,7 +394,7 @@ export class PrototypeScene extends Phaser.Scene {
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
     const scenery = new SceneryRenderer(this, ppm, h, w);
     scenery.draw(level);
-    const jonh = new JonhRenderer(this, level.jonhSpawn, ppm, h, { level });
+    const jonh = new JonhRenderer(this, level.jonhSpawn, ppm, h, { level, hatId: this.progress.selectedHat });
     jonh.setReducedMotion(loadSaveData().settings.reducedMotion);
     const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h);
     cannon.setAimAids(false, 50);
@@ -402,14 +412,15 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
 
-  private loadMap(mapId: string): void {
+  private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null): void {
     this.hideAttract();
     this.autoAdvance.cancel();
     this.resetEffects();
     this.activeMode = 'solo';
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
-    this.currentLevel = level;
+    this.daily = daily;
+    this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
 
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
@@ -438,7 +449,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.soloCoordinator = new SoloCoordinator(this.attemptMachine, this.soloMachine, {
       onStateChange: () => this.updateUIPerSoloState(),
       onShotFired: (angle, power) => {
-        saveSoloAim(this.soloMachine.mapId, angle, power);
+        if (!this.daily) saveSoloAim(this.soloMachine.mapId, angle, power);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
         const speed = powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
@@ -464,7 +475,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel });
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
     this.jonhRenderer.draw(false);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
@@ -604,7 +615,8 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
-      this.htmlControls.setMatchStatus(this.currentLevel.name, []);
+      this.htmlControls.setMatchStatus(this.daily ? `Daily Bonk · ${this.currentLevel.name}` : this.currentLevel.name, []);
+      this.htmlControls.setStreak(this.progress.currentStreak);
       const left = this.soloMachine.attemptsLeft;
       this.htmlControls.setAttempts(left);
       this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${left} shot${left === 1 ? '' : 's'} left. Adjust and fire again`, 'info');
@@ -793,11 +805,34 @@ export class PrototypeScene extends Phaser.Scene {
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
 
+    // Retention: hits, streak, three-star maps, daily results and hat unlocks.
+    const before = this.progress;
+    let after = recordShot(before, classification.outcome, this.activeMode === 'solo');
+    if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
+      const res = this.soloMachine.result!;
+      if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0);
+      else if (res.success) after = recordSoloFinish(after, this.currentLevel.id, res.stars);
+    }
+    const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
+    this.progress = after;
+    saveProgress(after);
+    this.pendingUnlocks.push(...unlocks);
+    if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
+    if (unlocks.length && this.activeMode === 'multi') {
+      this.htmlControls.setFeedback(`New hat for Jonh: ${HAT_RULES[unlocks[0]!].name}!`, 'hit');
+    }
+
     if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
       const res = this.soloMachine.result!;
       const previous = loadSaveData().solo[this.currentLevel.id]?.bestShots ?? null;
-      this.soloResultExtras = { newBest: res.success && (previous === null || res.shotsUsed < previous), quote };
-      if (res.success) {
+      this.soloResultExtras = {
+        newBest: !this.daily && res.success && (previous === null || res.shotsUsed < previous),
+        quote,
+        streak: after.currentStreak,
+        unlockHtml: this.unlockHtml(this.pendingUnlocks),
+      };
+      this.pendingUnlocks = [];
+      if (res.success && !this.daily) {
         recordSoloResult(this.currentLevel.id, res.shotsUsed, res.hasStyle, this.currentAngleDeg, this.currentPowerPercent);
       }
     }
@@ -805,6 +840,139 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setResetLabel('Next now ↵');
     const replaySeconds = this.replayCountdown !== null ? FX.replayAfterSeconds + this.replayPlan().lead / FX.replaySpeed + this.replayPlan().post : 0;
     this.autoAdvance.schedule('shot', isBodyHit ? Math.max(FLOW.bodyHitResultSeconds, replaySeconds + 0.6) : FLOW.shotResultSeconds);
+  }
+
+  /** A rasterized hat as an image URL for HTML menus. */
+  private hatImage(id: HatName): string {
+    const cached = this.hatImages.get(id);
+    if (cached) return cached;
+    const source = this.textures.get(`hat-${id}`).getSourceImage() as HTMLCanvasElement;
+    const url = typeof source.toDataURL === 'function' ? source.toDataURL() : '';
+    this.hatImages.set(id, url);
+    return url;
+  }
+
+  private unlockHtml(hats: readonly HatName[]): string {
+    return [...new Set(hats)].map(id => {
+      const card = document.createElement('div');
+      card.className = 'unlock-card';
+      const img = document.createElement('img');
+      img.src = this.hatImage(id);
+      img.alt = '';
+      const text = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = `New hat: ${HAT_RULES[id].name}`;
+      text.append(title, document.createTextNode('Put it on Jonh in the hat locker.'));
+      card.append(img, text);
+      return card.outerHTML;
+    }).join('');
+  }
+
+  private addHomeExtras(row: HTMLElement, signal: AbortSignal): void {
+    const today = dateKey(new Date());
+    const done = today in this.progress.daily;
+    const daily = document.createElement('button');
+    daily.type = 'button';
+    daily.className = 'btn';
+    daily.textContent = done ? 'Daily Bonk ✓' : 'Daily Bonk';
+    daily.addEventListener('click', () => this.showDaily(), { signal });
+    const hats = document.createElement('button');
+    hats.type = 'button';
+    hats.className = 'btn';
+    hats.textContent = `Hats ${unlockedHats(this.progress, MAPS.map(m => m.id)).length}/${HAT_ORDER.length}`;
+    hats.addEventListener('click', () => this.showLocker(), { signal });
+    row.append(daily, hats);
+  }
+
+  private showDaily(): void {
+    const key = dateKey(new Date());
+    const pick = dailyChallenge(key, MAPS);
+    if (!pick) return;
+    const map = MAPS.find(m => m.id === pick.mapId)!;
+    this.menuOverlay.showCustom('daily', (content, signal) => {
+      const h = document.createElement('h2');
+      h.textContent = 'Daily Bonk';
+      const intro = document.createElement('p');
+      intro.textContent = `${key} · ${map.name}. Jonh has picked a new spot today. Three shots. Your first run of the day counts.`;
+      const art = document.createElement('div');
+      art.className = 'map-btn';
+      art.style.maxWidth = '360px';
+      art.style.margin = '0 auto';
+      art.style.padding = '0';
+      art.innerHTML = mapPreview(map.id);
+      const status = document.createElement('p');
+      const result = this.progress.daily[key];
+      const streak = dailyStreak(this.progress, new Date());
+      status.className = 'quote';
+      status.textContent = result === undefined
+        ? (streak > 0 ? `Daily streak: ${streak} day${streak === 1 ? '' : 's'}. Keep it going!` : 'Not played yet today.')
+        : `Today: ${result > 0 ? '★'.repeat(result) + '☆'.repeat(3 - result) : 'missed'} · Streak ${streak} day${streak === 1 ? '' : 's'}. Replays are just for fun.`;
+      const actions = document.createElement('div');
+      actions.className = 'result-actions';
+      const play = document.createElement('button');
+      play.type = 'button';
+      play.className = 'btn btn-primary';
+      play.textContent = result === undefined ? 'Play today' : 'Play again';
+      play.addEventListener('click', () => {
+        this.menuOverlay.hide();
+        this.loadMap(pick.mapId, { key, positionId: pick.positionId });
+      }, { signal });
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'btn';
+      back.textContent = 'Back';
+      back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
+      actions.append(play, back);
+      content.append(h, intro, art, status, actions);
+      play.focus();
+    });
+  }
+
+  private showLocker(): void {
+    const mapIds = MAPS.map(m => m.id);
+    this.menuOverlay.showCustom('locker', (content, signal) => {
+      const h = document.createElement('h2');
+      h.textContent = "Jonh's hats";
+      const intro = document.createElement('p');
+      intro.textContent = 'Earn hats by ruining his afternoon in new ways. Pick one; he will wear it everywhere.';
+      const grid = document.createElement('div');
+      grid.className = 'hat-grid';
+      const unlocked = new Set(unlockedHats(this.progress, mapIds));
+      for (const id of HAT_ORDER) {
+        const rule = HAT_RULES[id];
+        const open = unlocked.has(id);
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = `hat-card${open ? '' : ' locked'}${this.progress.selectedHat === id ? ' selected' : ''}`;
+        card.disabled = !open;
+        card.setAttribute('aria-pressed', String(this.progress.selectedHat === id));
+        const img = document.createElement('img');
+        img.src = this.hatImage(id);
+        img.alt = '';
+        const name = document.createElement('span');
+        name.textContent = open ? rule.name : 'Locked';
+        const hint = document.createElement('small');
+        hint.textContent = rule.hint;
+        card.append(img, name, hint);
+        card.addEventListener('click', () => {
+          this.progress = { ...this.progress, selectedHat: id };
+          saveProgress(this.progress);
+          this.attract?.jonh.setHat(id);
+          this.showLocker();
+        }, { signal });
+        grid.appendChild(card);
+      }
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'btn';
+      back.textContent = 'Back';
+      back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
+      const stats = document.createElement('p');
+      stats.className = 'home-note';
+      stats.textContent = `Hits: ${this.progress.totalHits} · Best streak: ${this.progress.bestStreak} · Three-star gardens: ${this.progress.threeStarMaps.length}/${mapIds.length}`;
+      content.append(h, intro, grid, stats, back);
+      (grid.querySelector('button:not(:disabled)') as HTMLElement | null)?.focus();
+    });
   }
 
   private replayPlan() {
@@ -1113,7 +1281,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
     this.slotsRenderer = new CannonSlotsRenderer(this);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel });
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
@@ -1207,7 +1375,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
-      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel });
+      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat });
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
   }

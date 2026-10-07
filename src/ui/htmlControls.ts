@@ -46,6 +46,7 @@ export class HTMLControls {
   private homeButton: HTMLButtonElement;
   private matchStatus!: HTMLElement;
   private attemptsEl!: HTMLElement;
+  private streakEl!: HTMLElement;
 
   private cleanupListeners: Array<() => void> = [];
 
@@ -85,6 +86,7 @@ export class HTMLControls {
         <div class="hud-left">
           <div class="match-status" aria-label="Map and scores"></div>
           <div class="attempts" aria-label="Attempts left"></div>
+          <div class="streak" hidden></div>
         <div class="precise">
             <button type="button" class="pill-btn precise-toggle" id="precise-toggle" aria-expanded="false" aria-controls="precise-panel">${ICON.sliders}<span>Precise aim</span></button>
             <div class="precise-panel" id="precise-panel">
@@ -133,6 +135,7 @@ export class HTMLControls {
     this.feedbackBanner = q('#shot-feedback');
     this.matchStatus = q('.match-status');
     this.attemptsEl = q('.attempts');
+    this.streakEl = q('.streak');
     this.setMuted(muted);
     this.setPreciseOpen(this.readPreciseOpen());
 
@@ -226,7 +229,7 @@ export class HTMLControls {
       score.append(name, pts);
       this.matchStatus.appendChild(score);
     }
-    if (players.length) this.setAttempts(null);
+    if (players.length) { this.setAttempts(null); this.setStreak(0); }
   }
 
   /** Solo attempt pips (cannonballs); null hides them. */
@@ -240,6 +243,12 @@ export class HTMLControls {
       pip.className = i < left ? 'pip' : 'pip used';
       this.attemptsEl.appendChild(pip);
     }
+  }
+
+  /** Consecutive solo hits; shown from two upward. */
+  setStreak(count: number): void {
+    this.streakEl.hidden = count < 2;
+    this.streakEl.textContent = `Streak ×${count}`;
   }
 
   setDebugOptIn(optIn: boolean): void {

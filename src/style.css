@@ -199,3 +199,5 @@ input:disabled { opacity: .5; cursor: default; }
 .reduced-motion *, .reduced-motion *::before, .reduced-motion *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 .feedback-info.show { animation: caption-pop 360ms cubic-bezier(.2, 1.6, .4, 1), caption-fade 500ms 4.5s forwards; }
 @keyframes caption-fade { to { opacity: 0; } }
+.streak { padding: .35em .8em; border: 3px solid var(--ink); border-radius: 999px; background: var(--pow); color: var(--paper); box-shadow: 0 3px 0 var(--ink); font: 400 1em/1.1 var(--display); letter-spacing: .5px; animation: chip-pop 300ms cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes chip-pop { from { transform: scale(.4); } }

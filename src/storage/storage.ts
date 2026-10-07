@@ -1,5 +1,6 @@
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
+import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
 
 export interface LevelScore {
   bestShots: number | null;
@@ -29,6 +30,8 @@ export interface SaveData {
   solo: Record<string, LevelScore>;
   settings: Settings;
   lastMP?: PlayerSetup[];
+  /** Polish pass: hats, streaks and daily results (optional; older saves simply lack it). */
+  progress?: Progress;
 }
 
 const STORAGE_KEY = 'hitJonh.v1';
@@ -170,6 +173,7 @@ export function loadSaveData(): SaveData {
     // Validate lastMP
     const validSetups = sanitizePlayerSetups(parsedObj.lastMP);
     if (validSetups) data.lastMP = validSetups;
+    if (parsedObj.progress !== undefined) data.progress = sanitizeProgress(parsedObj.progress, MAPS.map(m => m.id));
 
     return data;
   } catch (e) {
@@ -229,3 +233,13 @@ export function saveMultiplayerSetup(setups: readonly PlayerSetup[]): void {
   writeSaveData(data);
 }
 
+
+export function loadProgress(): Progress {
+  return loadSaveData().progress ?? freshProgress();
+}
+
+export function saveProgress(progress: Progress): void {
+  const data = loadSaveData();
+  data.progress = sanitizeProgress(progress, MAPS.map(m => m.id));
+  writeSaveData(data);
+}

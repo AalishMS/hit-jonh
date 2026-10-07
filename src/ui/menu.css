@@ -151,3 +151,4 @@
   .tagline { margin: 6px 0 10px !important; }
   .map-btn small { display: none; }
 }
+.view-daily, .view-locker { width: min(680px, 100%); }
