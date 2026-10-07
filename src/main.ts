@@ -58,9 +58,10 @@ try {
     }
   });
 
-  // Expose for dev-only inspection in the browser console.
+  // Expose for dev-only inspection in the browser console; `?tune` opens the FX tuning panel.
   if (import.meta.env.DEV) {
     (window as unknown as { __HIT_JONH__: Phaser.Game }).__HIT_JONH__ = game;
+    if (new URLSearchParams(location.search).has('tune')) void import('./ui/tuningPanel').then(m => m.mountTuningPanel());
   }
 } catch {
   showBootError();
