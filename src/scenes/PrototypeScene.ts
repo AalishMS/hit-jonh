@@ -402,7 +402,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h);
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel });
     this.jonhRenderer.draw(false);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
@@ -549,6 +549,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
+    this.sceneryRenderer.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
     const reactionSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
     if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
@@ -909,7 +910,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
     this.slotsRenderer = new CannonSlotsRenderer(this);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h);
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel });
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
@@ -1003,7 +1004,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
-      WORLD.pixelsPerMetre, WORLD.designHeightPx);
+      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel });
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
   }
