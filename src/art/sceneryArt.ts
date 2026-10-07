@@ -68,7 +68,7 @@ function themeArt(t: Theme): ArtDef[] {
   return [
     {
       key: `sky-${t.id}`, w: 4, h: 512, ax: 0, ay: 0, scale: 1,
-      svg: svgDoc(4, 512, `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.skyTop}"/><stop offset="0.62" stop-color="${t.skyTop}" stop-opacity="1"/><stop offset="0.96" stop-color="${t.skyLow}"/><stop offset="1" stop-color="${t.skyLow}"/></linearGradient></defs><rect width="4" height="512" fill="url(#g)"/>`),
+      svg: svgDoc(4, 512, `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.skyTop}"/><stop offset="0.35" stop-color="${t.skyTop}"/><stop offset="0.75" stop-color="${t.skyTop}" stop-opacity="0.92"/><stop offset="0.96" stop-color="${t.skyLow}"/><stop offset="1" stop-color="${t.skyLow}"/></linearGradient></defs><rect width="4" height="512" fill="url(#g)"/>`),
     },
     bg(`far-${t.id}`, 900, 190, `<path d="${farHills}" fill="${t.far}"/>${farHouses}<path d="M0 150 H900 V190 H0 Z" fill="${t.far}"/>`),
     bg(`mid-${t.id}`, 900, 160, `${trees}<path d="${midHills}" fill="${t.mid}"/><path d="${midHills}" fill="none" stroke="${t.midDark}" stroke-width="2"/>`, 0, 160, 1.5),

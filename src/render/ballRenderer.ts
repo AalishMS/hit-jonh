@@ -11,6 +11,9 @@ export class BallRenderer {
   private readonly ball: Phaser.GameObjects.Image;
   private readonly marker: Phaser.GameObjects.Image;
   private readonly arrow: Phaser.GameObjects.Triangle;
+  /** Speed ribbon: recent positions drawn as a tapering streak behind the ball. */
+  private readonly ribbon: Phaser.GameObjects.Graphics;
+  private recent: Array<{ x: number; y: number }> = [];
   private visible = false;
   private squashAge: number | null = null;
   private squashDir = 0;
@@ -18,6 +21,7 @@ export class BallRenderer {
 
   constructor(scene: Phaser.Scene, private readonly radiusPx: number) {
     this.ball = scene.add.image(0, 0, 'ball').setDepth(20).setVisible(false);
+    this.ribbon = scene.add.graphics().setDepth(19);
     this.marker = scene.add.image(0, 0, 'ball').setDepth(41).setVisible(false).setScrollFactor(0);
     this.arrow = scene.add.triangle(0, 0, 0, 10, 8, -4, -8, -4, 0x2a1b2e).setDepth(41).setVisible(false).setScrollFactor(0);
   }
@@ -25,7 +29,7 @@ export class BallRenderer {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.ball.setVisible(visible);
-    if (!visible) { this.marker.setVisible(false); this.arrow.setVisible(false); this.squashAge = null; }
+    if (!visible) { this.marker.setVisible(false); this.arrow.setVisible(false); this.squashAge = null; this.recent = []; this.ribbon.clear(); }
   }
 
   /** Starts a contact squash (amount 0..1) against travel direction `angle` (radians). */
@@ -56,6 +60,7 @@ export class BallRenderer {
       if (this.squashAge > 0.35) this.squashAge = null;
     }
     this.ball.setPosition(xPx, yPx).setRotation(angle).setScale(base * sx, base * sy);
+    this.drawRibbon(xPx, yPx, Math.hypot(vx, vy) / maxSpeed, reduced);
 
     // Off-screen indicator when the ball is above the camera view.
     const cam = this.ball.scene.cameras.main;
@@ -74,7 +79,24 @@ export class BallRenderer {
     }
   }
 
+  private drawRibbon(x: number, y: number, speed: number, reduced: boolean): void {
+    const last = this.recent[this.recent.length - 1];
+    if (!last || Math.hypot(x - last.x, y - last.y) > 3) this.recent.push({ x, y });
+    if (this.recent.length > 10) this.recent.shift();
+    const g = this.ribbon;
+    g.clear();
+    if (reduced || speed < 0.15) return;
+    const n = this.recent.length;
+    for (let i = 0; i < n - 1; i++) {
+      const p = this.recent[i]!;
+      const k = (i + 1) / n;
+      g.fillStyle(0xfff7e6, 0.55 * k * Math.min(1, speed * 1.5));
+      g.fillCircle(p.x, p.y, this.radiusPx * (0.35 + 0.65 * k));
+    }
+  }
+
   destroy(): void {
+    this.ribbon.destroy();
     this.ball.destroy();
     this.marker.destroy();
     this.arrow.destroy();

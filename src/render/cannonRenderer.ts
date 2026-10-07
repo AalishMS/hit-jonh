@@ -1,16 +1,36 @@
 import type Phaser from 'phaser';
-import { AIM, LOOK, PROJECTILE } from '../config/tuning';
+import { barrelKey } from '../art/cannonArt';
+import { PAL, hex } from '../art/palette';
+import { AIM, PHYSICS, PROJECTILE } from '../config/tuning';
+import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
-import { metresToPixels, simYToWorldY } from '../sim/units';
+import { metresToPixels, powerToLaunchSpeed, simYToWorldY } from '../sim/units';
+import { artImage, artScale } from './artTextures';
 
+const METER = { width: 170, height: 16, offsetY: 30 } as const;
+
+/**
+ * The cannon: carriage, wheel and a barrel painted in the shooter's colour and pattern.
+ * Cosmetic only: the physical muzzle position and launch velocity never depend on the drawing.
+ */
 export class CannonRenderer {
-  private recoilX = 0;
-  private recoilY = 0;
-  private graphics: Phaser.GameObjects.Graphics;
+  private recoilPx = 0;
+  private windup = 0;
+  private time = 0;
+  private angleDeg = 45;
+  private powerPercent = 50;
+  private showAimAids = true;
   private pivotXPx: number;
   private pivotYPx: number;
-  private readonly barrelLengthPx: number;
-  private readonly barrelThicknessPx: number;
+  private readonly carriage: Phaser.GameObjects.Image;
+  private readonly barrel: Phaser.GameObjects.Image;
+  private readonly wheel: Phaser.GameObjects.Image;
+  private readonly fuse: Phaser.GameObjects.Image;
+  private readonly shadow: Phaser.GameObjects.Image;
+  private readonly guide: Phaser.GameObjects.Graphics;
+  private readonly meter: Phaser.GameObjects.Graphics;
+  private readonly meterText: Phaser.GameObjects.Text;
+  private lastMeterKey = '';
 
   constructor(
     scene: Phaser.Scene,
@@ -18,14 +38,21 @@ export class CannonRenderer {
     private readonly ppm: number,
     private readonly worldHeightPx: number,
   ) {
-    this.graphics = scene.add.graphics();
-    this.graphics.setDepth(10);
-
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
-    this.barrelLengthPx = metresToPixels(AIM.barrelLengthMetres, ppm);
-    this.barrelThicknessPx = metresToPixels(0.36, ppm);
+    this.shadow = scene.add.image(this.pivotXPx, this.pivotYPx + 32, 'fx-shadow').setScale(0.75, 0.5).setDepth(9);
+    this.carriage = artImage(scene, this.pivotXPx, this.pivotYPx, 'cannon-carriage').setDepth(10);
+    this.barrel = artImage(scene, this.pivotXPx, this.pivotYPx, 'cannon-barrel').setDepth(10.5);
+    this.wheel = artImage(scene, this.pivotXPx - 6, this.pivotYPx + 12, 'cannon-wheel').setDepth(11);
+    this.fuse = artImage(scene, 0, 0, 'fx-spark-fuse').setDepth(11.5).setVisible(false);
+    this.guide = scene.add.graphics().setDepth(12);
+    this.meter = scene.add.graphics().setDepth(8);
+    this.meterText = scene.add.text(this.pivotXPx, this.pivotYPx + METER.offsetY + 28, '', {
+      fontFamily: 'Nunito, system-ui, sans-serif', fontStyle: '900', fontSize: '13px', color: PAL.ink,
+    }).setOrigin(0.5, 0).setResolution(2).setDepth(8);
   }
+
+  get pivot(): { x: number; y: number } { return { x: this.pivotXPx, y: this.pivotYPx }; }
 
   setPosition(cannonSpawn: Point2D): void {
     this.pivotXPx = metresToPixels(cannonSpawn.x, this.ppm);
@@ -43,173 +70,104 @@ export class CannonRenderer {
     };
   }
 
-  setRecoil(pixels: number, angleDeg: number): void {
-    const radians = angleDeg * Math.PI / 180;
-    this.recoilX = -pixels * Math.cos(radians);
-    this.recoilY = pixels * Math.sin(radians);
+  setRecoil(pixels: number, _angleDeg?: number): void { this.recoilPx = pixels; }
+  /** 0..1 cannon wind-up before launch (anticipation). */
+  setWindup(progress: number): void { this.windup = clamp01(progress); }
+  /** Shows the launch preview and power meter only while the player can aim. */
+  setAimAids(visible: boolean, powerPercent: number): void {
+    this.showAimAids = visible;
+    this.powerPercent = powerPercent;
   }
 
-  draw(angleDeg: number, color: number = 0x3a3f47, pattern: string = 'solid'): void {
-    this.graphics.clear();
+  update(dt: number): void { this.time += dt; }
+
+  draw(angleDeg: number, color: number | null = null, pattern: string = 'solid'): void {
+    this.angleDeg = angleDeg;
     const rad = (angleDeg * Math.PI) / 180;
+    const key = barrelKey(color, color === null ? null : pattern);
+    if (this.barrel.texture.key !== key && this.barrel.scene.textures.exists(key)) this.barrel.setTexture(key);
+    const base = artScale('cannon-barrel');
+    const w = this.windup;
+    const ax = Math.cos(rad);
+    const ay = -Math.sin(rad);
+    const kick = this.recoilPx;
+    // Anticipation squashes the barrel along its axis; recoil slides it back and rolls the carriage.
+    this.barrel.setPosition(this.pivotXPx - ax * kick, this.pivotYPx - ay * kick)
+      .setRotation(-rad - (kick / Math.max(1, 18)) * 0.06)
+      .setScale(base * (1 - 0.14 * w), base * (1 + 0.2 * w));
+    const roll = kick * 0.45;
+    this.carriage.setPosition(this.pivotXPx - roll, this.pivotYPx + 2 * w).setScale(artScale('cannon-carriage') * (1 + 0.05 * w), artScale('cannon-carriage') * (1 - 0.08 * w));
+    this.wheel.setPosition(this.pivotXPx - 6 - roll, this.pivotYPx + 12).setRotation(-roll / 19);
+    this.shadow.setPosition(this.pivotXPx - roll, this.pivotYPx + 32);
 
-    this.graphics.save();
-    this.graphics.translateCanvas(this.recoilX, this.recoilY);
-
-    // 1. Barrel (rotates around pivot)
-    const cos = Math.cos(rad);
-    const sin = -Math.sin(rad); // world y down
-
-    // Barrel rectangle corners relative to pivot
-    const halfThick = this.barrelThicknessPx / 2;
-    const len = this.barrelLengthPx;
-
-    const corners = [
-      { x: -10 * cos - halfThick * -sin, y: -10 * sin - halfThick * cos },
-      { x: len * cos - halfThick * -sin, y: len * sin - halfThick * cos },
-      { x: len * cos + halfThick * -sin, y: len * sin + halfThick * cos },
-      { x: -10 * cos + halfThick * -sin, y: -10 * sin + halfThick * cos },
-    ];
-
-    this.graphics.fillStyle(color, 1);
-    this.graphics.lineStyle(3, 0x1f2329, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(this.pivotXPx + corners[0]!.x, this.pivotYPx + corners[0]!.y);
-    for (let i = 1; i < corners.length; i++) {
-      this.graphics.lineTo(this.pivotXPx + corners[i]!.x, this.pivotYPx + corners[i]!.y);
+    this.fuse.setVisible(w > 0);
+    if (w > 0) {
+      // Breech top in barrel space (-13, -6) mapped through the barrel rotation.
+      const fx = this.pivotXPx - 13 * ax + 6 * ay;
+      const fy = this.pivotYPx - 13 * ay - 6 * ax;
+      this.fuse.setPosition(fx, fy).setScale(artScale('fx-spark-fuse') * (0.8 + 0.6 * Math.abs(Math.sin(this.time * 60))))
+        .setRotation(this.time * 20);
     }
-    this.graphics.closePath();
-    this.graphics.fillPath();
-    this.graphics.strokePath();
+    this.drawGuide(rad);
+    this.drawMeter();
+  }
 
-    // Pattern overlay
-    this.graphics.fillStyle(0xffffff, 0.85); // Mostly opaque white so the pattern reads on every player colour
-    this.graphics.lineStyle(2, 0xffffff, 0.85);
+  /** The first ~0.3 s of the analytic arc: direction and power at a glance, never the landing. */
+  private drawGuide(rad: number): void {
+    const g = this.guide;
+    g.clear();
+    if (!this.showAimAids) return;
+    const muzzle = this.getMuzzlePosition(this.angleDeg, PROJECTILE.radiusMetres);
+    const speedPx = powerToLaunchSpeed(this.powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * this.ppm;
+    const gPx = PHYSICS.gravity * this.ppm;
+    const count = 9;
+    for (let i = 1; i <= count; i++) {
+      const t = (AIM.previewSeconds * i) / count;
+      const x = muzzle.x + Math.cos(rad) * speedPx * t;
+      const y = muzzle.y - (Math.sin(rad) * speedPx * t - 0.5 * gPx * t * t);
+      const r = 4.2 - (i / count) * 2.2;
+      const a = 1 - (i / count) * 0.65;
+      g.fillStyle(hex(PAL.ink), a);
+      g.fillCircle(x, y, r + 1.6);
+      g.fillStyle(hex(PAL.paper), a);
+      g.fillCircle(x, y, r);
+    }
+  }
 
-    if (pattern === 'stripes') {
-      for (let d = 0; d < len; d += 15) {
-        const sx1 = d * cos - halfThick * -sin;
-        const sy1 = d * sin - halfThick * cos;
-        const sx2 = (d+5) * cos + halfThick * -sin;
-        const sy2 = (d+5) * sin + halfThick * cos;
-        this.graphics.beginPath();
-        this.graphics.moveTo(this.pivotXPx + sx1, this.pivotYPx + sy1);
-        this.graphics.lineTo(this.pivotXPx + sx2, this.pivotYPx + sy2);
-        this.graphics.strokePath();
-      }
-    } else if (pattern === 'dots') {
-      for (let d = 10; d < len - 10; d += 20) {
-        for (let w = -halfThick + 5; w <= halfThick - 5; w += 10) {
-          const dx = d * cos - w * -sin;
-          const dy = d * sin - w * cos;
-          this.graphics.fillCircle(this.pivotXPx + dx, this.pivotYPx + dy, 3);
-        }
-      }
-    } else if (pattern === 'checks') {
-      for (let d = 0; d < len - 10; d += 15) {
-        for (let w = -halfThick; w <= halfThick - 10; w += 15) {
-          if (Math.floor(d / 15 + w / 15) % 2 === 0) {
-             const p1x = d * cos - w * -sin;
-             const p1y = d * sin - w * cos;
-             const p2x = (d+15) * cos - w * -sin;
-             const p2y = (d+15) * sin - w * cos;
-             const p3x = (d+15) * cos - (w+15) * -sin;
-             const p3y = (d+15) * sin - (w+15) * cos;
-             const p4x = d * cos - (w+15) * -sin;
-             const p4y = d * sin - (w+15) * cos;
-
-             this.graphics.beginPath();
-             this.graphics.moveTo(this.pivotXPx + p1x, this.pivotYPx + p1y);
-             this.graphics.lineTo(this.pivotXPx + p2x, this.pivotYPx + p2y);
-             this.graphics.lineTo(this.pivotXPx + p3x, this.pivotYPx + p3y);
-             this.graphics.lineTo(this.pivotXPx + p4x, this.pivotYPx + p4y);
-             this.graphics.closePath();
-             this.graphics.fillPath();
-          }
-        }
+  private drawMeter(): void {
+    const key = `${this.showAimAids}-${this.powerPercent}-${this.angleDeg}`;
+    if (key === this.lastMeterKey) return;
+    this.lastMeterKey = key;
+    const g = this.meter;
+    g.clear();
+    this.meterText.setVisible(this.showAimAids);
+    if (!this.showAimAids) return;
+    const x = this.pivotXPx - METER.width / 2;
+    const y = this.pivotYPx + METER.offsetY + 6;
+    g.fillStyle(hex(PAL.ink), 1);
+    g.fillRoundedRect(x + 3, y + 3, METER.width, METER.height, 8);
+    g.fillStyle(hex(PAL.paper), 1);
+    g.fillRoundedRect(x, y, METER.width, METER.height, 8);
+    const filled = (METER.width - 6) * (this.powerPercent / 100);
+    if (filled > 1) {
+      // Green → zap → pow as power rises, in segments like a fairground strength meter.
+      const segments = 12;
+      const segW = (METER.width - 6) / segments;
+      for (let i = 0; i < segments; i++) {
+        const sx = x + 3 + i * segW;
+        const w = Math.min(segW - 1.5, filled - i * segW);
+        if (w <= 0) break;
+        const color = i < 5 ? PAL.leaf : i < 9 ? PAL.zap : PAL.pow;
+        g.fillStyle(hex(color), 1);
+        g.fillRect(sx, y + 3, w, METER.height - 6);
       }
     }
-
-    // Muzzle band ring
-    const bandLen = len - 6;
-    const pBand1 = { x: bandLen * cos - (halfThick + 2) * -sin, y: bandLen * sin - (halfThick + 2) * cos };
-    const pBand2 = { x: bandLen * cos + (halfThick + 2) * -sin, y: bandLen * sin + (halfThick + 2) * cos };
-    this.graphics.lineStyle(4, 0x1f2329, 1);
-    this.graphics.lineBetween(
-      this.pivotXPx + pBand1.x,
-      this.pivotYPx + pBand1.y,
-      this.pivotXPx + pBand2.x,
-      this.pivotYPx + pBand2.y,
-    );
-
-    this.graphics.restore();
-
-    // Initial aim guide line at muzzle (SPEC §3.2) - short directional indicator
-    const guideStart = this.getMuzzlePosition(angleDeg, PROJECTILE.radiusMetres);
-    const guideLenPx = metresToPixels(0.85, this.ppm);
-    const endX = guideStart.x + guideLenPx * cos;
-    const endY = guideStart.y + guideLenPx * sin;
-
-    // Outer contrasting line
-    this.graphics.lineStyle(4, 0x2b2118, 0.5);
-    this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
-
-    // Inner bright directional line
-    this.graphics.lineStyle(2, LOOK.accent, 0.95);
-    this.graphics.lineBetween(guideStart.x, guideStart.y, endX, endY);
-
-    // Dotted rhythm ticks along guide
-    for (let d = 0.2; d <= 0.8; d += 0.2) {
-      const tickPx = metresToPixels(d, this.ppm);
-      const tx = guideStart.x + tickPx * cos;
-      const ty = guideStart.y + tickPx * sin;
-      this.graphics.fillStyle(0xfff3e0, 1);
-      this.graphics.fillCircle(tx, ty, 2.5);
-      this.graphics.lineStyle(1, 0x2b2118, 1);
-      this.graphics.strokeCircle(tx, ty, 2.5);
-    }
-
-    // Directional arrow tip
-    const arrowLen = 7;
-    const arrowWidth = 4;
-    const normalX = -sin;
-    const normalY = cos;
-    this.graphics.fillStyle(LOOK.accent, 1);
-    this.graphics.lineStyle(1.5, 0x2b2118, 1);
-    this.graphics.beginPath();
-    this.graphics.moveTo(endX, endY);
-    this.graphics.lineTo(
-      endX - arrowLen * cos + arrowWidth * normalX,
-      endY - arrowLen * sin + arrowWidth * normalY,
-    );
-    this.graphics.lineTo(
-      endX - arrowLen * cos - arrowWidth * normalX,
-      endY - arrowLen * sin - arrowWidth * normalY,
-    );
-    this.graphics.closePath();
-    this.graphics.fillPath();
-    this.graphics.strokePath();
-
-    // 2. Carriage / Base Mount
-    // Wooden wheel
-    const wheelRadius = metresToPixels(0.45, this.ppm);
-    this.graphics.fillStyle(0x8a5229, 1);
-    this.graphics.lineStyle(4, 0x3d2010, 1);
-    this.graphics.fillCircle(this.pivotXPx - 5, this.pivotYPx + 15, wheelRadius);
-    this.graphics.strokeCircle(this.pivotXPx - 5, this.pivotYPx + 15, wheelRadius);
-
-    // Hub
-    this.graphics.fillStyle(0x3a3f47, 1);
-    this.graphics.fillCircle(this.pivotXPx - 5, this.pivotYPx + 15, 8);
-
-    // Metal pivot bracket
-    this.graphics.fillStyle(0x5a6370, 1);
-    this.graphics.lineStyle(3, 0x2b2118, 1);
-    this.graphics.fillCircle(this.pivotXPx, this.pivotYPx, 12);
-    this.graphics.strokeCircle(this.pivotXPx, this.pivotYPx, 12);
+    g.lineStyle(3, hex(PAL.ink), 1);
+    g.strokeRoundedRect(x, y, METER.width, METER.height, 8);
+    this.meterText.setText(`ANGLE ${this.angleDeg}°   POWER ${this.powerPercent}%`);
   }
 
   destroy(): void {
-    this.graphics.destroy();
+    for (const o of [this.carriage, this.barrel, this.wheel, this.fuse, this.shadow, this.guide, this.meter, this.meterText]) o.destroy();
   }
 }

@@ -44,6 +44,15 @@ export const AIM = {
   angleStepDeg: 1,
   /** Dragging through half of the canvas height covers the entire angle range. */
   dragDegreesPerCanvasHeight: 160,
+  /** Dragging across the whole canvas width changes power by this many percent (polish pass). */
+  dragPowerPerCanvasWidth: 160,
+  /** Pressing within this radius of the cannon pivot grabs the cannon directly. */
+  grabRadiusPx: 70,
+  /** Grab mode: pointer distance from the pivot mapped to 0–100 % power. */
+  grabMinPx: 60,
+  grabMaxPx: 380,
+  /** Short analytic launch preview (seconds of flight shown); not a full trajectory (SPEC §3.2). */
+  previewSeconds: 0.3,
   /** Power is shown as a percentage 0–100. */
   powerStepPercent: 1,
   barrelLengthMetres: 1.2,
@@ -165,7 +174,7 @@ export const MULTIPLAYER = {
   patterns: ['solid', 'stripes', 'dots', 'checks'],
   /** Decorative inactive cannon slots: render-only, in the earth strip below the ground surface. */
   slots: {
-    startXPx: 24,
+    startXPx: 260,
     spacingPx: 280,
     yPx: 538,
     barrelWidthPx: 44,

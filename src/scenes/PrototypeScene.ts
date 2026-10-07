@@ -235,10 +235,19 @@ export class PrototypeScene extends Phaser.Scene {
       onEscape: () => this.togglePause(),
     });
 
-    this.canvasAim = new CanvasAim(this.game.canvas,
-      () => this.activeMode !== 'none' && !this.sessionCoordinator.isPaused &&
-        !this.menuOverlay.isVisible() && this.activeCoordinator.canAdjustAim(),
-      () => this.currentAngleDeg, (angle) => this.setAngle(angle));
+    this.canvasAim = new CanvasAim(this.game.canvas, {
+      canAim: () => this.canAimNow(),
+      getAim: () => ({ angle: this.currentAngleDeg, power: this.currentPowerPercent }),
+      onAim: (angle, power) => { this.setAngle(angle); this.setPower(power); },
+      toWorld: (clientX, clientY) => {
+        const rect = this.game.canvas.getBoundingClientRect();
+        const x = ((clientX - rect.left) / Math.max(1, rect.width)) * WORLD.designWidthPx;
+        const y = ((clientY - rect.top) / Math.max(1, rect.height)) * WORLD.designHeightPx;
+        const p = this.cameras.main.getWorldPoint(x, y);
+        return { x: p.x, y: p.y };
+      },
+      pivot: () => this.cannonRenderer?.pivot ?? { x: 0, y: 0 },
+    });
 
     // Gesture unlock
     const unlockAudio = () => this.audioManager.unlock();
@@ -294,6 +303,12 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setControlsInert(true);
     this.htmlControls.setVisible(false);
     this.menuOverlay.showHome();
+  }
+
+  /** True while the active player may adjust aim (drives drag input and the aim aids). */
+  private canAimNow(): boolean {
+    return this.activeMode !== 'none' && !this.sessionCoordinator.isPaused && !this.menuOverlay.isVisible() &&
+      Boolean(this.activeCoordinator?.canAdjustAim()) && this.attemptMachine?.state === 'aiming';
   }
 
   private togglePause(): void {
@@ -554,7 +569,10 @@ export class PrototypeScene extends Phaser.Scene {
     const reactionSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
     if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
     const recoil = this.effects.update(reactionSeconds, reduced, dtSeconds);
+    this.cannonRenderer.update(dtSeconds);
     this.cannonRenderer.setRecoil(recoil, this.currentAngleDeg);
+    this.cannonRenderer.setWindup(this.pendingLaunch ? 1 - this.impactTimeline.holdRemainingSeconds / Math.max(0.001, FX.windupSeconds) : 0);
+    this.cannonRenderer.setAimAids(this.canAimNow(), this.currentPowerPercent);
     this.drawCannon();
 
     const advance = this.autoAdvance.advance(dtSeconds);
@@ -851,7 +869,7 @@ export class PrototypeScene extends Phaser.Scene {
         : this.multiMachine.activePlayer;
       this.cannonRenderer.draw(this.currentAngleDeg, player.color, player.pattern);
     } else {
-      this.cannonRenderer.draw(this.currentAngleDeg);
+      this.cannonRenderer.draw(this.currentAngleDeg, null);
     }
   }
 

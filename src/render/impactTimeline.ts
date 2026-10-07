@@ -24,6 +24,7 @@ export class ImpactTimeline {
 
   get age(): number | null { return this.elapsed; }
   get isHolding(): boolean { return this.holdRemaining > 0; }
+  get holdRemainingSeconds(): number { return this.holdRemaining; }
 
   bodyImpact(reducedMotion = false, profile: TimeScaleProfile = DEFAULT_PROFILE): boolean {
     if (this.triggered) return false;
