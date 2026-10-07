@@ -1,4 +1,5 @@
 import { AIM, PROJECTILE } from '../config/tuning';
+import { cssColor, playerDisplayColor } from '../art/palette';
 import { powerToLaunchSpeed } from '../sim/units';
 import type { MPPlayerView } from '../rules/multiplayerMatch';
 
@@ -13,6 +14,21 @@ export interface HTMLControlsCallbacks {
   onHome?: () => void;
 }
 
+const ICON = {
+  soundOn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  soundOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>',
+  home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.5 12 4l8.5 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10v9.5h4.2v-5.2h2.6v5.2h4.2V10" fill="currentColor"/></svg>',
+  sliders: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="9" cy="7" r="2.8" fill="currentColor"/><circle cx="15" cy="17" r="2.8" fill="currentColor"/></svg>',
+};
+
+const PRECISE_KEY = 'hitJonh.v1.preciseOpen';
+
+/**
+ * The in-game HUD, laid over the canvas: score chips, icon buttons, the result caption, a big
+ * Fire button where a thumb rests and a collapsible "Precise aim" panel that keeps the native,
+ * accessible sliders as a fallback to in-world dragging.
+ */
 export class HTMLControls {
   private container: HTMLElement;
   private angleSlider!: HTMLInputElement;
@@ -24,10 +40,12 @@ export class HTMLControls {
   private resetButton!: HTMLButtonElement;
   private muteButton!: HTMLButtonElement;
   private pauseButton!: HTMLButtonElement;
+  private preciseToggle!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
   private homeButton: HTMLButtonElement;
   private matchStatus!: HTMLElement;
+  private attemptsEl!: HTMLElement;
 
   private cleanupListeners: Array<() => void> = [];
 
@@ -40,143 +58,115 @@ export class HTMLControls {
     initialMuted = false,
   ) {
     this.container = document.createElement('section');
-    this.container.className = 'controls-panel';
+    this.container.className = 'controls-panel hud';
     this.container.setAttribute('aria-label', 'Cannon Controls');
 
     this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
     parentElement.appendChild(this.container);
     this.homeButton = document.createElement('button');
-    this.homeButton.className = 'btn game-home-button';
-    this.homeButton.textContent = '⌂ Home';
+    this.homeButton.type = 'button';
+    this.homeButton.className = 'icon-btn game-home-button';
+    this.homeButton.setAttribute('aria-label', 'Home');
+    this.homeButton.innerHTML = `${ICON.home}<span class="visually-hidden">Home</span>`;
     const onHome = () => this.callbacks.onHome?.();
     this.homeButton.addEventListener('click', onHome);
     this.cleanupListeners.push(() => this.homeButton.removeEventListener('click', onHome));
-    parentElement.appendChild(this.homeButton);
+    document.body.appendChild(this.homeButton);
+  }
+
+  private on<K extends keyof HTMLElementEventMap>(el: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void): void {
+    el.addEventListener(type, fn);
+    this.cleanupListeners.push(() => el.removeEventListener(type, fn));
   }
 
   private render(angle: number, power: number, debug: boolean, muted: boolean): void {
     this.container.innerHTML = `
-      <div class="match-status" aria-label="Map and scores"></div>
-      <div class="feedback-banner feedback-info" id="shot-feedback" role="status" aria-live="polite">Jonh is reading. Set your angle and power.</div>
-      <div class="controls-row">
-        <div class="control-group">
-          <div class="control-label-row">
-            <label for="angle-slider">Angle</label>
-            <span class="value-badge" id="angle-value">${angle}°</span>
+      <div class="hud-top">
+        <div class="hud-left">
+          <div class="match-status" aria-label="Map and scores"></div>
+          <div class="attempts" aria-label="Attempts left"></div>
+        <div class="precise">
+            <button type="button" class="pill-btn precise-toggle" id="precise-toggle" aria-expanded="false" aria-controls="precise-panel">${ICON.sliders}<span>Precise aim</span></button>
+            <div class="precise-panel" id="precise-panel">
+              <div class="control-group">
+                <div class="control-label-row"><label for="angle-slider">Angle</label><span class="value-badge" id="angle-value">${angle}°</span></div>
+                <input type="range" id="angle-slider" min="${AIM.minAngleDeg}" max="${AIM.maxAngleDeg}" step="${AIM.angleStepDeg}" value="${angle}" />
+              </div>
+              <div class="control-group">
+                <div class="control-label-row"><label for="power-slider">Power</label><span class="value-badge" id="power-value">${power}%</span></div>
+                <input type="range" id="power-slider" min="0" max="100" step="${AIM.powerStepPercent}" value="${power}" />
+                <div class="sub-label" id="speed-indicator" hidden>Launch Speed: ${this.calcSpeed(power)} m/s</div>
+              </div>
+              <p class="control-help">Drag the cannon, or drag the field: ↕ angle, ↔ power. Keys: ← → angle, ↑ ↓ power, Space fires.</p>
+            </div>
           </div>
-          <input
-            type="range"
-            id="angle-slider"
-            min="${AIM.minAngleDeg}"
-            max="${AIM.maxAngleDeg}"
-            step="${AIM.angleStepDeg}"
-            value="${angle}"
-          />
         </div>
-
-        <div class="control-group">
-          <div class="control-label-row">
-            <label for="power-slider">Power</label>
-            <span class="value-badge" id="power-value">${power}%</span>
-          </div>
-          <input
-            type="range"
-            id="power-slider"
-            min="0"
-            max="100"
-            step="${AIM.powerStepPercent}"
-            value="${power}"
-          />
-          <div class="sub-label" id="speed-indicator" hidden>Launch Speed: ${this.calcSpeed(power)} m/s</div>
-        </div>
-
-        <div class="actions-group">
-          <button type="button" class="btn btn-fire" id="fire-btn">Fire · Space</button>
-          <button type="button" class="btn btn-reset" id="reset-btn">Aim again</button>
-          <button type="button" class="btn btn-mute" id="mute-btn">${muted ? 'Sound off' : 'Sound on'}</button>
-          <button type="button" class="btn btn-pause" id="pause-btn">Pause</button>
-        </div>
-
-        <div class="debug-group" ${debug ? '' : 'hidden'}>
-          <label class="toggle-label" for="debug-toggle">
-            <input type="checkbox" id="debug-toggle" ${debug ? 'checked' : ''} />
-            <span>Debug View</span>
-          </label>
+        <div class="hud-icons">
+          <button type="button" class="icon-btn btn-mute" id="mute-btn"></button>
+          <button type="button" class="icon-btn btn-pause" id="pause-btn" aria-label="Pause">${ICON.pause}<span class="visually-hidden">Pause</span></button>
         </div>
       </div>
-      <div class="control-help">Drag up / down on the field to aim · ← → angle · ↑ ↓ power · Shots advance automatically</div>
+      <div class="feedback-banner feedback-info" id="shot-feedback" role="status" aria-live="polite"></div>
+      <div class="hud-bottom">
+        <div class="fire-cluster">
+          <button type="button" class="pill-btn btn-reset" id="reset-btn">Aim again</button>
+          <button type="button" class="btn-fire" id="fire-btn"><span class="fire-word">Fire</span><small>Space</small></button>
+        </div>
+      </div>
+      <div class="debug-group" ${debug ? '' : 'hidden'}>
+        <label class="toggle-label" for="debug-toggle"><input type="checkbox" id="debug-toggle" ${debug ? 'checked' : ''} /><span>Debug View</span></label>
+      </div>
     `;
 
-    this.angleSlider = this.container.querySelector('#angle-slider') as HTMLInputElement;
-    this.angleValueLabel = this.container.querySelector('#angle-value') as HTMLElement;
-    this.powerSlider = this.container.querySelector('#power-slider') as HTMLInputElement;
-    this.powerValueLabel = this.container.querySelector('#power-value') as HTMLElement;
-    this.speedLabel = this.container.querySelector('#speed-indicator') as HTMLElement;
-    this.fireButton = this.container.querySelector('#fire-btn') as HTMLButtonElement;
-    this.resetButton = this.container.querySelector('#reset-btn') as HTMLButtonElement;
-    this.muteButton = this.container.querySelector('#mute-btn') as HTMLButtonElement;
-    this.pauseButton = this.container.querySelector('#pause-btn') as HTMLButtonElement;
-    this.debugToggle = this.container.querySelector('#debug-toggle') as HTMLInputElement;
-    this.feedbackBanner = this.container.querySelector('#shot-feedback') as HTMLElement;
-    this.matchStatus = this.container.querySelector('.match-status') as HTMLElement;
+    const q = <T extends HTMLElement>(sel: string) => this.container.querySelector(sel) as T;
+    this.angleSlider = q('#angle-slider');
+    this.angleValueLabel = q('#angle-value');
+    this.powerSlider = q('#power-slider');
+    this.powerValueLabel = q('#power-value');
+    this.speedLabel = q('#speed-indicator');
+    this.fireButton = q('#fire-btn');
+    this.resetButton = q('#reset-btn');
+    this.muteButton = q('#mute-btn');
+    this.pauseButton = q('#pause-btn');
+    this.preciseToggle = q('#precise-toggle');
+    this.debugToggle = q('#debug-toggle');
+    this.feedbackBanner = q('#shot-feedback');
+    this.matchStatus = q('.match-status');
+    this.attemptsEl = q('.attempts');
+    this.setMuted(muted);
+    this.setPreciseOpen(this.readPreciseOpen());
 
-    // Attach listeners and track cleanup
-    const onAngleInput = () => {
+    this.on(this.angleSlider, 'input', () => {
       const val = Number.parseInt(this.angleSlider.value, 10);
       this.angleValueLabel.textContent = `${val}°`;
       this.callbacks.onAngleChange(val);
-    };
-    this.angleSlider.addEventListener('input', onAngleInput);
-    this.cleanupListeners.push(() => this.angleSlider.removeEventListener('input', onAngleInput));
-
-    const onPowerInput = () => {
+    });
+    this.on(this.powerSlider, 'input', () => {
       const val = Number.parseInt(this.powerSlider.value, 10);
       this.powerValueLabel.textContent = `${val}%`;
       this.speedLabel.textContent = `Launch Speed: ${this.calcSpeed(val)} m/s`;
       this.callbacks.onPowerChange(val);
-    };
-    this.powerSlider.addEventListener('input', onPowerInput);
-    this.cleanupListeners.push(() => this.powerSlider.removeEventListener('input', onPowerInput));
+    });
+    this.on(this.fireButton, 'click', () => this.callbacks.onFire());
+    this.on(this.resetButton, 'click', () => this.callbacks.onReset());
+    this.on(this.muteButton, 'click', () => this.setMuted(this.callbacks.onToggleMute()));
+    this.on(this.pauseButton, 'click', () => this.callbacks.onPause?.());
+    this.on(this.preciseToggle, 'click', () => this.setPreciseOpen(this.preciseToggle.getAttribute('aria-expanded') !== 'true', true));
+    this.on(this.debugToggle, 'change', () => this.callbacks.onToggleDebug(this.debugToggle.checked));
+  }
 
-    const onFireClick = () => {
-      this.callbacks.onFire();
-    };
-    this.fireButton.addEventListener('click', onFireClick);
-    this.cleanupListeners.push(() => this.fireButton.removeEventListener('click', onFireClick));
+  private readPreciseOpen(): boolean {
+    try { return localStorage.getItem(PRECISE_KEY) === '1'; } catch { return false; }
+  }
 
-    const onResetClick = () => {
-      this.callbacks.onReset();
-    };
-    this.resetButton.addEventListener('click', onResetClick);
-    this.cleanupListeners.push(() => this.resetButton.removeEventListener('click', onResetClick));
-
-    const onMuteClick = () => {
-      const isMuted = this.callbacks.onToggleMute();
-      this.setMuted(isMuted);
-    };
-    this.muteButton.addEventListener('click', onMuteClick);
-    this.cleanupListeners.push(() => this.muteButton.removeEventListener('click', onMuteClick));
-
-    const onPauseClick = () => {
-      this.callbacks.onPause?.();
-    };
-    this.pauseButton.addEventListener('click', onPauseClick);
-    this.cleanupListeners.push(() => this.pauseButton.removeEventListener('click', onPauseClick));
-
-    const onDebugChange = () => {
-      this.callbacks.onToggleDebug(this.debugToggle.checked);
-    };
-    this.debugToggle.addEventListener('change', onDebugChange);
-    this.cleanupListeners.push(() => this.debugToggle.removeEventListener('change', onDebugChange));
+  private setPreciseOpen(open: boolean, persist = false): void {
+    this.preciseToggle.setAttribute('aria-expanded', String(open));
+    this.container.classList.toggle('precise-open', open);
+    if (persist) { try { localStorage.setItem(PRECISE_KEY, open ? '1' : '0'); } catch { /* per-viewer convenience only */ } }
   }
 
   private calcSpeed(power: number): string {
-    return powerToLaunchSpeed(
-      power,
-      AIM.minImpulseNs,
-      AIM.maxImpulseNs,
-      PROJECTILE.massKg,
-    ).toFixed(1);
+    return powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg).toFixed(1);
   }
 
   private previousCanFire = false;
@@ -194,6 +184,7 @@ export class HTMLControls {
     this.fireButton.disabled = !allowed;
     this.angleSlider.disabled = !allowed;
     this.powerSlider.disabled = !allowed;
+    this.container.classList.toggle('can-fire', allowed);
   }
 
   setControlsInert(inert: boolean): void {
@@ -214,54 +205,79 @@ export class HTMLControls {
   setVisible(visible: boolean): void {
     this.container.style.display = visible ? '' : 'none';
     this.homeButton.hidden = !visible;
+    document.body.classList.toggle('in-game', visible);
   }
 
   setMatchStatus(mapName: string, players: readonly MPPlayerView[], activeIndex: number | null = null): void {
     this.matchStatus.replaceChildren();
     const label = document.createElement('strong');
+    label.className = 'map-chip';
     label.textContent = mapName;
     this.matchStatus.appendChild(label);
     for (const player of players) {
       const score = document.createElement('span');
       score.className = `player-score${player.id === activeIndex ? ' active' : ''}`;
-      score.style.setProperty('--player-color', `#${player.color.toString(16).padStart(6, '0')}`);
-      score.textContent = `${player.id === activeIndex ? '▶ ' : ''}${player.name} · ${player.totalScore} pts`;
+      score.style.setProperty('--player-color', cssColor(playerDisplayColor(player.color)));
+      const name = document.createElement('span');
+      name.className = 'player-name';
+      name.textContent = player.name;
+      const pts = document.createElement('b');
+      pts.textContent = String(player.totalScore);
+      score.append(name, pts);
       this.matchStatus.appendChild(score);
+    }
+    if (players.length) this.setAttempts(null);
+  }
+
+  /** Solo attempt pips (cannonballs); null hides them. */
+  setAttempts(left: number | null, total = 3): void {
+    this.attemptsEl.replaceChildren();
+    this.attemptsEl.hidden = left === null;
+    if (left === null) return;
+    this.attemptsEl.setAttribute('aria-label', `${left} of ${total} attempts left`);
+    for (let i = 0; i < total; i++) {
+      const pip = document.createElement('i');
+      pip.className = i < left ? 'pip' : 'pip used';
+      this.attemptsEl.appendChild(pip);
     }
   }
 
   setDebugOptIn(optIn: boolean): void {
     const debugGroup = this.container.querySelector('.debug-group') as HTMLElement | null;
-    if (debugGroup) {
-      if (optIn) {
-        debugGroup.removeAttribute('hidden');
-      } else {
-        debugGroup.setAttribute('hidden', '');
-      }
-    }
+    if (debugGroup) debugGroup.hidden = !optIn;
   }
 
   setResetLabel(label: string): void {
     this.resetButton.textContent = label;
+    this.resetButton.classList.toggle('is-next', /next|continue/i.test(label));
   }
 
   setMuted(muted: boolean): void {
-    this.muteButton.textContent = muted ? 'Sound off' : 'Sound on';
+    this.muteButton.innerHTML = `${muted ? ICON.soundOff : ICON.soundOn}<span class="visually-hidden">${muted ? 'Sound off' : 'Sound on'}</span>`;
+    this.muteButton.setAttribute('aria-label', muted ? 'Sound off' : 'Sound on');
+    this.muteButton.setAttribute('aria-pressed', String(muted));
   }
 
-  setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' = 'info'): void {
-    this.feedbackBanner.textContent = message;
+  /** Short caption on screen; `spoken` adds detail for screen readers only (e.g. Jonh's quote). */
+  setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' = 'info', spoken = ''): void {
+    this.feedbackBanner.replaceChildren(document.createTextNode(message));
+    if (spoken) {
+      const sr = document.createElement('span');
+      sr.className = 'visually-hidden';
+      sr.textContent = ` ${spoken}`;
+      this.feedbackBanner.appendChild(sr);
+    }
     this.feedbackBanner.className = `feedback-banner feedback-${type}`;
+    if (message) {
+      void this.feedbackBanner.offsetWidth;
+      this.feedbackBanner.classList.add('show');
+    }
   }
 
   destroy(): void {
     this.homeButton.remove();
-    for (const cleanup of this.cleanupListeners) {
-      cleanup();
-    }
+    for (const cleanup of this.cleanupListeners) cleanup();
     this.cleanupListeners = [];
-    if (this.container.parentElement) {
-      this.container.parentElement.removeChild(this.container);
-    }
+    this.container.remove();
   }
 }

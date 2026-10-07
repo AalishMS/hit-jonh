@@ -1,9 +1,12 @@
 import { MAPS } from '../levels';
-import { MULTIPLAYER } from '../config/tuning';
-import { HOME_ILLUSTRATION, MAP_DESCRIPTIONS, mapPreview } from './mapPreview';
+import { FLOW, MULTIPLAYER } from '../config/tuning';
+import { cssColor, playerDisplayColor } from '../art/palette';
+import { MAP_DESCRIPTIONS, mapPreview } from './mapPreview';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
+
+export interface MenuSettings { muted: boolean; volume: number; reducedMotion: boolean; music: boolean }
 
 export interface MenuCallbacks {
   onMapSelected: (mapId: string) => void;
@@ -15,17 +18,35 @@ export interface MenuCallbacks {
   onMultiplayerRematch?: () => void;
   onPauseResume?: () => void;
   onPauseQuit?: () => void;
-  onSettingsChange?: (settings: { muted: boolean; volume: number; reducedMotion: boolean }) => void;
+  onSettingsChange?: (settings: MenuSettings) => void;
+  /** Retention hooks (polish pass): extra home-screen entries rendered by the scene. */
+  onHomeExtras?: (container: HTMLElement, signal: AbortSignal) => void;
+  onClick?: () => void;
 }
 
-export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause';
+export interface SoloResultExtras {
+  newBest?: boolean;
+  quote?: string;
+  /** HTML for unlocked items (already escaped / static). */
+  unlockHtml?: string;
+  streak?: number;
+}
+
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily';
+
+const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+};
 
 export class MenuOverlay {
   private container: HTMLElement;
   private content: HTMLElement;
   private clickAbortController: AbortController | null = null;
   private currentView: MenuOverlayView = 'none';
-  
+
   constructor(private parentElement: HTMLElement, private callbacks: MenuCallbacks) {
     this.container = document.createElement('div');
     this.container.className = 'menu-overlay';
@@ -40,599 +61,352 @@ export class MenuOverlay {
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     });
-    
+    this.container.addEventListener('click', (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest('button')) this.callbacks.onClick?.();
+    });
+
     this.content = document.createElement('div');
     this.content.className = 'menu-content';
     this.container.appendChild(this.content);
-    
     parentElement.appendChild(this.container);
   }
 
-  private clear(): void {
-    if (this.clickAbortController) {
-      this.clickAbortController.abort();
-      this.clickAbortController = null;
-    }
+  /** Starts a fresh view: clears listeners and replays the card entrance. */
+  private open(view: MenuOverlayView): AbortSignal {
+    if (this.clickAbortController) this.clickAbortController.abort();
+    this.clickAbortController = new AbortController();
+    this.currentView = view;
+    this.container.style.display = 'flex';
+    this.container.className = `menu-overlay view-is-${view}`;
     this.content.innerHTML = '';
-    this.content.className = `menu-content view-${this.currentView}`;
+    this.content.className = `menu-content view-${view}`;
+    this.content.style.animation = 'none';
+    void this.content.offsetWidth;
+    this.content.style.animation = '';
+    return this.clickAbortController.signal;
+  }
+
+  private button(label: string, className: string, onClick: () => void, signal: AbortSignal, parent: HTMLElement = this.content): HTMLButtonElement {
+    const b = el('button', `btn ${className}`.trim(), label);
+    b.type = 'button';
+    b.addEventListener('click', onClick, { signal });
+    parent.appendChild(b);
+    return b;
   }
 
   showHome(): void {
-    this.currentView = 'home';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-    this.content.innerHTML = `<div class="home-copy">
-      <span class="eyebrow">A perfectly ordinary afternoon.</span>
-      <h1>HIT<br><span>JONH.</span></h1>
-      <p>He just wants to read the paper.<br>You have a cannon. Work it out.</p>
-      <button class="btn btn-primary" data-action="play">Let's play ↗</button>
-      <button class="btn btn-quiet" data-action="settings">Sound & settings</button>
-      <div class="home-note">Solo challenges · 2–4 friends · One very annoyed man</div>
-    </div><div class="home-art">${HOME_ILLUSTRATION}<span class="jonh-aside">“Lovely. A cannon.”</span></div>`;
-    this.content.querySelector('[data-action="play"]')?.addEventListener('click', () => this.showMainMenu(),
-      { signal: this.clickAbortController.signal });
-    this.content.querySelector('[data-action="settings"]')?.addEventListener('click', () => this.showSettings(),
-      { signal: this.clickAbortController.signal });
-    this.content.querySelector<HTMLButtonElement>('[data-action="play"]')?.focus();
+    const signal = this.open('home');
+    this.content.innerHTML = `
+      <div class="logo" aria-label="Hit Jonh"><span class="hit">Hit</span><span class="jonh">Jonh!</span><span class="bonk">BONK!</span></div>
+      <p class="tagline">He just wants to read the paper.<br>You have a cannon.</p>`;
+    const play = this.button("Play", 'btn-primary btn-play', () => this.showMainMenu(), signal);
+    const row = el('div', 'home-row');
+    this.content.appendChild(row);
+    this.callbacks.onHomeExtras?.(row, signal);
+    this.button('Settings', '', () => this.showSettings(), signal, row);
+    this.content.appendChild(el('div', 'home-note', 'Solo challenges · 2–4 friends on one device · One very annoyed man'));
+    play.focus();
   }
 
-  getView(): MenuOverlayView {
-    return this.currentView;
-  }
+  getView(): MenuOverlayView { return this.currentView; }
 
-  isPauseMenuVisible(): boolean {
-    return this.currentView === 'pause' && this.isVisible();
-  }
+  isPauseMenuVisible(): boolean { return this.currentView === 'pause' && this.isVisible(); }
 
   showMainMenu(): void {
-    this.currentView = 'main';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h1');
-    title.textContent = 'Pick your trouble.';
-    this.content.appendChild(title);
-
-    const btnSolo = document.createElement('button');
-    btnSolo.className = 'btn mode-card';
-    btnSolo.innerHTML = '<span class="mode-symbol">↗</span><strong>Solo Challenge</strong><small>Three shots. One peaceful afternoon to ruin.</small>';
-    btnSolo.addEventListener('click', () => this.showMapSelect(), { signal: this.clickAbortController.signal });
-    this.content.appendChild(btnSolo);
-
-    const btnMulti = document.createElement('button');
-    btnMulti.className = 'btn mode-card';
-    btnMulti.innerHTML = '<span class="mode-symbol">⇄</span><strong>Local Multiplayer</strong><small>2–4 friends. Take one shot, pass the cannon.</small>';
-    btnMulti.addEventListener('click', () => this.showMultiSetup(), { signal: this.clickAbortController.signal });
-    this.content.appendChild(btnMulti);
-
-    const btnSettings = document.createElement('button');
-    btnSettings.className = 'btn btn-menu';
-    btnSettings.textContent = 'Settings';
-    btnSettings.style.marginTop = '10px';
-    btnSettings.addEventListener('click', () => this.showSettings(), { signal: this.clickAbortController.signal });
-    this.content.appendChild(btnSettings);
-    const home = document.createElement('button');
-    home.className = 'btn btn-quiet';
-    home.textContent = 'Home';
-    home.addEventListener('click', () => this.showHome(), { signal: this.clickAbortController.signal });
-    this.content.appendChild(home);
-
-    btnSolo.focus();
+    const signal = this.open('main');
+    this.content.appendChild(el('h1', '', 'Pick your trouble'));
+    const card = (symbol: string, title: string, blurb: string, extra: string, onClick: () => void) => {
+      const b = this.button('', `mode-card ${extra}`, onClick, signal);
+      b.innerHTML = `<span class="mode-symbol">${symbol}</span><strong></strong><small></small><span class="mode-go">›</span>`;
+      b.querySelector('strong')!.textContent = title;
+      b.querySelector('small')!.textContent = blurb;
+      return b;
+    };
+    const solo = card('1', 'Solo challenge', 'Three shots per map. Earn stars, unlock hats.', 'solo', () => this.showMapSelect());
+    card('2+', 'Pass the cannon', '2–4 friends, one device. Take turns, steal the glory.', 'multi', () => this.showMultiSetup());
+    const actions = el('div', 'menu-actions');
+    this.content.appendChild(actions);
+    this.button('Settings', '', () => this.showSettings(), signal, actions);
+    this.button('Home', 'btn-quiet', () => this.showHome(), signal, actions);
+    solo.focus();
   }
 
   showSettings(): void {
-    this.currentView = 'settings';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
+    const signal = this.open('settings');
     const data = loadSaveData();
-    let { muted, volume, reducedMotion } = data.settings;
-
-    const title = document.createElement('h2');
-    title.textContent = 'Settings';
-    this.content.appendChild(title);
-
-    const settingsList = document.createElement('div');
-    settingsList.style.display = 'flex';
-    settingsList.style.flexDirection = 'column';
-    settingsList.style.gap = '16px';
-    settingsList.style.marginBottom = '20px';
-    settingsList.style.width = '100%';
-    settingsList.style.maxWidth = '320px';
-
-    const notifyAndPersist = () => {
-      saveSettings({ muted, volume, reducedMotion });
-      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion });
+    let { muted, volume, reducedMotion, music } = data.settings;
+    this.content.appendChild(el('h2', '', 'Settings'));
+    const list = el('div', 'settings-list');
+    const notify = () => {
+      saveSettings({ muted, volume, reducedMotion, music });
+      this.callbacks.onSettingsChange?.({ muted, volume, reducedMotion, music });
     };
-
-    // Mute row
-    const muteRow = document.createElement('label');
-    muteRow.htmlFor = 'settings-mute';
-    muteRow.style.display = 'flex';
-    muteRow.style.alignItems = 'center';
-    muteRow.style.justifyContent = 'space-between';
-    muteRow.style.cursor = 'pointer';
-    const muteText = document.createElement('span');
-    muteText.textContent = 'Mute Audio';
-    const muteCheck = document.createElement('input');
-    muteCheck.type = 'checkbox';
-    muteCheck.id = 'settings-mute';
-    muteCheck.checked = muted;
-    muteCheck.addEventListener('change', () => {
-      muted = muteCheck.checked;
-      notifyAndPersist();
-    }, { signal: this.clickAbortController.signal });
-    muteRow.append(muteText, muteCheck);
-    settingsList.appendChild(muteRow);
-
-    // Volume row
-    const volumeRow = document.createElement('div');
-    volumeRow.style.display = 'flex';
-    volumeRow.style.flexDirection = 'column';
-    volumeRow.style.gap = '6px';
-    const volLabelRow = document.createElement('div');
-    volLabelRow.style.display = 'flex';
-    volLabelRow.style.justifyContent = 'space-between';
-    const volLabel = document.createElement('label');
+    const toggle = (id: string, label: string, value: boolean, set: (v: boolean) => void) => {
+      const row = el('label', 'setting-row');
+      row.htmlFor = id;
+      const input = el('input');
+      input.type = 'checkbox';
+      input.id = id;
+      input.checked = value;
+      input.addEventListener('change', () => { set(input.checked); notify(); }, { signal });
+      row.append(el('span', '', label), input);
+      list.appendChild(row);
+    };
+    toggle('settings-mute', 'Mute audio', muted, v => { muted = v; });
+    toggle('settings-music', 'Music', music, v => { music = v; });
+    const volRow = el('div', 'setting-row volume');
+    const head = el('div');
+    const volLabel = el('label', '', 'Master volume');
     volLabel.htmlFor = 'settings-volume';
-    volLabel.textContent = 'Master Volume';
-    const volValue = document.createElement('span');
-    volValue.textContent = `${Math.round(volume * 100)}%`;
-    volLabelRow.append(volLabel, volValue);
-
-    const volSlider = document.createElement('input');
-    volSlider.type = 'range';
-    volSlider.id = 'settings-volume';
-    volSlider.setAttribute('aria-label', 'Master Volume');
-    volSlider.min = '0';
-    volSlider.max = '100';
-    volSlider.step = '5';
-    volSlider.value = String(Math.round(volume * 100));
-    volSlider.addEventListener('input', () => {
-      const val = Number.parseInt(volSlider.value, 10);
+    const volValue = el('span', '', `${Math.round(volume * 100)}%`);
+    head.append(volLabel, volValue);
+    const slider = el('input');
+    slider.type = 'range';
+    slider.id = 'settings-volume';
+    slider.setAttribute('aria-label', 'Master Volume');
+    slider.min = '0'; slider.max = '100'; slider.step = '5';
+    slider.value = String(Math.round(volume * 100));
+    slider.addEventListener('input', () => {
+      const val = Number.parseInt(slider.value, 10);
       volume = val / 100;
       volValue.textContent = `${val}%`;
-      notifyAndPersist();
-    }, { signal: this.clickAbortController.signal });
-    volumeRow.append(volLabelRow, volSlider);
-    settingsList.appendChild(volumeRow);
-
-    // Reduced Motion row
-    const motionRow = document.createElement('label');
-    motionRow.htmlFor = 'settings-reduced-motion';
-    motionRow.style.display = 'flex';
-    motionRow.style.alignItems = 'center';
-    motionRow.style.justifyContent = 'space-between';
-    motionRow.style.cursor = 'pointer';
-    const motionText = document.createElement('span');
-    motionText.textContent = 'Reduced Motion';
-    const motionCheck = document.createElement('input');
-    motionCheck.type = 'checkbox';
-    motionCheck.id = 'settings-reduced-motion';
-    motionCheck.checked = reducedMotion;
-    motionCheck.addEventListener('change', () => {
-      reducedMotion = motionCheck.checked;
-      notifyAndPersist();
-    }, { signal: this.clickAbortController.signal });
-    motionRow.append(motionText, motionCheck);
-    settingsList.appendChild(motionRow);
-
-    this.content.appendChild(settingsList);
-
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn btn-menu';
-    backBtn.textContent = 'Back';
-    backBtn.addEventListener('click', () => {
-      this.showHome();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(backBtn);
-    backBtn.focus();
+      notify();
+    }, { signal });
+    volRow.append(head, slider);
+    list.appendChild(volRow);
+    toggle('settings-reduced-motion', 'Reduced motion', reducedMotion, v => { reducedMotion = v; });
+    this.content.appendChild(list);
+    this.button('Back', '', () => this.showHome(), signal).focus();
   }
 
-
-
   showMapSelect(): void {
-    this.currentView = 'map_select';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
+    const signal = this.open('map_select');
     const data = loadSaveData();
-    
-    const title = document.createElement('h2');
-    title.textContent = 'Select Map';
-    this.content.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'map-list';
-
+    this.content.appendChild(el('h2', '', 'Choose a garden'));
+    const list = el('div', 'map-list');
     for (const map of MAPS) {
       const score = data.solo[map.id];
-      const bestText = (score && score.bestShots !== null)
-        ? `Best: ${score.bestShots} shot${score.bestShots > 1 ? 's' : ''} ${score.hasStyle ? '✨' : ''}`
-        : 'Unplayed';
-        
-      const btn = document.createElement('button');
-      btn.className = 'map-btn';
+      const btn = el('button', 'map-btn');
+      btn.type = 'button';
       btn.dataset.map = map.id;
       btn.innerHTML = mapPreview(map.id);
-
-      const nameDiv = document.createElement('div');
-      nameDiv.className = 'map-name';
-      nameDiv.textContent = map.name; // Text content prevents XSS
-
-      const scoreDiv = document.createElement('div');
-      scoreDiv.className = 'map-score';
-      scoreDiv.textContent = bestText;
-
-      btn.appendChild(nameDiv);
-      const description = document.createElement('small');
-      description.textContent = MAP_DESCRIPTIONS[map.id]!;
-      btn.appendChild(description);
+      btn.appendChild(el('div', 'map-name', map.name));
+      btn.appendChild(el('small', '', MAP_DESCRIPTIONS[map.id] ?? ''));
+      const scoreDiv = el('div', 'map-score');
+      if (score && score.bestShots !== null) {
+        const stars = 4 - score.bestShots;
+        const s = el('span', 'stars', '★'.repeat(stars) + '☆'.repeat(3 - stars));
+        scoreDiv.append(s, document.createTextNode(` Best: ${score.bestShots} shot${score.bestShots > 1 ? 's' : ''}${score.hasStyle ? ' · trick' : ''}`));
+      } else {
+        scoreDiv.textContent = 'Unplayed';
+      }
       btn.appendChild(scoreDiv);
-
-      btn.addEventListener('click', () => {
-        this.callbacks.onMapSelected(map.id);
-        this.hide();
-      }, { signal: this.clickAbortController.signal });
-
+      btn.addEventListener('click', () => { this.callbacks.onMapSelected(map.id); this.hide(); }, { signal });
       list.appendChild(btn);
     }
-
     this.content.appendChild(list);
-
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn btn-menu';
-    backBtn.textContent = 'Back';
-    backBtn.style.marginTop = '20px';
-    backBtn.addEventListener('click', () => {
-      this.callbacks.onReturnToMenu();
-      this.showMainMenu();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(backBtn);
+    const actions = el('div', 'menu-actions');
+    this.content.appendChild(actions);
+    this.button('Back', '', () => { this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
     (list.firstElementChild as HTMLElement | null)?.focus();
   }
 
   showMultiSetup(): void {
-    this.currentView = 'multi_setup';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = 'Pass the cannon.';
-    this.content.appendChild(title);
-    const intro = document.createElement('p');
-    intro.textContent = 'One shot each, back and forth. Three shots per player on each map.';
-    this.content.appendChild(intro);
+    const signal = this.open('multi_setup');
+    this.content.appendChild(el('h2', '', 'Pass the cannon'));
+    this.content.appendChild(el('p', '', 'One shot each, in turn. Three shots per player on each map. Jonh moves between cycles.'));
 
     let playerCount = 2;
-    // Load last MP setup if available (storage already validated count, appearance, names and aim)
     const loadedSetups = loadSaveData().lastMP;
-
     const playerSetups: MPPlayerSetup[] = defaultPlayerSetups();
     if (loadedSetups) {
       playerCount = loadedSetups.length;
       loadedSetups.forEach((loaded, i) => { playerSetups[i] = { ...loaded }; });
     }
 
-    const countContainer = document.createElement('div');
-    countContainer.className = 'player-count';
-    countContainer.style.marginBottom = '20px';
-    const countLabel = document.createElement('span');
-    countLabel.textContent = `Players: ${playerCount} `;
-    
-    const countMinus = document.createElement('button');
-    countMinus.textContent = '-';
+    const countContainer = el('div', 'player-count');
+    const countLabel = el('span', '', `Players: ${playerCount}`);
+    const countMinus = el('button', 'btn', '−');
+    countMinus.type = 'button';
     countMinus.setAttribute('aria-label', 'Fewer players');
-    countMinus.className = 'btn';
-    countMinus.style.marginRight = '10px';
-    
-    const countPlus = document.createElement('button');
-    countPlus.textContent = '+';
+    const countPlus = el('button', 'btn', '+');
+    countPlus.type = 'button';
     countPlus.setAttribute('aria-label', 'More players');
-    countPlus.className = 'btn';
-
     countContainer.append(countMinus, countLabel, countPlus);
     this.content.appendChild(countContainer);
 
-    const list = document.createElement('div');
-    list.className = 'player-setup-list';
-    list.style.display = 'flex';
-    list.style.flexDirection = 'column';
-    list.style.gap = '10px';
-    list.style.marginBottom = '20px';
+    const list = el('div', 'player-setup-list');
     this.content.appendChild(list);
-
     const renderList = () => {
       list.innerHTML = '';
-      countLabel.textContent = `Players: ${playerCount} `;
+      countLabel.textContent = `Players: ${playerCount}`;
       countMinus.disabled = playerCount === MULTIPLAYER.minPlayers;
       countPlus.disabled = playerCount === MULTIPLAYER.maxPlayers;
       for (let i = 0; i < playerCount; i++) {
-        const row = document.createElement('div');
-        row.className = 'player-setup-row';
-        row.style.setProperty('--player-color', `#${playerSetups[i]!.color.toString(16).padStart(6, '0')}`);
-        row.style.display = 'flex';
-        row.style.gap = '10px';
-        row.style.alignItems = 'center';
-
-        const nameLabel = document.createElement('label');
+        const row = el('div', 'player-setup-row');
+        row.style.setProperty('--player-color', cssColor(playerDisplayColor(playerSetups[i]!.color)));
+        const nameLabel = el('label', '', `Player ${i + 1} · ${playerSetups[i]!.pattern} cannon`);
         nameLabel.htmlFor = `mp-name-${i}`;
-        nameLabel.textContent = `Player ${i + 1} · ${playerSetups[i]!.pattern}`;
-
-        const nameInput = document.createElement('input');
+        const nameInput = el('input');
         nameInput.type = 'text';
         nameInput.id = `mp-name-${i}`;
         nameInput.maxLength = MULTIPLAYER.maxNameLength;
         nameInput.value = playerSetups[i]!.name;
         nameInput.oninput = () => { playerSetups[i]!.name = nameInput.value; };
-
         row.append(nameLabel, nameInput);
         list.appendChild(row);
       }
     };
     renderList();
-
     countMinus.onclick = () => { if (playerCount > MULTIPLAYER.minPlayers) { playerCount--; renderList(); } };
     countPlus.onclick = () => { if (playerCount < MULTIPLAYER.maxPlayers) { playerCount++; renderList(); } };
 
     let selectedMaps: string[] = [...MULTIPLAYER.maps];
-    const maps = document.createElement('fieldset');
-    maps.className = 'mp-map-picker';
-    const legend = document.createElement('legend');
-    legend.textContent = 'Choose your arena';
-    maps.appendChild(legend);
-    for (const choice of [{ id: 'all', name: 'All maps · three-round tour' }, ...MAPS]) {
-      const label = document.createElement('label');
-      label.className = 'arena-option';
-      const input = document.createElement('input');
+    const maps = el('fieldset', 'mp-map-picker');
+    maps.appendChild(el('legend', '', 'Choose your arena'));
+    for (const choice of [{ id: 'all', name: 'Three-garden tour' }, ...MAPS]) {
+      const label = el('label', 'arena-option');
+      const input = el('input');
       input.type = 'radio';
       input.name = 'mp-map';
       input.value = choice.id;
       input.checked = choice.id === 'all';
       input.addEventListener('change', () => {
         selectedMaps = choice.id === 'all' ? [...MULTIPLAYER.maps] : [choice.id];
-      }, { signal: this.clickAbortController.signal });
-      label.appendChild(input);
-      const artwork = document.createElement('span');
-      artwork.innerHTML = mapPreview(choice.id === 'all' ? 'rooftop' : choice.id);
-      label.appendChild(artwork);
-      const name = document.createElement('strong');
-      name.textContent = choice.name;
-      label.appendChild(name);
+      }, { signal });
+      const artwork = el('span');
+      artwork.innerHTML = mapPreview(choice.id === 'all' ? 'backyard' : choice.id);
+      label.append(input, artwork, el('strong', '', choice.name));
       maps.appendChild(label);
     }
     this.content.appendChild(maps);
 
-    const startBtn = document.createElement('button');
-    startBtn.className = 'btn btn-primary';
-    startBtn.textContent = 'Start Match';
-    startBtn.onclick = () => {
+    const actions = el('div', 'menu-actions');
+    this.content.appendChild(actions);
+    const startBtn = this.button('Start match', 'btn-primary', () => {
       const finalSetups = playerSetups.slice(0, playerCount).map((s, i) => ({ ...s, name: sanitizePlayerName(s.name, i) }));
       saveMultiplayerSetup(finalSetups);
       this.hide();
       this.callbacks.onStartMultiplayer?.(finalSetups, selectedMaps);
-    };
-    this.content.appendChild(startBtn);
-
-    const backBtn = document.createElement('button');
-    backBtn.className = 'btn btn-menu';
-    backBtn.textContent = 'Back';
-    backBtn.style.marginTop = '20px';
-    backBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onReturnToMenu();
-      this.showMainMenu();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(backBtn);
+    }, signal, actions);
+    this.button('Back', '', () => { this.hide(); this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
     startBtn.focus();
   }
 
   showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number): void {
-    this.currentView = 'handover';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = `Get ready, ${player.name}!`;
-    this.content.appendChild(title);
-
-    const info = document.createElement('p');
-    info.textContent = `Map: ${mapName} | Shot: ${attemptNum}/${MULTIPLAYER.shotsPerRound}`;
-    this.content.appendChild(info);
-
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.textContent = 'Ready now';
-    btn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onMultiplayerHandoverContinue?.();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(btn);
-    const countdown = document.createElement('p');
-    countdown.className = 'auto-note';
-    countdown.textContent = 'Your turn starts automatically…';
-    this.content.appendChild(countdown);
+    const signal = this.open('handover');
+    this.content.appendChild(el('div', 'handover-kicker', 'Pass the cannon to'));
+    const name = el('div', 'handover-name', player.name);
+    name.style.setProperty('--player-color', cssColor(playerDisplayColor(player.color)));
+    this.content.appendChild(name);
+    this.content.appendChild(el('p', '', `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}`));
+    const btn = this.button('Ready now', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerHandoverContinue?.(); }, signal);
+    const bar = el('div', 'auto-bar');
+    bar.style.setProperty('--auto-duration', `${FLOW.handoverSeconds}s`);
+    bar.appendChild(el('i'));
+    this.content.appendChild(bar);
+    this.content.appendChild(el('p', 'auto-note', 'Your turn starts automatically…'));
     btn.focus();
   }
 
-  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number = MULTIPLAYER.maps.length): void {
-    this.currentView = 'round_result';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = 'Round Complete';
-    this.content.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'score-list';
-    for (const p of [...players].sort((a, b) => b.totalScore - a.totalScore)) {
-      const row = document.createElement('div');
-      row.textContent = `${p.name}: ${p.totalScore} pts (+${p.roundScores[roundIndex]})`;
+  private scoreRows(sorted: readonly MPPlayerView[], detail: (p: MPPlayerView) => string, winners: readonly MPPlayerView[] = []): HTMLElement {
+    const list = el('div', 'score-list');
+    sorted.forEach((p, i) => {
+      const row = el('div', `score-row${winners.includes(p) ? ' winner' : ''}`);
+      row.style.setProperty('--player-color', cssColor(playerDisplayColor(p.color)));
+      const who = el('span');
+      who.append(document.createTextNode(p.name), el('small', '', detail(p)));
+      row.append(el('span', 'rank', winners.includes(p) ? '♛' : String(i + 1)), who, el('b', '', String(p.totalScore)));
       list.appendChild(row);
-    }
-    this.content.appendChild(list);
+    });
+    return list;
+  }
 
-    const btn = document.createElement('button');
-    btn.className = 'btn';
-    btn.textContent = roundIndex >= roundCount - 1 ? 'Final Result' : 'Next Round';
-    btn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onMultiplayerNextRound?.();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(btn);
-    const countdown = document.createElement('p');
-    countdown.className = 'auto-note';
-    countdown.textContent = 'Continuing automatically…';
-    this.content.appendChild(countdown);
+  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number = MULTIPLAYER.maps.length): void {
+    const signal = this.open('round_result');
+    this.content.appendChild(el('h2', '', `Round ${roundIndex + 1} done`));
+    const sorted = [...players].sort((a, b) => b.totalScore - a.totalScore);
+    this.content.appendChild(this.scoreRows(sorted, p => `+${p.roundScores[roundIndex] ?? 0} this round`));
+    const btn = this.button(roundIndex >= roundCount - 1 ? 'Final result' : 'Next round', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
+    const bar = el('div', 'auto-bar');
+    bar.style.setProperty('--auto-duration', `${FLOW.roundResultSeconds}s`);
+    bar.appendChild(el('i'));
+    this.content.appendChild(bar);
     btn.focus();
   }
 
   showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[]): void {
-    this.currentView = 'match_result';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = winners.length > 1 ? 'Match Tied!' : `${winners[0]?.name ?? 'Nobody'} Wins!`;
-    this.content.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'score-list';
-    for (const p of [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore)) {
-      const row = document.createElement('div');
-      row.textContent = `${p.name}: ${p.totalScore} pts, ${p.bodyHits} hits`;
-      list.appendChild(row);
-    }
-    this.content.appendChild(list);
-
-    const rematchBtn = document.createElement('button');
-    rematchBtn.className = 'btn';
-    rematchBtn.textContent = 'Rematch';
-    rematchBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onMultiplayerRematch?.();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(rematchBtn);
-    rematchBtn.focus();
-
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'btn btn-menu';
-    menuBtn.textContent = 'Main Menu';
-    menuBtn.style.marginTop = '10px';
-    menuBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onReturnToMenu();
-      this.showMainMenu();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(menuBtn);
+    const signal = this.open('match_result');
+    this.content.appendChild(el('h1', '', winners.length > 1 ? "It's a tie!" : `${winners[0]?.name ?? 'Nobody'} wins!`));
+    const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
+    this.content.appendChild(this.scoreRows(sorted, p => `${p.bodyHits} hit${p.bodyHits === 1 ? '' : 's'}`, winners));
+    this.content.appendChild(el('p', 'quote', '“I want it noted that I was here first.” — Jonh'));
+    const actions = el('div', 'result-actions');
+    this.content.appendChild(actions);
+    const rematch = this.button('Rematch', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerRematch?.(); }, signal, actions);
+    this.button('Main menu', '', () => { this.hide(); this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
+    rematch.focus();
   }
 
-  showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean): void {
-    this.currentView = 'solo_result';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = success ? 'Challenge Complete!' : 'Challenge Failed';
-    this.content.appendChild(title);
-
+  showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean, extras: SoloResultExtras = {}): void {
+    const signal = this.open('solo_result');
+    this.content.appendChild(el('h1', '', success ? 'Bullseye!' : 'Jonh wins'));
     if (success) {
-      const starsDiv = document.createElement('div');
-      starsDiv.className = 'result-stars';
-      starsDiv.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+      const starsDiv = el('div', 'result-stars');
+      starsDiv.setAttribute('aria-label', `${stars} of 3 stars`);
+      for (let i = 0; i < 3; i++) starsDiv.appendChild(el('span', i < stars ? 'on' : '', '★'));
       this.content.appendChild(starsDiv);
-
-      const desc = document.createElement('p');
-      desc.textContent = `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}!`;
-      this.content.appendChild(desc);
-
-      if (hasStyle) {
-        const styleBonus = document.createElement('p');
-        styleBonus.className = 'style-bonus';
-        styleBonus.textContent = '✨ Ricochet Style Bonus! ✨';
-        this.content.appendChild(styleBonus);
-      }
+      this.content.appendChild(el('p', '', `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}.`));
+      const ribbons = el('div');
+      if (extras.newBest) ribbons.appendChild(el('span', 'ribbon', 'New best!'));
+      if (hasStyle) ribbons.appendChild(el('span', 'ribbon pow', 'Trick shot!'));
+      if (extras.streak && extras.streak >= 2) ribbons.appendChild(el('span', 'ribbon', `${extras.streak} in a row!`));
+      if (ribbons.childElementCount) this.content.appendChild(ribbons);
     } else {
-      const p1 = document.createElement('p');
-      p1.textContent = 'You used all 3 attempts.';
-      const p2 = document.createElement('p');
-      p2.textContent = 'Jonh is unimpressed.';
-      this.content.appendChild(p1);
-      this.content.appendChild(p2);
+      this.content.appendChild(el('p', '', 'Three shots, zero Jonhs. He has resumed reading.'));
     }
-
-    const actions = document.createElement('div');
-    actions.className = 'result-actions';
-
-    const retryBtn = document.createElement('button');
-    retryBtn.className = 'btn btn-retry';
-    retryBtn.textContent = 'Retry Map';
-    retryBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onRetry();
-    }, { signal: this.clickAbortController.signal });
-    actions.appendChild(retryBtn);
-
-    const menuBtn = document.createElement('button');
-    menuBtn.className = 'btn btn-menu';
-    menuBtn.textContent = 'Change Map';
-    menuBtn.addEventListener('click', () => {
-      this.callbacks.onReturnToMenu();
-      this.showMapSelect();
-    }, { signal: this.clickAbortController.signal });
-    actions.appendChild(menuBtn);
-
+    if (extras.quote) this.content.appendChild(el('p', 'quote', `“${extras.quote}”`));
+    if (extras.unlockHtml) {
+      const unlock = el('div');
+      unlock.innerHTML = extras.unlockHtml;
+      this.content.appendChild(unlock);
+    }
+    const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
+    const retryBtn = this.button('Retry map', 'btn-retry', () => { this.hide(); this.callbacks.onRetry(); }, signal, actions);
+    this.button('Change map', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
     retryBtn.focus();
   }
 
   showPauseMenu(): void {
-    this.currentView = 'pause';
-    this.container.style.display = 'flex';
-    this.clear();
-    this.clickAbortController = new AbortController();
-
-    const title = document.createElement('h2');
-    title.textContent = 'Paused';
-    this.content.appendChild(title);
-
-    const resumeBtn = document.createElement('button');
-    resumeBtn.className = 'btn';
-    resumeBtn.textContent = 'Resume';
-    resumeBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onPauseResume?.();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(resumeBtn);
-
-    const quitBtn = document.createElement('button');
-    quitBtn.className = 'btn btn-menu';
-    quitBtn.textContent = 'Quit to Menu';
-    quitBtn.style.marginTop = '10px';
-    quitBtn.addEventListener('click', () => {
-      this.hide();
-      this.callbacks.onPauseQuit?.();
-    }, { signal: this.clickAbortController.signal });
-    this.content.appendChild(quitBtn);
-
+    const signal = this.open('pause');
+    this.content.appendChild(el('h2', '', 'Paused'));
+    this.content.appendChild(el('p', 'quote', '“Oh good. A moment of peace.”'));
+    const actions = el('div', 'result-actions');
+    this.content.appendChild(actions);
+    const resumeBtn = this.button('Resume', 'btn-primary', () => { this.hide(); this.callbacks.onPauseResume?.(); }, signal, actions);
+    this.button('Quit to menu', '', () => { this.hide(); this.callbacks.onPauseQuit?.(); }, signal, actions);
     resumeBtn.focus();
   }
 
+  /** Free-form view used by retention screens (locker, daily). */
+  showCustom(view: MenuOverlayView, build: (content: HTMLElement, signal: AbortSignal) => void): void {
+    const signal = this.open(view);
+    build(this.content, signal);
+  }
+
   hide(): void {
+    const enteringPlay = this.currentView === 'map_select' || this.currentView === 'multi_setup' || this.currentView === 'daily';
     this.currentView = 'none';
     this.container.style.display = 'none';
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    const reduced = document.documentElement.classList.contains('reduced-motion') ||
+      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    if (enteringPlay && !reduced) {
+      const iris = el('div', 'iris');
+      document.body.appendChild(iris);
+      iris.addEventListener('animationend', () => iris.remove(), { once: true });
+      setTimeout(() => iris.remove(), 900);
     }
   }
 
@@ -640,11 +414,8 @@ export class MenuOverlay {
     return this.container.style.display !== 'none';
   }
 
-
   destroy(): void {
-    if (this.clickAbortController) {
-      this.clickAbortController.abort();
-    }
+    if (this.clickAbortController) this.clickAbortController.abort();
     this.parentElement.removeChild(this.container);
   }
 }

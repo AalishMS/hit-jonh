@@ -41,7 +41,7 @@ import {
   simYToWorldY,
 } from '../sim/units';
 import { HTMLControls } from '../ui/htmlControls';
-import { MenuOverlay } from '../ui/menuOverlay';
+import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
 import { loadSaveData, recordSoloResult, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../storage/storage';
 import type { LevelData } from '../levels/types';
 
@@ -67,6 +67,8 @@ export class PrototypeScene extends Phaser.Scene {
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
+  private attract: { scenery: SceneryRenderer; jonh: JonhRenderer; cannon: CannonRenderer } | null = null;
+  private soloResultExtras: SoloResultExtras = {};
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
   private replayCountdown: number | null = null;
@@ -216,10 +218,15 @@ export class PrototypeScene extends Phaser.Scene {
         saveSettings(settings);
         this.audioManager.setMuted(settings.muted);
         this.audioManager.setVolume(settings.volume);
+        this.audioManager.setMusicEnabled(settings.music);
         this.htmlControls.setMuted(settings.muted);
+        document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
         if (this.jonhRenderer) this.jonhRenderer.setReducedMotion(settings.reducedMotion);
-      }
+        this.attract?.jonh.setReducedMotion(settings.reducedMotion);
+      },
+      onClick: () => this.audioManager.playClick(),
     });
+    document.documentElement.classList.toggle('reduced-motion', loadSaveData().settings.reducedMotion);
 
     this.inputCoordinator = new InputCoordinator({
       onFire: () => this.fire(),
@@ -315,6 +322,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setControlsInert(true);
     this.htmlControls.setVisible(false);
     this.menuOverlay.showHome();
+    this.showAttract();
   }
 
   /** True while the active player may adjust aim (drives drag input and the aim aids). */
@@ -364,12 +372,38 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setCanFire(false);
     this.htmlControls.setControlsInert(true);
     this.htmlControls.setVisible(false);
-    this.htmlControls.setFeedback('Jonh is reading. Set your angle and power.', 'info');
+    this.htmlControls.setFeedback('', 'info');
     this.menuOverlay.showHome();
+    this.showAttract();
+  }
+
+  /** The title screen's live backdrop: Jonh reading in his garden while menus are open. */
+  private showAttract(): void {
+    this.hideAttract();
+    const level = MAPS[0]!;
+    const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
+    const scenery = new SceneryRenderer(this, ppm, h, w);
+    scenery.draw(level);
+    const jonh = new JonhRenderer(this, level.jonhSpawn, ppm, h, { level });
+    jonh.setReducedMotion(loadSaveData().settings.reducedMotion);
+    const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h);
+    cannon.setAimAids(false, 50);
+    cannon.draw(38, null);
+    this.cameraRig?.reset();
+    this.attract = { scenery, jonh, cannon };
+  }
+
+  private hideAttract(): void {
+    if (!this.attract) return;
+    this.attract.scenery.destroy();
+    this.attract.jonh.destroy();
+    this.attract.cannon.destroy();
+    this.attract = null;
   }
 
 
   private loadMap(mapId: string): void {
+    this.hideAttract();
     this.autoAdvance.cancel();
     this.resetEffects();
     this.activeMode = 'solo';
@@ -417,7 +451,8 @@ export class PrototypeScene extends Phaser.Scene {
       onShowResult: (res) => {
         this.inputCoordinator.setOverlayVisible(true);
         this.htmlControls.setControlsInert(true);
-        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle);
+        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle, this.soloResultExtras);
+        this.audioManager.playSting(res.success);
         this.htmlControls.setCanFire(false);
         this.htmlControls.setFeedback('', 'info');
         this.htmlControls.setResetLabel('Continue ↵');
@@ -570,11 +605,20 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
       this.htmlControls.setMatchStatus(this.currentLevel.name, []);
-      this.htmlControls.setFeedback(`Map: ${this.currentLevel.name}. ${this.soloMachine.attemptsLeft} attempt${this.soloMachine.attemptsLeft === 1 ? '' : 's'} left.`, 'info');
+      const left = this.soloMachine.attemptsLeft;
+      this.htmlControls.setAttempts(left);
+      this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${left} shot${left === 1 ? '' : 's'} left. Adjust and fire again`, 'info');
     }
   }
 
   override update(_time: number, deltaMs: number): void {
+    if (this.activeMode === 'none' && this.attract) {
+      const dt = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
+      const reduced = this.attract.jonh.isReducedMotionActive();
+      this.attract.scenery.update(dt, reduced);
+      this.attract.jonh.update(dt);
+      return;
+    }
     if (this.sessionCoordinator?.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine) return;
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
@@ -734,16 +778,16 @@ export class PrototypeScene extends Phaser.Scene {
     if (isBodyHit) {
       this.jonhRenderer.triggerHit(state.impactSpeedMs, quote,
         quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak', this.flightDir);
-      this.htmlControls.setFeedback(`${feedback.label} (${classification.points} pts) · “${quote}”`, 'hit');
+      this.htmlControls.setFeedback(`${feedback.label}  +${classification.points}`, 'hit', `Jonh: “${quote}”`);
     } else if (classification.outcome === 'hat_only') {
       if (!this.hatReactionTriggered) this.jonhRenderer.triggerHatHit(quote, this.flightDir);
-      this.htmlControls.setFeedback(`${feedback.label} (${classification.points} pts) · Jonh: “${quote}”`, 'hit');
+      this.htmlControls.setFeedback(`${feedback.label}  +${classification.points}`, 'hit', `Jonh: “${quote}”`);
     } else if (feedback.category === 'overhead') {
       if (!this.overheadReactionTriggered) this.jonhRenderer.triggerOverhead(quote);
-      this.htmlControls.setFeedback(`${feedback.label} · Jonh: “${quote}”`, 'miss');
+      this.htmlControls.setFeedback(feedback.label, 'miss', `Jonh: “${quote}”`);
     } else {
       this.jonhRenderer.triggerMiss(feedback.category === 'short' ? 'smug' : feedback.category === 'over' ? 'glare' : 'wince', quote);
-      this.htmlControls.setFeedback(`${feedback.label} · Jonh: “${quote}”`, 'miss');
+      this.htmlControls.setFeedback(feedback.label, 'miss', `Jonh: “${quote}”`);
     }
 
     this.inputCoordinator.setCanFire(false);
@@ -751,6 +795,8 @@ export class PrototypeScene extends Phaser.Scene {
 
     if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
       const res = this.soloMachine.result!;
+      const previous = loadSaveData().solo[this.currentLevel.id]?.bestShots ?? null;
+      this.soloResultExtras = { newBest: res.success && (previous === null || res.shotsUsed < previous), quote };
       if (res.success) {
         recordSoloResult(this.currentLevel.id, res.shotsUsed, res.hasStyle, this.currentAngleDeg, this.currentPowerPercent);
       }
@@ -992,6 +1038,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private startMultiplayer(players: MPPlayerSetup[], maps: string[]): void {
+    this.hideAttract();
     this.activeMode = 'multi';
     this.multiMachine = new MultiplayerMatchMachine(players, maps);
     this.trailHistory.clear();
