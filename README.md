@@ -4,7 +4,7 @@
 
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
-**Status:** Playable Backyard prototype with verified physics, reactions, sound, and an appearance/feedback improvement pass. Further feature expansion is paused for playtesting — see [`docs/progress.md`](docs/progress.md).
+**Status:** Playable, with four gardens, solo and 2–4 player hot-seat modes, a hand-drawn "Sunday Funnies" look, layered impact effects with slow-motion replays, an original soundtrack, unlockable hats and a Daily Bonk. See [`CHANGELOG.md`](CHANGELOG.md) for the polish pass and [`docs/progress.md`](docs/progress.md) for history.
 
 ## Stack
 
@@ -28,7 +28,10 @@ Dependencies are pinned to exact versions in `package.json` and locked in `packa
 npm run dev
 ```
 
-Open http://localhost:5173. Append `?debug` to the URL to see Matter physics bodies (dev only).
+Open http://localhost:5173. Dev-only URL flags:
+
+- `?debug` draws the Matter physics bodies.
+- `?tune` opens a live panel for every presentation value (hit-stop, slow motion, shake, zoom, particles, replay). **Copy JSON** gives values to paste into `src/config/tuning.ts`.
 
 ## Build
 
@@ -54,3 +57,7 @@ npm run check       # all three
 - [`AGENTS.md`](AGENTS.md) — working rules for contributors and coding agents.
 - [`docs/progress.md`](docs/progress.md) — progress, decisions, next task.
 - [`hit-jonh-game-design.md`](hit-jonh-game-design.md) — original design brief.
+- [`docs/art-direction.md`](docs/art-direction.md) — the visual style everything follows.
+- [`docs/polish-audit.md`](docs/polish-audit.md) — the audit that motivated the polish pass.
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed and why.
+- [`CREDITS.md`](CREDITS.md) — third-party assets and their licences.
