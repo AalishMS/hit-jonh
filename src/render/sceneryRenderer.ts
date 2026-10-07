@@ -60,11 +60,11 @@ export class SceneryRenderer {
     const far = artMeta(`far-${theme.id}`);
     add(s.add.tileSprite(LEFT, groundTop - 58, SPAN, far.h, `far-${theme.id}`).setOrigin(0, 1)
       .setTilePosition(hash01(level.id.length) * 400, 0).setScrollFactor(0.25, 0.6).setDepth(DEPTH.far));
-    add(s.add.rectangle(LEFT, groundTop - 59, SPAN, 400, hex(theme.far)).setOrigin(0, 0).setScrollFactor(0.25, 0.6).setDepth(DEPTH.far));
+    add(s.add.rectangle(LEFT, groundTop - 62, SPAN, 400, hex(theme.far)).setOrigin(0, 0).setScrollFactor(0.25, 0.6).setDepth(DEPTH.far));
     const mid = artMeta(`mid-${theme.id}`);
     add(s.add.tileSprite(LEFT, groundTop - 10, SPAN, mid.h, `mid-${theme.id}`).setOrigin(0, 1)
       .setTileScale(1 / mid.scale).setTilePosition(hash01(level.id.length * 2) * 600, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
-    add(s.add.rectangle(LEFT, groundTop - 11, SPAN, 400, hex(theme.mid)).setOrigin(0, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
+    add(s.add.rectangle(LEFT, groundTop - 14, SPAN, 400, hex(theme.mid)).setOrigin(0, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
     for (let i = 0; i < 3; i++) {
       const obj = add(s.add.image(-200 - i * 500, 120 + i * 40, 'bird').setScale(artScale('bird')).setScrollFactor(0.3).setDepth(DEPTH.bird));
       this.birds.push({ obj, speed: 38 + i * 9, baseY: 120 + i * 40, phase: i * 1.7 });

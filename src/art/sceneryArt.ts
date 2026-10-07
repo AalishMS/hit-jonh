@@ -39,7 +39,8 @@ function hillsPath(w: number, h: number, base: number, bumps: Array<[number, num
     d += ` Q${mid} ${base - height} ${x + width} ${base}`;
     x += width;
   }
-  return `${d} L${w} ${h} L0 ${h} Z`;
+  // Bottom rows stay transparent so a repeating TileSprite cannot bleed them into its top edge.
+  return `${d} L${w} ${h - 3} L0 ${h - 3} Z`;
 }
 
 function themeArt(t: Theme): ArtDef[] {
@@ -70,7 +71,7 @@ function themeArt(t: Theme): ArtDef[] {
       key: `sky-${t.id}`, w: 4, h: 512, ax: 0, ay: 0, scale: 1,
       svg: svgDoc(4, 512, `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.skyTop}"/><stop offset="0.35" stop-color="${t.skyTop}"/><stop offset="0.7" stop-color="${t.skyTop}"/><stop offset="0.96" stop-color="${t.skyLow}"/><stop offset="1" stop-color="${t.skyLow}"/></linearGradient></defs><rect width="4" height="512" fill="url(#g)"/>`),
     },
-    bg(`far-${t.id}`, 900, 190, `<path d="${farHills}" fill="${t.far}"/>${farHouses}<path d="M0 150 H900 V190 H0 Z" fill="${t.far}"/>`),
+    bg(`far-${t.id}`, 900, 190, `<path d="${farHills}" fill="${t.far}"/>${farHouses}<path d="M0 150 H900 V187 H0 Z" fill="${t.far}"/>`),
     bg(`mid-${t.id}`, 900, 160, `${trees}<path d="${midHills}" fill="${t.mid}"/><path d="${midHills}" fill="none" stroke="${t.midDark}" stroke-width="2"/>`, 0, 160, 1.5),
     {
       key: `sun-${t.id}`, w: 120, h: 120, ax: 60, ay: 60, scale: 1,
@@ -97,7 +98,7 @@ const props: ArtDef[] = [
   },
   bg('fence-back', 96, 56, `
     <path d="M0 22 H96 M0 42 H96" stroke="#DDB896" stroke-width="5"/>
-    ${[4, 28, 52, 76].map(x => `<path d="M${x} 56 V12 L${x + 9} 3 L${x + 18} 12 V56 Z" fill="#F4D6B4" stroke="#D8B48E" stroke-width="2" stroke-linejoin="round"/><path d="M${x + 13} 14 V54" stroke="#E6C49F" stroke-width="2"/>`).join('')}`, 0, 56, 2),
+    ${[4, 28, 52, 76].map(x => `<path d="M${x} 53 V12 L${x + 9} 3 L${x + 18} 12 V53 Z" fill="#F4D6B4" stroke="#D8B48E" stroke-width="2" stroke-linejoin="round"/><path d="M${x + 13} 14 V52" stroke="#E6C49F" stroke-width="2"/>`).join('')}`, 0, 56, 2),
   bg('ground-top', 128, 40, `
     <rect x="0" y="0" width="128" height="40" fill="${PAL.earth}"/>
     <path d="M0 0 H128 V16 Q120 22 112 16 Q104 22 96 16 Q88 23 80 16 Q72 22 64 16 Q56 23 48 16 Q40 22 32 16 Q24 23 16 16 Q8 22 0 16 Z" fill="${PAL.grass}"/>
