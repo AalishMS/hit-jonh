@@ -110,6 +110,8 @@ export const JUICE = {
 
 export const FLOW = {
   shotResultSeconds: 1.4,
+  /** Body hits hold longer so Jonh's knock-back (and the replay) can land. Polish pass [TUNE]. */
+  bodyHitResultSeconds: 2.6,
   handoverSeconds: 1.2,
   roundResultSeconds: 2.4,
   /** Ignore background-tab catch-up for presentation timers. */
@@ -185,3 +187,46 @@ export const MATERIALS = {
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
+
+/**
+ * Polish-pass presentation tuning [TUNE]. Deliberately mutable: the dev-only tuning panel
+ * (?tune) edits these live. Simulation never reads them; they only shape presentation time,
+ * camera and effects. Durations are real (unscaled) seconds.
+ */
+export const FX = {
+  /** Hit-stop per hit quality (seconds frozen on the contact frame). */
+  freezeTrick: 0.13,
+  freezeStrong: 0.1,
+  freezeWeak: 0.075,
+  freezeHat: 0.045,
+  /** Slow motion after the freeze: duration, speed, and ease back to full speed. */
+  slowSeconds: 0.3,
+  slowScale: 0.3,
+  rampSeconds: 0.25,
+  /** Directional camera shake along the ball's travel direction. */
+  shakePx: 14,
+  shakeSeconds: 0.4,
+  shakeHz: 21,
+  /** Zoom punch added on top of the impact framing, and how long it takes to settle. */
+  zoomPunch: 0.14,
+  punchSeconds: 0.35,
+  /** Camera framing while Jonh reacts. */
+  impactZoom: 1.6,
+  flashFrames: 2,
+  flashAlpha: 0.7,
+  particles: 34,
+  textSeconds: 1.0,
+  /** Slow-motion replay of a body hit: playback speed and seconds of flight shown before contact. */
+  replay: 1,
+  replaySpeed: 0.4,
+  replayLeadSeconds: 0.75,
+  replayAfterSeconds: 1.1,
+  /** Cannon anticipation: physics waits this long after Fire while the cannon winds up. */
+  windupSeconds: 0.12,
+  recoilPx: 18,
+  /** Camera follow during flight. */
+  flightZoomMin: 0.72,
+  followRate: 5,
+  /** Ball stretch along velocity at maximum launch speed. */
+  ballStretch: 0.35,
+};

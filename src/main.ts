@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { PHYSICS, WORLD } from './config/tuning';
+import { BootScene } from './scenes/BootScene';
 import { PrototypeScene } from './scenes/PrototypeScene';
 import { matterGravityY } from './sim/units';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#bfe6ff',
+  backgroundColor: '#5EC2EC',
   width: WORLD.designWidthPx,
   height: WORLD.designHeightPx,
   scale: {
@@ -27,7 +28,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: import.meta.env.DEV && new URLSearchParams(location.search).has('debug'),
     },
   },
-  scene: [PrototypeScene],
+  scene: [BootScene, PrototypeScene],
 };
 
 const statusEl = document.getElementById('game-status');

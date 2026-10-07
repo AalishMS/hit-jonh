@@ -1,84 +1,114 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Phaser from 'phaser';
 import { ShotEffectsRenderer } from '../src/render/shotEffectsRenderer';
-import { JUICE, WORLD } from '../src/config/tuning';
+import { registerArtMeta } from '../src/render/artTextures';
+import { FX_ART } from '../src/art/fxArt';
+import { FX } from '../src/config/tuning';
+import { impactProfile } from '../src/fx/impactProfile';
 
-function makeEffects() {
-  const graphics = {
-    setDepth: vi.fn().mockReturnThis(), clear: vi.fn(), destroy: vi.fn(),
-    fillStyle: vi.fn(), fillCircle: vi.fn(), fillRect: vi.fn(), fillTriangle: vi.fn(),
+registerArtMeta(FX_ART);
+
+function mockObject() {
+  const o: Record<string, unknown> = { visible: false, alpha: 1, scaleX: 1, width: 120, height: 60, texture: { key: '' } };
+  const chain = (name: string, fn?: (...args: unknown[]) => void) => {
+    o[name] = vi.fn((...args: unknown[]) => { fn?.(...args); return o; });
   };
-  const label = {
-    setOrigin: vi.fn().mockReturnThis(), setDepth: vi.fn().mockReturnThis(),
-    setVisible: vi.fn().mockReturnThis(), setPosition: vi.fn().mockReturnThis(),
-    setAlpha: vi.fn().mockReturnThis(), setScale: vi.fn().mockReturnThis(), destroy: vi.fn(),
-  };
-  const camera = {
-    zoom: 1.2, scrollX: 20, scrollY: 30,
-    setZoom(value: number) { this.zoom = value; return this; },
-    setScroll(x: number, y: number) { this.scrollX = x; this.scrollY = y; return this; },
-  };
-  const scene = { add: { graphics: () => graphics, text: () => label }, cameras: { main: camera } };
-  return { effects: new ShotEffectsRenderer(scene as unknown as Phaser.Scene), graphics, label, camera };
+  chain('setVisible', v => { o.visible = v; });
+  chain('setAlpha', v => { o.alpha = v; });
+  chain('setScale', v => { o.scaleX = v; });
+  for (const n of ['setDepth', 'setOrigin', 'setPosition', 'setRotation', 'setScrollFactor', 'setResolution', 'setText', 'setColor', 'setFontSize']) chain(n);
+  chain('setTexture', k => { (o.texture as { key: string }).key = k as string; });
+  o.destroy = vi.fn();
+  return o as Record<string, ReturnType<typeof vi.fn>> & { visible: boolean; alpha: number; scaleX: number };
 }
 
-describe('Shot effects lifecycle', () => {
-  it('renders a bounded launch cue and returns recoil to zero', () => {
-    const { effects, graphics } = makeEffects();
-    effects.launch(100, 400, false);
-    const recoil = effects.update(JUICE.flashSeconds / 2, false);
-    expect(recoil).toBeGreaterThan(0);
-    expect(recoil).toBeLessThanOrEqual(JUICE.recoilPixels);
-    expect(graphics.fillCircle).toHaveBeenCalledWith(100, 400, JUICE.flashRadiusPx);
-    expect(graphics.fillCircle.mock.calls.length).toBeLessThanOrEqual(JUICE.smokeCount + 1);
-    expect(effects.update(JUICE.smokeSeconds, false)).toBe(0);
-    graphics.fillCircle.mockClear();
-    effects.launch(100, 400, true);
-    expect(effects.update(0.01, true)).toBe(0);
-    expect(graphics.fillCircle).not.toHaveBeenCalled();
+function makeEffects() {
+  const images: ReturnType<typeof mockObject>[] = [];
+  const flash = mockObject();
+  const label = mockObject();
+  const camera = { zoom: 1, scrollX: 0, scrollY: 0, worldView: { x: 0, y: 0, right: 1280, bottom: 560 } };
+  const scene = {
+    add: {
+      image: () => { const i = mockObject(); images.push(i); return i; },
+      rectangle: () => flash,
+      text: () => label,
+    },
+    cameras: { main: camera },
+  };
+  const effects = new ShotEffectsRenderer(scene as unknown as Phaser.Scene, () => 0.5);
+  // Construction order: ring, star, muzzle, then the particle pool.
+  const [ring, star, muzzle, ...pool] = images;
+  return { effects, flash, label, camera, ring: ring!, star: star!, muzzle: muzzle!, pool };
+}
+
+const visibleParticles = (pool: ReturnType<typeof mockObject>[]) => pool.filter(p => p.visible).length;
+
+describe('Shot effects', () => {
+  it('fires flash, contact star, ring, burst and comic word on the contact frame itself', () => {
+    const { effects, flash, star, ring, label, pool } = makeEffects();
+    effects.impact(800, 400, impactProfile('strong'), 1, 0.2, false, 'BONK!');
+    expect(flash.visible).toBe(true);
+    expect(flash.alpha).toBeCloseTo(FX.flashAlpha);
+    expect(star.visible).toBe(true);
+    expect(ring.visible).toBe(true);
+    expect(label.visible).toBe(true);
+    expect(effects.particleCount).toBeGreaterThan(0);
+    effects.update(0, false, 1 / 60);
+    expect(visibleParticles(pool)).toBe(effects.particleCount);
+    // Flash lasts the configured number of rendered frames, then clears.
+    for (let i = 0; i < 4; i++) effects.update(1 / 60, false, 1 / 60);
+    expect(flash.visible).toBe(false);
   });
 
-  it('restores the original camera on skip/reset, then starts clean', () => {
-    const { effects, camera, label } = makeEffects();
-    effects.bodyImpact(800, 400);
-    effects.update(0.02, false);
-    expect(camera.zoom).toBeGreaterThan(1.2);
-    effects.reset();
-    expect(camera).toMatchObject({ zoom: 1.2, scrollX: 20, scrollY: 30 });
-    expect(label.setVisible).toHaveBeenLastCalledWith(false);
-    expect(effects.update(0.01, false)).toBe(0);
-    effects.bodyImpact(800, 400);
-    effects.update(JUICE.zoomSeconds, false);
-    expect(camera).toMatchObject({ zoom: 1.2, scrollX: 20, scrollY: 30 });
+  it('keeps the camera untouched (the camera rig owns shake and zoom)', () => {
+    const { effects, camera } = makeEffects();
+    effects.impact(800, 400, impactProfile('trick'), 1, 0, false, 'KA-BLAM!');
+    for (let i = 0; i < 30; i++) effects.update(1 / 60, false, 1 / 60);
+    expect(camera).toMatchObject({ zoom: 1, scrollX: 0, scrollY: 0 });
   });
 
-  it('immediately suppresses moving effects when reduced motion is enabled', () => {
-    const { effects, camera, label, graphics } = makeEffects();
-    effects.launch(100, 400, false);
-    effects.bodyImpact(800, 400);
-    effects.update(0.01, false);
-    graphics.fillCircle.mockClear(); graphics.fillTriangle.mockClear(); graphics.fillRect.mockClear();
-    expect(effects.update(0.01, true)).toBe(0);
-    expect(camera).toMatchObject({ zoom: 1.2, scrollX: 20, scrollY: 30 });
-    expect(graphics.fillCircle).not.toHaveBeenCalled();
-    expect(graphics.fillTriangle).not.toHaveBeenCalled();
+  it('shows only the comic word under reduced motion and settles moving effects immediately', () => {
+    const { effects, flash, star, label, pool } = makeEffects();
+    effects.impact(800, 400, impactProfile('strong', true), 1, 0, true, 'BONK!');
+    effects.update(1 / 60, true, 1 / 60);
+    expect(flash.visible).toBe(false);
+    expect(star.visible).toBe(false);
+    expect(visibleParticles(pool)).toBe(0);
+    expect(label.visible).toBe(true);
     expect(label.setScale).toHaveBeenLastCalledWith(1);
-    effects.update(0.01, false);
-    expect(camera.zoom).toBe(1.2);
-    expect(graphics.fillRect).not.toHaveBeenCalled();
+
+    const second = makeEffects();
+    second.effects.launch(100, 400, 0.7, false);
+    second.effects.impact(800, 400, impactProfile('strong'), 1, 0, false, 'BONK!');
+    expect(second.effects.update(1 / 60, true, 1 / 60)).toBe(0);
+    expect(second.effects.particleCount).toBe(0);
+    expect(second.star.visible).toBe(false);
   });
 
-  it('clamps the label and keeps particle work bounded', () => {
-    const { effects, label, graphics } = makeEffects();
-    effects.bodyImpact(WORLD.designWidthPx + 100, -100);
-    expect(label.setPosition).toHaveBeenLastCalledWith(WORLD.designWidthPx - JUICE.labelMarginPx, JUICE.labelSizePx);
-    effects.update(0.02, false);
-    const count = graphics.fillTriangle.mock.calls.length + graphics.fillCircle.mock.calls.length + graphics.fillRect.mock.calls.length;
-    expect(count).toBeLessThanOrEqual(JUICE.burstCount * 2);
-    effects.update(JUICE.labelSeconds, false);
-    expect(label.setVisible).toHaveBeenLastCalledWith(false);
+  it('bounds particle work by the pool and lets recoil return to rest', () => {
+    const { effects } = makeEffects();
+    for (let i = 0; i < 10; i++) effects.impact(800, 400, impactProfile('trick'), 1, 0, false, 'KA-BLAM!');
+    expect(effects.particleCount).toBeLessThanOrEqual(96);
+    effects.launch(100, 400, 0.8, false);
+    const recoil = effects.update(1 / 60, false, 1 / 60);
+    expect(recoil).toBeGreaterThan(0);
+    expect(recoil).toBeLessThanOrEqual(FX.recoilPx);
+    let last = recoil;
+    for (let i = 0; i < 40; i++) last = effects.update(1 / 60, false, 1 / 60);
+    expect(last).toBe(0);
+  });
+
+  it('reset hides everything and destroy releases every object', () => {
+    const { effects, flash, star, ring, muzzle, label, pool } = makeEffects();
+    effects.launch(100, 400, 0.8, false);
+    effects.impact(800, 400, impactProfile('strong'), 1, 0, false, 'BONK!');
+    effects.reset();
+    expect([flash, star, ring, muzzle, label].every(o => !o.visible)).toBe(true);
+    expect(effects.particleCount).toBe(0);
+    expect(visibleParticles(pool)).toBe(0);
     effects.destroy();
-    expect(graphics.destroy).toHaveBeenCalledOnce();
+    expect(flash.destroy).toHaveBeenCalledOnce();
     expect(label.destroy).toHaveBeenCalledOnce();
+    expect(pool.every(p => p.destroy!.mock.calls.length === 1)).toBe(true);
   });
 });

@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, FLOW, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { CameraRig } from '../render/cameraRig';
+import { aimFrame, flightFrame, impactFrame, type Frame } from '../fx/cameraDirector';
+import { clamp01 } from '../fx/easing';
+import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
+import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
@@ -51,7 +56,14 @@ export class PrototypeScene extends Phaser.Scene {
   private readonly autoAdvance = new AutoAdvance();
   private readonly impactTimeline = new ImpactTimeline();
   private effects!: ShotEffectsRenderer;
+  private cameraRig!: CameraRig;
   private canvasAim!: CanvasAim;
+  /** Muzzle position waiting for the cannon wind-up to finish. */
+  private pendingLaunch: { x: number; y: number; angleRad: number } | null = null;
+  private prevVelocity: { vx: number; vy: number } | null = null;
+  /** Horizontal travel direction of the ball before it touched Jonh. */
+  private flightDir = 1;
+  private impactQuality: HitQuality | null = null;
   private outOfCanvasSoundPlayed = false;
   private skipPresentationFrame = false;
 
@@ -101,6 +113,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.audioManager = new AudioManager();
     this.effects = new ShotEffectsRenderer(this);
+    this.cameraRig = new CameraRig(this.cameras.main);
 
     const matterEngine = this.matter.world.engine;
     this.physicsAdapter = new MatterAdapter(matterEngine.world, ppm, h);
@@ -448,15 +461,24 @@ export class PrototypeScene extends Phaser.Scene {
     this.resetEffects();
     this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
-    this.audioManager.playCannonFire();
 
     this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
     this.htmlControls.setCanFire(false);
-    
+
     this.activeCoordinator.fire(this.currentAngleDeg, this.currentPowerPercent);
     const muzzle = this.cannonRenderer.getMuzzlePosition(this.currentAngleDeg, PROJECTILE.radiusMetres);
-    this.effects.launch(muzzle.x, muzzle.y, this.jonhRenderer.isReducedMotionActive());
+    this.pendingLaunch = { x: muzzle.x, y: muzzle.y, angleRad: this.currentAngleDeg * Math.PI / 180 };
+    this.prevVelocity = null;
+    this.impactQuality = null;
+    if (this.jonhRenderer.isReducedMotionActive()) {
+      this.releaseLaunch();
+    } else {
+      // Anticipation: simulation time is held (never the step size) while the cannon winds up.
+      this.impactTimeline.hold(FX.windupSeconds);
+      this.ballRenderer.setVisible(false);
+      this.audioManager.playFuse();
+    }
 
     if (this.activeMode === 'solo') {
       this.htmlControls.setFeedback(`Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
@@ -527,8 +549,10 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
+    const wasHolding = this.impactTimeline.isHolding;
     const reactionSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
-    const recoil = this.effects.update(dtSeconds, reduced);
+    if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
+    const recoil = this.effects.update(reactionSeconds, reduced, dtSeconds);
     this.cannonRenderer.setRecoil(recoil, this.currentAngleDeg);
     this.drawCannon();
 
@@ -537,6 +561,8 @@ export class PrototypeScene extends Phaser.Scene {
     if (advance === 'handover') { this.beginMultiplayerTurn(); return; }
     if (advance === 'round') { this.nextMultiplayerRound(); return; }
 
+    this.jonhRenderer.setAware(this.canvasAim.isDragging);
+    this.jonhRenderer.setAlarm(this.incomingAlarm());
     this.jonhRenderer.update(reactionSeconds);
     const steps = this.stepper.advance(reactionSeconds);
     const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
@@ -553,19 +579,21 @@ export class PrototypeScene extends Phaser.Scene {
             this.outOfCanvasSoundPlayed = true;
             this.audioManager.playOutOfBounds();
           }
+          if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
+          this.detectBounce(state, reduced);
           this.lastProjectileState = state;
           this.trailRenderer.addPoint(state.xPx, state.yPx);
           if (state.firstGroundContact && !this.groundFeedbackShown) {
             this.groundFeedbackShown = true;
             const landing = state.firstGroundContact;
             this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
-            this.audioManager.playImpact('ground');
           }
 
           if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
             this.hatReactionTriggered = true;
             this.activeReactionQuote = this.reactionSelector.selectReaction('hat');
-            this.jonhRenderer.triggerHatHit(this.activeReactionQuote);
+            this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
+            this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
           } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
             this.overheadReactionTriggered = true;
             this.activeReactionQuote = this.reactionSelector.selectReaction('overhead');
@@ -589,9 +617,12 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (this.lastProjectileState && this.attemptMachine.state !== 'aiming') {
-      this.ballRenderer.draw(this.lastProjectileState.xPx, this.lastProjectileState.yPx,
-        !reduced && this.impactTimeline.age !== null ? this.jonhRenderer.impactSquash : 0);
+      const p = this.lastProjectileState;
+      const ppm = WORLD.pixelsPerMetre;
+      this.ballRenderer.draw(p.xPx, p.yPx, p.vxSim * ppm, -p.vySim * ppm, reactionSeconds, reduced,
+        powerToLaunchSpeed(100, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * ppm);
     }
+    this.updateCamera(dtSeconds, reduced);
 
     if (this.isDebugEnabled) {
       const speed = powerToLaunchSpeed(this.currentPowerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
@@ -622,11 +653,11 @@ export class PrototypeScene extends Phaser.Scene {
     const classification = this.classifier.classify(true);
     const isBodyHit = classification.isHit;
 
-    if (isBodyHit && this.impactTimeline.bodyImpact(this.jonhRenderer.isReducedMotionActive())) {
+    const quality = hitQuality(classification.outcome, state.impactSpeedMs, LOOK.strongImpactMs);
+    if (isBodyHit && this.impactTimeline.bodyImpact(this.jonhRenderer.isReducedMotionActive(),
+      impactProfile(quality, this.jonhRenderer.isReducedMotionActive()))) {
       this.stepper.reset();
-      this.effects.bodyImpact(state.xPx, state.yPx);
-      this.audioManager.playImpact('body');
-      this.audioManager.playJonhReaction();
+      this.playImpactMoment(quality, state.xPx, state.yPx, this.jonhRenderer.isReducedMotionActive());
     }
 
     if (this.activeMode === 'solo') {
@@ -658,15 +689,17 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (isBodyHit) {
-      this.jonhRenderer.triggerHit(state.impactSpeedMs, quote);
+      this.jonhRenderer.triggerHit(state.impactSpeedMs, quote,
+        quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak', this.flightDir);
       this.htmlControls.setFeedback(`${feedback.label} (${classification.points} pts) · “${quote}”`, 'hit');
     } else if (classification.outcome === 'hat_only') {
-      if (!this.hatReactionTriggered) this.jonhRenderer.triggerHatHit(quote);
+      if (!this.hatReactionTriggered) this.jonhRenderer.triggerHatHit(quote, this.flightDir);
       this.htmlControls.setFeedback(`${feedback.label} (${classification.points} pts) · Jonh: “${quote}”`, 'hit');
     } else if (feedback.category === 'overhead') {
       if (!this.overheadReactionTriggered) this.jonhRenderer.triggerOverhead(quote);
       this.htmlControls.setFeedback(`${feedback.label} · Jonh: “${quote}”`, 'miss');
     } else {
+      this.jonhRenderer.triggerMiss(feedback.category === 'short' ? 'smug' : feedback.category === 'over' ? 'glare' : 'wince', quote);
       this.htmlControls.setFeedback(`${feedback.label} · Jonh: “${quote}”`, 'miss');
     }
 
@@ -681,12 +714,97 @@ export class PrototypeScene extends Phaser.Scene {
     }
     
     this.htmlControls.setResetLabel('Next now ↵');
-    this.autoAdvance.schedule('shot', FLOW.shotResultSeconds);
+    this.autoAdvance.schedule('shot', isBodyHit ? FLOW.bodyHitResultSeconds : FLOW.shotResultSeconds);
+  }
+
+  /**
+   * Every layer of the impact fires on this same frame: hit-stop (already started on the
+   * timeline), flash, contact star, burst, comic word, camera punch/shake, ball squash and
+   * layered sound. Intensity follows hit quality.
+   */
+  private playImpactMoment(quality: HitQuality, x: number, y: number, reduced: boolean): void {
+    const profile = impactProfile(quality, reduced);
+    this.impactQuality = quality;
+    if (quality === 'hat') this.impactTimeline.pulse(profile, reduced);
+    const v = this.prevVelocity ?? { vx: this.flightDir, vy: 0 };
+    const dirX = v.vx;
+    const dirY = -v.vy;
+    const word = profile.words.length ? profile.words[Math.floor(Math.random() * profile.words.length)]! : null;
+    this.effects.impact(x, y, profile, dirX, dirY, reduced, word);
+    this.cameraRig.impact(profile.shakePx, profile.shakeSeconds, FX.shakeHz, dirX, dirY, profile.zoomPunch, FX.punchSeconds);
+    this.ballRenderer.squash(Math.atan2(dirY, dirX), Math.min(1, profile.intensity));
+    if (quality === 'hat') this.audioManager.playHatHit();
+    else this.audioManager.playHit(quality);
+  }
+
+  /** Cosmetic bounce detection: an abrupt velocity change means the ball struck something. */
+  private detectBounce(state: ProjectileState, reduced: boolean): void {
+    const prev = this.prevVelocity;
+    this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+    if (!prev || state.hitJonh) return;
+    const dvx = state.vxSim - prev.vx;
+    const dvy = state.vySim - prev.vy + PHYSICS.gravity * PHYSICS.fixedStepSeconds;
+    const dv = Math.hypot(dvx, dvy);
+    if (dv < 1.2) return;
+    const surface = this.surfaceAt(state.xSim, state.ySim);
+    this.audioManager.playSurface(surface, dv / 14);
+    this.effects.dust(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(dv / 10) + 0.3, reduced,
+      surface === 'wood' ? 'fx-chip' : surface === 'ground' ? 'fx-leaf' : 'fx-dust');
+    if (surface !== 'ground' && dv > 4) this.cameraRig.impact(4 * clamp01(dv / 12), 0.18, FX.shakeHz, -prev.vx, prev.vy, 0, 0);
+  }
+
+  private surfaceAt(x: number, y: number): SurfaceSound {
+    const r = PROJECTILE.radiusMetres + 0.15;
+    for (const o of this.currentLevel.obstacles) {
+      const b = o.box;
+      if (x >= b.minX - r && x <= b.maxX + r && y >= b.minY - r && y <= b.maxY + r) {
+        return o.material === 'wood' ? 'wood' : o.material === 'rubber' ? 'rubber' : 'concrete';
+      }
+    }
+    return 'ground';
+  }
+
+  /** 0..1: how imminent the incoming ball is (Jonh notices and flinches). Cosmetic only. */
+  private incomingAlarm(): number {
+    const p = this.lastProjectileState;
+    if (!p || this.attemptMachine.state !== 'simulating' || this.jonhRenderer.mode !== 'idle') return 0;
+    const jonh = this.jonhRenderer.position;
+    const dx = jonh.x - p.xPx;
+    if (Math.sign(dx) !== Math.sign(p.vxSim) && Math.abs(dx) > 20) return 0;
+    const d = Math.hypot(dx, (jonh.y - 50) - p.yPx);
+    return clamp01(1 - (d - 50) / 170);
+  }
+
+  private releaseLaunch(): void {
+    const launch = this.pendingLaunch;
+    this.pendingLaunch = null;
+    if (!launch) return;
+    this.effects.launch(launch.x, launch.y, launch.angleRad, this.jonhRenderer.isReducedMotionActive());
+    this.audioManager.playCannonFire();
+  }
+
+  private updateCamera(realDt: number, reduced: boolean): void {
+    const view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
+    const jonh = this.jonhRenderer.position;
+    const p = this.lastProjectileState;
+    let target: Frame = aimFrame(view);
+    let rate = 3.5;
+    if (this.jonhRenderer.isHit || (this.impactQuality !== null && this.impactQuality !== 'hat' && this.impactTimeline.age !== null)) {
+      target = impactFrame({ x: jonh.x, y: jonh.y }, this.flightDir, view, FX.impactZoom);
+      rate = 9;
+    } else if (p && this.attemptMachine.state !== 'aiming') {
+      target = flightFrame({ x: p.xPx, y: p.yPx }, { x: jonh.x, y: jonh.y }, view, 1.15, FX.flightZoomMin);
+      rate = this.attemptMachine.state === 'simulating' ? FX.followRate : 2.5;
+    }
+    this.cameraRig.update(realDt, target, rate, reduced);
   }
 
   private resetEffects(): void {
     this.impactTimeline.reset();
+    this.pendingLaunch = null;
+    this.impactQuality = null;
     this.effects?.reset();
+    this.cameraRig?.reset();
     this.cannonRenderer?.setRecoil(0, this.currentAngleDeg);
     this.jonhRenderer?.settleImpact();
     if (this.lastProjectileState && this.ballRenderer) {

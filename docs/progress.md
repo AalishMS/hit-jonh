@@ -323,3 +323,9 @@ pm run build passed: **71 modules transformed / 1.34s**.
 - Brute-forced exclusive trick-shot solutions in headless tests, ensuring physical solvability despite the high 7.0m concrete wall blocking direct shots to Jonh.
 
 **Next task:** Owner playtest/tune Rubber Yard trick shots. Determine if the map should be added to the default 3-map cycle or kept as a bonus unlock/practice stage.
+
+## Polish pass — 2026-10-07/08 (branch `polish-pass`)
+
+Owner request: make the game look and feel polished and shareable. Audit: `docs/polish-audit.md`. Style guide: `docs/art-direction.md`. Running notes per phase below; full summary in `CHANGELOG.md`.
+
+**Phase 2.1 — impact moment.** Art pipeline: SVG parts in `src/art/` rasterized once at boot (`BootScene`, `render/artTextures.ts`) at 2–3× for crisp zooms. Jonh rebuilt as a layered rig (`render/jonhRenderer.ts`) driven by a pure pose function (`fx/jonhPose.ts`), so the hit-stop holds frame 0 (his most extreme, crumpled pose) and every reaction is replayable. On the contact frame: hit-stop + slow motion with an eased ramp (time fed to the accumulator only), 1–2 frame flash, contact star, shockwave ring, radial particle burst, comic word with overshoot (Luckiest Guy), ball squash, camera punch-in and directional shake, and layered sound (thump + crack + yelp). Intensity is chosen per hit quality (`fx/impactProfile.ts`: trick > strong > weak > hat > obstacle > ground). Reduced motion keeps the comic word and sound, cuts poses, and drops freeze/slow/shake/flash/particles/camera motion. Decisions: body hits now hold the result for 2.6 s (`FLOW.bodyHitResultSeconds`) so the knock-back lands; stored multiplayer colours remain as save identifiers and are mapped to the new palette when drawn.

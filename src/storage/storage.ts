@@ -20,6 +20,8 @@ export interface Settings {
   muted: boolean;
   volume: number;
   reducedMotion: boolean;
+  /** Background music loop (sound effects follow `muted`). */
+  music: boolean;
 }
 
 export interface SaveData {
@@ -35,6 +37,7 @@ const DEFAULT_SETTINGS: Settings = {
   muted: false,
   volume: 1.0,
   reducedMotion: false,
+  music: true,
 };
 
 function getFreshData(): SaveData {
@@ -130,6 +133,7 @@ export function loadSaveData(): SaveData {
         ? Math.max(0, Math.min(1, pSet.volume)) 
         : DEFAULT_SETTINGS.volume;
       data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
+      data.settings.music = typeof pSet.music === 'boolean' ? pSet.music : DEFAULT_SETTINGS.music;
     }
 
     // Validate solo

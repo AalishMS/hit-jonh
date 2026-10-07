@@ -1,5 +1,8 @@
 @import './ui/menu.css';
 
+@font-face { font-family: 'Luckiest Guy'; src: url('./assets/fonts/luckiest-guy-latin.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Nunito'; src: url('./assets/fonts/nunito-latin.woff2') format('woff2'); font-weight: 200 1000; font-display: swap; }
+
 :root {
   color-scheme: light;
   --ink: #23324b;

@@ -31,6 +31,8 @@ export class CanvasAim {
     window.addEventListener('blur', () => this.cancel(), options);
   }
 
+  get isDragging(): boolean { return this.drag !== null; }
+
   cancel(): void {
     const pointerId = this.drag?.pointerId;
     this.drag = null;

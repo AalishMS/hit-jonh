@@ -65,3 +65,53 @@ describe('Impact presentation clock', () => {
     });
   }
 });
+
+describe('Polish-pass time scaling', () => {
+  const profile = { freeze: 0.1, slow: 0.3, slowScale: 0.3, ramp: 0.25 };
+
+  it('integrates freeze → slow → ramp exactly, independent of frame rate', () => {
+    const total = (hz: number) => {
+      const clock = new ImpactTimeline();
+      clock.bodyImpact(false, profile);
+      let sum = 0;
+      for (let i = 0; i < hz * 2; i++) sum += clock.advance(1 / hz);
+      return sum;
+    };
+    // 2 s real time minus freeze, minus slowed time, minus the ramp's average shortfall.
+    const expected = 2 - 0.1 - 0.3 * (1 - 0.3) - 0.25 * (1 - 0.3) / 2;
+    for (const hz of [30, 60, 144]) expect(total(hz)).toBeCloseTo(expected, 9);
+  });
+
+  it('holds simulation during the cannon wind-up, then passes the leftover through', () => {
+    const clock = new ImpactTimeline();
+    clock.hold(0.12);
+    expect(clock.isHolding).toBe(true);
+    expect(clock.advance(0.1)).toBe(0);
+    expect(clock.advance(0.05)).toBeCloseTo(0.03);
+    expect(clock.isHolding).toBe(false);
+    clock.hold(0.2);
+    expect(clock.advance(0.05, false, true)).toBe(0.05);
+    expect(clock.isHolding).toBe(false);
+  });
+
+  it('lets a hat pulse freeze briefly, but never overrides a body impact', () => {
+    const clock = new ImpactTimeline();
+    clock.pulse({ freeze: 0.05, slow: 0, slowScale: 1 });
+    expect(clock.advance(0.05)).toBeCloseTo(0);
+    expect(clock.bodyImpact(false, profile)).toBe(true);
+    clock.pulse({ freeze: 1, slow: 0, slowScale: 1 });
+    expect(clock.advance(0.1)).toBeCloseTo(0);
+    expect(clock.advance(0.1)).toBeCloseTo(0.03);
+  });
+
+  it('steps physics the same number of times with and without effects once settled', () => {
+    for (const hz of [30, 60, 144]) {
+      const clock = new ImpactTimeline();
+      const stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
+      clock.hold(0.12);
+      let steps = 0;
+      for (let i = 0; i < hz * 3; i++) steps += stepper.advance(clock.advance(1 / hz));
+      expect(steps).toBe(Math.floor((3 - 0.12) / PHYSICS.fixedStepSeconds + 1e-6));
+    }
+  });
+});
