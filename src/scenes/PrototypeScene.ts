@@ -815,7 +815,8 @@ export class PrototypeScene extends Phaser.Scene {
     }
     const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
     this.progress = after;
-    saveProgress(after);
+    // Storage writes wait until after the contact frame so the hit-stop starts on time.
+    setTimeout(() => saveProgress(after), 0);
     this.pendingUnlocks.push(...unlocks);
     if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
     if (unlocks.length && this.activeMode === 'multi') {
@@ -833,7 +834,8 @@ export class PrototypeScene extends Phaser.Scene {
       };
       this.pendingUnlocks = [];
       if (res.success && !this.daily) {
-        recordSoloResult(this.currentLevel.id, res.shotsUsed, res.hasStyle, this.currentAngleDeg, this.currentPowerPercent);
+        const [mapId, angle, power] = [this.currentLevel.id, this.currentAngleDeg, this.currentPowerPercent];
+        setTimeout(() => recordSoloResult(mapId, res.shotsUsed, res.hasStyle, angle, power), 0);
       }
     }
     

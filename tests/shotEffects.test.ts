@@ -25,20 +25,19 @@ function mockObject() {
 function makeEffects() {
   const images: ReturnType<typeof mockObject>[] = [];
   const flash = mockObject();
-  const label = mockObject();
   const camera = { zoom: 1, scrollX: 0, scrollY: 0, worldView: { x: 0, y: 0, right: 1280, bottom: 560 } };
   const scene = {
     add: {
       image: () => { const i = mockObject(); images.push(i); return i; },
       rectangle: () => flash,
-      text: () => label,
     },
     cameras: { main: camera },
   };
   const effects = new ShotEffectsRenderer(scene as unknown as Phaser.Scene, () => 0.5);
-  // Construction order: ring, star, muzzle, then the particle pool.
-  const [ring, star, muzzle, ...pool] = images;
-  return { effects, flash, label, camera, ring: ring!, star: star!, muzzle: muzzle!, pool };
+  // Construction order: ring, star, muzzle, the particle pool, then the comic word.
+  const [ring, star, muzzle, ...rest] = images;
+  const label = rest.pop()!;
+  return { effects, flash, label, camera, ring: ring!, star: star!, muzzle: muzzle!, pool: rest };
 }
 
 const visibleParticles = (pool: ReturnType<typeof mockObject>[]) => pool.filter(p => p.visible).length;
@@ -75,7 +74,9 @@ describe('Shot effects', () => {
     expect(star.visible).toBe(false);
     expect(visibleParticles(pool)).toBe(0);
     expect(label.visible).toBe(true);
-    expect(label.setScale).toHaveBeenLastCalledWith(1);
+    const staticScale = label.setScale!.mock.lastCall;
+    effects.update(1 / 60, true, 1 / 60);
+    expect(label.setScale!.mock.lastCall).toEqual(staticScale);
 
     const second = makeEffects();
     second.effects.launch(100, 400, 0.7, false);

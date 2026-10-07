@@ -1,10 +1,10 @@
 import type Phaser from 'phaser';
-import { PAL } from '../art/palette';
 import { FX, WORLD } from '../config/tuning';
 import { clamp, clamp01, easeOutBack, easeOutCubic } from '../fx/easing';
 import type { ImpactProfile } from '../fx/impactProfile';
 import { ParticleSystem, type BurstSpec } from '../fx/particles';
 import { artScale } from './artTextures';
+import { COMIC_WORD_PX, COMIC_WORD_RES, comicWordKey } from './comicWords';
 
 const POOL = 96;
 
@@ -19,7 +19,9 @@ export class ShotEffectsRenderer {
   private readonly star: Phaser.GameObjects.Image;
   private readonly ring: Phaser.GameObjects.Image;
   private readonly muzzle: Phaser.GameObjects.Image;
-  private readonly label: Phaser.GameObjects.Text;
+  /** Pre-rendered comic word (see comicWords.ts): swapping textures costs nothing on the contact frame. */
+  private readonly label: Phaser.GameObjects.Image;
+  private labelBaseScale = 1;
   private flashFramesLeft = 0;
   private muzzleFrames = 0;
   private launchAge: number | null = null;
@@ -36,12 +38,7 @@ export class ShotEffectsRenderer {
     this.star = scene.add.image(0, 0, 'fx-impact-star').setDepth(13).setVisible(false);
     this.muzzle = scene.add.image(0, 0, 'fx-muzzle').setOrigin(30 / 80, 0.5).setDepth(21).setVisible(false);
     for (let i = 0; i < POOL; i++) this.pool.push(scene.add.image(0, 0, 'fx-dust').setDepth(24).setVisible(false));
-    this.label = scene.add.text(0, 0, '', {
-      fontFamily: '"Luckiest Guy", Impact, sans-serif', fontSize: '64px', color: PAL.pow,
-      stroke: PAL.ink, strokeThickness: 11,
-      shadow: { offsetX: 5, offsetY: 6, color: PAL.ink, fill: true, stroke: true },
-      padding: { left: 10, right: 16, top: 10, bottom: 14 },
-    }).setOrigin(0.5).setDepth(50).setResolution(2).setVisible(false);
+    this.label = scene.add.image(0, 0, 'fx-pixel').setDepth(50).setVisible(false);
   }
 
   /** Muzzle flash, smoke and sparks on the frame the ball leaves the barrel. */
@@ -90,7 +87,8 @@ export class ShotEffectsRenderer {
       }
     }
     if (word && profile.textColor) {
-      this.label.setText(word).setColor(PAL[profile.textColor]).setFontSize(Math.round(40 + 22 * Math.min(1.2, k)));
+      this.label.setTexture(comicWordKey(word));
+      this.labelBaseScale = (40 + 22 * Math.min(1.2, k)) / COMIC_WORD_PX / COMIC_WORD_RES;
       this.labelAge = 0;
       this.labelBase = { x: x - dir * 95, y: y - 70, rot: -0.12 * dir + (Math.random() - 0.5) * 0.1 };
       this.label.setVisible(true).setAlpha(1).setRotation(this.labelBase.rot);
@@ -126,11 +124,12 @@ export class ShotEffectsRenderer {
 
   private placeLabel(scale: number): void {
     const view = this.scene.cameras.main.worldView;
-    const halfW = (this.label.width * scale) / 2;
-    const halfH = (this.label.height * scale) / 2;
+    const s = this.labelBaseScale * scale;
+    const halfW = (this.label.width * s) / 2;
+    const halfH = (this.label.height * s) / 2;
     const x = clamp(this.labelBase.x, view.x + halfW + 6, Math.max(view.x + halfW + 6, view.right - halfW - 6));
     const y = clamp(this.labelBase.y, view.y + halfH + 6, Math.max(view.y + halfH + 6, view.bottom - halfH - 6));
-    this.label.setPosition(x, y).setScale(scale);
+    this.label.setPosition(x, y).setScale(s);
   }
 
   /**
@@ -234,7 +233,7 @@ export class ShotEffectsRenderer {
     this.star.setVisible(false);
     this.ring.setVisible(false);
     this.muzzle.setVisible(false);
-    this.label.setVisible(false).setScale(1).setAlpha(1);
+    this.label.setVisible(false).setAlpha(1);
   }
 
   destroy(): void {

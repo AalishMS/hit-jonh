@@ -312,11 +312,12 @@ export class MenuOverlay {
   private scoreRows(sorted: readonly MPPlayerView[], detail: (p: MPPlayerView) => string, winners: readonly MPPlayerView[] = []): HTMLElement {
     const list = el('div', 'score-list');
     sorted.forEach((p, i) => {
-      const row = el('div', `score-row${winners.includes(p) ? ' winner' : ''}`);
+      const won = winners.some(w => w.id === p.id);
+      const row = el('div', `score-row${won ? ' winner' : ''}`);
       row.style.setProperty('--player-color', cssColor(playerDisplayColor(p.color)));
       const who = el('span');
       who.append(document.createTextNode(p.name), el('small', '', detail(p)));
-      row.append(el('span', 'rank', winners.includes(p) ? '♛' : String(i + 1)), who, el('b', '', String(p.totalScore)));
+      row.append(el('span', 'rank', won ? '♛' : String(i + 1)), who, el('b', '', String(p.totalScore)));
       list.appendChild(row);
     });
     return list;

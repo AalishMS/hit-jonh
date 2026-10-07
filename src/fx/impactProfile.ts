@@ -29,6 +29,7 @@ export function hitQuality(outcome: 'ricochet_body' | 'body' | 'hat_only' | 'mis
 }
 
 const INTENSITY: Record<HitQuality, number> = { trick: 1.25, strong: 1, weak: 0.72, hat: 0.35, obstacle: 0.2, ground: 0.08 };
+const TEXT_COLOR: Record<HitQuality, 'pow' | 'zap' | 'paper' | null> = { trick: 'pow', strong: 'pow', weak: 'zap', hat: 'paper', obstacle: null, ground: null };
 const WORDS: Record<HitQuality, readonly string[]> = {
   trick: ['KA-BLAM!', 'TRICK SHOT!'],
   strong: ['WHAM!', 'BONK!', 'KA-POW!'],
@@ -37,6 +38,10 @@ const WORDS: Record<HitQuality, readonly string[]> = {
   obstacle: [],
   ground: [],
 };
+
+/** Every comic word with the colour it is drawn in (pre-rendered at boot). */
+export const COMIC_WORDS: ReadonlyArray<{ word: string; color: 'pow' | 'zap' | 'paper' }> = (Object.keys(WORDS) as HitQuality[])
+  .flatMap(q => WORDS[q].map(word => ({ word, color: TEXT_COLOR[q] ?? 'paper' })));
 
 export function impactProfile(quality: HitQuality, reducedMotion = false, fx: typeof FX = FX): ImpactProfile {
   const k = INTENSITY[quality];
@@ -56,7 +61,7 @@ export function impactProfile(quality: HitQuality, reducedMotion = false, fx: ty
     flashFrames: body ? Math.round(fx.flashFrames) : 0,
     particles: Math.round(fx.particles * k),
     words: WORDS[quality],
-    textColor: quality === 'trick' || quality === 'strong' ? 'pow' : quality === 'weak' ? 'zap' : quality === 'hat' ? 'paper' : null,
+    textColor: TEXT_COLOR[quality],
     // Replays are kept for the big hits so multiplayer turns stay brisk.
     replay: (quality === 'trick' || quality === 'strong') && fx.replay > 0,
   };
