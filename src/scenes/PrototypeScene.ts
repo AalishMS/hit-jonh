@@ -122,6 +122,7 @@ export class PrototypeScene extends Phaser.Scene {
     const { designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
     this.audioManager = new AudioManager();
+    if (import.meta.env.DEV) (window as unknown as { __HIT_JONH_AUDIO__: AudioManager }).__HIT_JONH_AUDIO__ = this.audioManager;
     this.effects = new ShotEffectsRenderer(this);
     this.cameraRig = new CameraRig(this.cameras.main);
     this.replayOverlay = new ReplayOverlay(document.getElementById('game') ?? document.body);
@@ -657,6 +658,8 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
+    const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
+    this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
@@ -948,6 +951,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private resetEffects(): void {
+    this.audioManager?.setFlightWhoosh(null);
     this.impactTimeline.reset();
     this.replay = null;
     this.replayCountdown = null;

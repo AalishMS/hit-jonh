@@ -49,6 +49,9 @@ export class AudioManager {
   private musicLoopStart = 0;
   private musicNextIndex = 0;
   private readonly notes = loopNotes();
+  private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
+  private analyser: AnalyserNode | null = null;
+  private nextChirp = 0;
 
   constructor(private readonly rng: () => number = Math.random) {
     const settings = this.loadAudioSettings();
@@ -86,6 +89,9 @@ export class AudioManager {
       this.musicBus.connect(compressor);
       compressor.connect(this.masterGain);
       this.masterGain.connect(this.ctx.destination);
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 2048;
+      this.masterGain.connect(this.analyser);
       this.noiseBuffer = this.makeNoise(1.5);
       this.decodeSamples();
     }
@@ -389,6 +395,71 @@ export class AudioManager {
     voice.stop(start + 0.9);
   }
 
+  /** Air rushing past the ball: a looped band of noise that follows its speed (0..1). */
+  setFlightWhoosh(speed01: number | null): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxBus || !this.noiseBuffer) return;
+    if (speed01 === null || this._isMuted) {
+      if (this.whoosh) {
+        const w = this.whoosh;
+        w.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+        w.src.stop(ctx.currentTime + 0.3);
+        this.whoosh = null;
+      }
+      return;
+    }
+    if (!this.whoosh) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 1.4;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(filter).connect(gain).connect(this.sfxBus);
+      src.start();
+      this.whoosh = { src, filter, gain };
+    }
+    const k = Math.max(0, Math.min(1, speed01));
+    this.whoosh.filter.frequency.setTargetAtTime(500 + 1600 * k, ctx.currentTime, 0.05);
+    this.whoosh.gain.gain.setTargetAtTime(0.09 * k * k, ctx.currentTime, 0.05);
+  }
+
+  /** Dev/test aid: peak absolute sample level at the master output right now (0..1+). */
+  peakLevel(): number {
+    if (!this.analyser) return 0;
+    const data = new Float32Array(this.analyser.fftSize);
+    this.analyser.getFloatTimeDomainData(data);
+    let peak = 0;
+    for (const v of data) peak = Math.max(peak, Math.abs(v));
+    return peak;
+  }
+
+  get decodedSampleCount(): number { return this.buffers.size; }
+  get contextState(): string { return this.ctx?.state ?? 'none'; }
+
+  /** A garden bird: two quick chirps, quiet, on the music bus. */
+  private chirp(start: number): void {
+    const ctx = this.ctx!;
+    const base = 2600 + this.rng() * 1400;
+    for (let i = 0; i < 2 + Math.floor(this.rng() * 2); i++) {
+      const t = start + i * 0.11;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(base, t);
+      osc.frequency.exponentialRampToValueAtTime(base * 1.35, t + 0.05);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.9, t + 0.08);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      osc.connect(g).connect(this.musicBus!);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+  }
+
   /** Soft UI tick for buttons. */
   playClick(): void {
     const ctx = this.ready();
@@ -451,6 +522,10 @@ export class AudioManager {
     const ctx = this.ctx;
     if (!ctx || !this.musicBus || ctx.state !== 'running') return;
     const horizon = ctx.currentTime + 0.25;
+    if (this._music && ctx.currentTime >= this.nextChirp) {
+      if (this.nextChirp > 0) this.chirp(ctx.currentTime + 0.05);
+      this.nextChirp = ctx.currentTime + 5 + this.rng() * 9;
+    }
     const loop = loopSeconds();
     // Never try to catch up after a long stall (e.g. hidden tab).
     if (this.musicLoopStart + loop < ctx.currentTime - 1) { this.musicLoopStart = ctx.currentTime + 0.1; this.musicNextIndex = 0; }
@@ -498,6 +573,7 @@ export class AudioManager {
   }
 
   destroy(): void {
+    this.setFlightWhoosh(null);
     if (this.musicTimer) clearInterval(this.musicTimer);
     this.musicTimer = null;
     if (this.ctx) {
