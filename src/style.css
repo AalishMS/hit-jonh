@@ -65,3 +65,16 @@ input:disabled { opacity: 0.5; cursor: default; }
   .controls-panel { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .btn:active:not(:disabled) { transform: none; } }
+
+/* Replay letterbox (polish pass) */
+#game { position: relative; }
+.replay-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.replay-bar { position: absolute; left: 0; right: 0; height: 11%; background: #2A1B2E; display: flex; align-items: center; padding: 0 3%; transition: transform 220ms cubic-bezier(.2,1.4,.4,1); }
+.replay-bar.top { top: 0; transform: translateY(-101%); }
+.replay-bar.bottom { bottom: 0; transform: translateY(101%); justify-content: flex-end; }
+.replay-overlay.on .replay-bar { transform: none; }
+.replay-tag { font: 400 clamp(14px, 2.6vw, 30px)/1 'Luckiest Guy', Impact, sans-serif; color: #FFF7E6; letter-spacing: 1px; display: inline-flex; align-items: center; gap: .4em; }
+.replay-tag i { width: .55em; height: .55em; border-radius: 50%; background: #FF4B3A; box-shadow: 0 0 0 3px #2A1B2E, 0 0 0 5px #FF4B3A55; animation: replay-blink 1s steps(2, start) infinite; }
+.replay-hint { font: 800 clamp(10px, 1.4vw, 14px)/1 Nunito, system-ui, sans-serif; color: #FFF7E6; opacity: .75; }
+@keyframes replay-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .replay-bar { transition: none; } .replay-tag i { animation: none; } }

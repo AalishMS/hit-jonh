@@ -57,7 +57,8 @@ export function impactProfile(quality: HitQuality, reducedMotion = false, fx: ty
     particles: Math.round(fx.particles * k),
     words: WORDS[quality],
     textColor: quality === 'trick' || quality === 'strong' ? 'pow' : quality === 'weak' ? 'zap' : quality === 'hat' ? 'paper' : null,
-    replay: body && fx.replay > 0,
+    // Replays are kept for the big hits so multiplayer turns stay brisk.
+    replay: (quality === 'trick' || quality === 'strong') && fx.replay > 0,
   };
   if (!reducedMotion) return profile;
   // Reduced motion: no freeze, slow motion, shake, zoom, flash, flying particles or replay.

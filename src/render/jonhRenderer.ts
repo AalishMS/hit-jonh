@@ -324,7 +324,32 @@ export class JonhRenderer {
   /** Smaller reactions to misses: 'smug' (short), 'glare' (over), 'wince' (obstacle noise). */
   triggerMiss(kind: 'smug' | 'glare' | 'wince', quote: string): void { this.start(kind, quote, 'idle'); }
 
-  /** Restarts the current body-hit reaction from its first frame (used by the replay). */
+  private replaySaved: { kind: ReactionKind; mode: JonhReactionMode } | null = null;
+
+  /** Replay lead-up: shows him back in his chair, unaware, until the replayed contact. */
+  beginReplay(): void {
+    if (this.kind === 'idle' || this.replaySaved) return;
+    this.replaySaved = { kind: this.kind, mode: this.reactionMode };
+    this.pendingQuote = null;
+    this.kind = 'idle';
+    this.t = 0;
+    this.bubble.hide();
+    this.applyPose();
+  }
+
+  /** Replay contact: re-runs the saved reaction from its most extreme frame. */
+  replayContact(): void {
+    if (!this.replaySaved) return;
+    this.kind = this.replaySaved.kind;
+    this.reactionMode = this.replaySaved.mode;
+    this.replaySaved = null;
+    this.alarm = 0;
+    this.t = 0;
+    this.pendingQuote = this.reactionQuote || null;
+    this.applyPose();
+  }
+
+  /** Restarts the current body-hit reaction from its first frame. */
   restartReaction(): void {
     if (this.kind === 'idle') return;
     this.t = 0;
@@ -334,6 +359,7 @@ export class JonhRenderer {
 
   /** Jumps a reaction to its settled pose and shows the quote (skip / reduced motion). */
   settleImpact(): void {
+    if (this.replaySaved) this.replayContact();
     if (this.kind === 'idle') return;
     this.t = Math.max(this.t, this.kind === 'hit' ? HIT_TIMING.annoyedFrom + 0.1 : 1.6);
     if (this.pendingQuote !== null) { this.showBubble(this.pendingQuote); this.pendingQuote = null; }
@@ -341,6 +367,7 @@ export class JonhRenderer {
   }
 
   resetToIdle(): void {
+    this.replaySaved = null;
     this.kind = 'idle';
     this.reactionMode = 'idle';
     this.t = 0;

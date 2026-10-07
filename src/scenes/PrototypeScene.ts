@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { AIM, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
-import { aimFrame, flightFrame, impactFrame, type Frame } from '../fx/cameraDirector';
+import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
+import { ReplayOverlay } from '../ui/replayOverlay';
+import { aimFrame, flightFrame, impactFrame, replayFrame, type Frame } from '../fx/cameraDirector';
 import { clamp01 } from '../fx/easing';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
 import type { SurfaceSound } from '../audio/audioManager';
@@ -36,6 +38,7 @@ import {
   metresToPixels,
   MS_PER_SECOND,
   powerToLaunchSpeed,
+  simYToWorldY,
 } from '../sim/units';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay } from '../ui/menuOverlay';
@@ -64,6 +67,13 @@ export class PrototypeScene extends Phaser.Scene {
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
+  private readonly replayBuffer = new ReplayBuffer(3);
+  private replay: ReplayDirector | null = null;
+  private replayCountdown: number | null = null;
+  private replayOverlay!: ReplayOverlay;
+  private contact: { x: number; y: number; dirX: number; dirY: number; quality: HitQuality; simT: number } | null = null;
+  /** After a body hit the ball bounces away cosmetically (the simulation is already resolved). */
+  private cosmeticBall: { x: number; y: number; vx: number; vy: number } | null = null;
   private outOfCanvasSoundPlayed = false;
   private skipPresentationFrame = false;
 
@@ -114,6 +124,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager = new AudioManager();
     this.effects = new ShotEffectsRenderer(this);
     this.cameraRig = new CameraRig(this.cameras.main);
+    this.replayOverlay = new ReplayOverlay(document.getElementById('game') ?? document.body);
 
     const matterEngine = this.matter.world.engine;
     this.physicsAdapter = new MatterAdapter(matterEngine.world, ppm, h);
@@ -484,6 +495,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeCoordinator.fire(this.currentAngleDeg, this.currentPowerPercent);
     const muzzle = this.cannonRenderer.getMuzzlePosition(this.currentAngleDeg, PROJECTILE.radiusMetres);
     this.pendingLaunch = { x: muzzle.x, y: muzzle.y, angleRad: this.currentAngleDeg * Math.PI / 180 };
+    this.replayBuffer.clear();
+    this.cosmeticBall = null;
+    this.contact = null;
     this.prevVelocity = null;
     this.impactQuality = null;
     if (this.jonhRenderer.isReducedMotionActive()) {
@@ -566,8 +580,13 @@ export class PrototypeScene extends Phaser.Scene {
     const reduced = this.jonhRenderer.isReducedMotionActive();
     this.sceneryRenderer.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
-    const reactionSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
+    const timelineSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
     if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
+    // Presentation time: the replay (if playing) drives Jonh, effects and the ball instead.
+    const replayFrameNow = this.advanceReplay(dtSeconds, reduced);
+    const reactionSeconds = replayFrameNow
+      ? (replayFrameNow.phase === 'pre' ? dtSeconds * FX.replaySpeed : replayFrameNow.reactionDt)
+      : timelineSeconds;
     const recoil = this.effects.update(reactionSeconds, reduced, dtSeconds);
     this.cannonRenderer.update(dtSeconds);
     this.cannonRenderer.setRecoil(recoil, this.currentAngleDeg);
@@ -581,9 +600,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (advance === 'round') { this.nextMultiplayerRound(); return; }
 
     this.jonhRenderer.setAware(this.canvasAim.isDragging);
-    this.jonhRenderer.setAlarm(this.incomingAlarm());
+    this.jonhRenderer.setAlarm(replayFrameNow?.phase === 'pre' ? this.replayAlarm(replayFrameNow) : this.incomingAlarm());
     this.jonhRenderer.update(reactionSeconds);
-    const steps = this.stepper.advance(reactionSeconds);
+    const steps = this.stepper.advance(timelineSeconds);
     const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
 
     for (let i = 0; i < steps; i++) {
@@ -601,6 +620,8 @@ export class PrototypeScene extends Phaser.Scene {
           if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
           this.detectBounce(state, reduced);
           this.lastProjectileState = state;
+          const ppmNow = WORLD.pixelsPerMetre;
+          this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
           this.trailRenderer.addPoint(state.xPx, state.yPx);
           if (state.firstGroundContact && !this.groundFeedbackShown) {
             this.groundFeedbackShown = true;
@@ -635,13 +656,8 @@ export class PrototypeScene extends Phaser.Scene {
       }
     }
 
-    if (this.lastProjectileState && this.attemptMachine.state !== 'aiming') {
-      const p = this.lastProjectileState;
-      const ppm = WORLD.pixelsPerMetre;
-      this.ballRenderer.draw(p.xPx, p.yPx, p.vxSim * ppm, -p.vySim * ppm, reactionSeconds, reduced,
-        powerToLaunchSpeed(100, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * ppm);
-    }
-    this.updateCamera(dtSeconds, reduced);
+    this.drawBall(reactionSeconds, reduced, replayFrameNow);
+    this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
       const speed = powerToLaunchSpeed(this.currentPowerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
@@ -673,10 +689,15 @@ export class PrototypeScene extends Phaser.Scene {
     const isBodyHit = classification.isHit;
 
     const quality = hitQuality(classification.outcome, state.impactSpeedMs, LOOK.strongImpactMs);
-    if (isBodyHit && this.impactTimeline.bodyImpact(this.jonhRenderer.isReducedMotionActive(),
-      impactProfile(quality, this.jonhRenderer.isReducedMotionActive()))) {
+    const reducedNow = this.jonhRenderer.isReducedMotionActive();
+    const hitProfile = impactProfile(quality, reducedNow);
+    if (isBodyHit && this.impactTimeline.bodyImpact(reducedNow, hitProfile)) {
       this.stepper.reset();
-      this.playImpactMoment(quality, state.xPx, state.yPx, this.jonhRenderer.isReducedMotionActive());
+      this.playImpactMoment(quality, state.xPx, state.yPx, reducedNow);
+      const v = this.prevVelocity ?? { vx: this.flightDir, vy: 0 };
+      this.contact = { x: state.xPx, y: state.yPx, dirX: v.vx, dirY: -v.vy, quality, simT: this.attemptMachine.simulatedTime };
+      this.startCosmeticBall();
+      if (hitProfile.replay && this.replayBuffer.length > 2) this.replayCountdown = FX.replayAfterSeconds;
     }
 
     if (this.activeMode === 'solo') {
@@ -733,7 +754,108 @@ export class PrototypeScene extends Phaser.Scene {
     }
     
     this.htmlControls.setResetLabel('Next now ↵');
-    this.autoAdvance.schedule('shot', isBodyHit ? FLOW.bodyHitResultSeconds : FLOW.shotResultSeconds);
+    const replaySeconds = this.replayCountdown !== null ? FX.replayAfterSeconds + this.replayPlan().lead / FX.replaySpeed + this.replayPlan().post : 0;
+    this.autoAdvance.schedule('shot', isBodyHit ? Math.max(FLOW.bodyHitResultSeconds, replaySeconds + 0.6) : FLOW.shotResultSeconds);
+  }
+
+  private replayPlan() {
+    const contactT = this.contact?.simT ?? 0;
+    const lead = Math.min(FX.replayLeadSeconds, Math.max(0, contactT - (this.replayBuffer.startTime ?? contactT)));
+    return { contactT, lead, speed: FX.replaySpeed, post: 1.0, postSpeed: 0.55 };
+  }
+
+  /** Counts down to the replay, then plays it. Returns this frame's replay state (or null). */
+  private advanceReplay(realDt: number, reduced: boolean): ReplayFrame | null {
+    if (reduced) { if (this.replay || this.replayCountdown !== null) this.stopReplay(); return null; }
+    if (this.replayCountdown !== null) {
+      this.replayCountdown -= realDt;
+      if (this.replayCountdown > 0) return null;
+      this.replayCountdown = null;
+      this.replay = new ReplayDirector(this.replayPlan());
+      this.replayOverlay.show();
+      this.jonhRenderer.beginReplay();
+      this.effects.reset();
+      this.ballRenderer.setVisible(false);
+      return this.replay.advance(0);
+    }
+    if (!this.replay) return null;
+    const frame = this.replay.advance(realDt);
+    if (frame.contact && this.contact) {
+      this.jonhRenderer.replayContact();
+      const c = this.contact;
+      const profile = impactProfile(c.quality, false);
+      const word = profile.words.length ? profile.words[Math.floor(Math.random() * profile.words.length)]! : null;
+      this.effects.impact(c.x, c.y, profile, c.dirX, c.dirY, false, word);
+      this.cameraRig.impact(profile.shakePx * 0.8, profile.shakeSeconds, FX.shakeHz, c.dirX, c.dirY, profile.zoomPunch, FX.punchSeconds);
+      this.ballRenderer.squash(Math.atan2(c.dirY, c.dirX), 1);
+      this.audioManager.playHit(c.quality);
+      this.startCosmeticBall();
+    }
+    if (frame.phase === 'done') { this.stopReplay(); return null; }
+    return frame;
+  }
+
+  private stopReplay(): void {
+    this.replay = null;
+    this.replayCountdown = null;
+    this.replayOverlay?.hide();
+    this.jonhRenderer?.settleImpact();
+  }
+
+  private replayAlarm(frame: ReplayFrame): number {
+    const s = this.replayBuffer.sampleAt(frame.simT);
+    if (!s) return 0;
+    const jonh = this.jonhRenderer.position;
+    const d = Math.hypot(jonh.x - s.x, (jonh.y - 50) - s.y);
+    return clamp01(1 - (d - 50) / 170);
+  }
+
+  private startCosmeticBall(): void {
+    const c = this.contact;
+    if (!c) return;
+    const dir = Math.sign(c.dirX) || 1;
+    this.cosmeticBall = { x: c.x, y: c.y, vx: -dir * 95, vy: -210 };
+  }
+
+  /** Nearest surface top at or below (x, y) in world pixels: ground or an obstacle roof. */
+  private floorAt(x: number, y: number): number {
+    const ppm = WORLD.pixelsPerMetre;
+    const h = WORLD.designHeightPx;
+    let floor = simYToWorldY(this.currentLevel.ground.maxY, h, ppm);
+    for (const o of this.currentLevel.obstacles) {
+      const top = simYToWorldY(o.box.maxY, h, ppm);
+      if (x >= o.box.minX * ppm && x <= o.box.maxX * ppm && top >= y - 2 && top < floor) floor = top;
+    }
+    return floor;
+  }
+
+  private drawBall(dt: number, reduced: boolean, frame: ReplayFrame | null): void {
+    const ppm = WORLD.pixelsPerMetre;
+    const maxSpeed = powerToLaunchSpeed(100, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * ppm;
+    if (frame?.phase === 'pre') {
+      const s = this.replayBuffer.sampleAt(frame.simT);
+      if (s) this.ballRenderer.draw(s.x, s.y, s.vx, s.vy, dt, reduced, maxSpeed);
+      return;
+    }
+    const b = this.cosmeticBall;
+    if (b && this.attemptMachine.state === 'resolved') {
+      const r = PROJECTILE.radiusMetres * ppm;
+      b.vy += PHYSICS.gravity * ppm * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      const floor = this.floorAt(b.x, b.y - b.vy * dt) - r;
+      if (b.y > floor) {
+        b.y = floor;
+        b.vy = Math.abs(b.vy) > 60 ? -Math.abs(b.vy) * 0.42 : 0;
+        b.vx *= 0.75;
+      }
+      this.ballRenderer.draw(b.x, b.y, b.vx, b.vy, dt, reduced, maxSpeed);
+      return;
+    }
+    if (this.lastProjectileState && this.attemptMachine.state !== 'aiming') {
+      const p = this.lastProjectileState;
+      this.ballRenderer.draw(p.xPx, p.yPx, p.vxSim * ppm, -p.vySim * ppm, dt, reduced, maxSpeed);
+    }
   }
 
   /**
@@ -802,13 +924,20 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager.playCannonFire();
   }
 
-  private updateCamera(realDt: number, reduced: boolean): void {
+  private updateCamera(realDt: number, reduced: boolean, frame: ReplayFrame | null): void {
     const view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
     const jonh = this.jonhRenderer.position;
     const p = this.lastProjectileState;
     let target: Frame = aimFrame(view);
     let rate = 3.5;
-    if (this.jonhRenderer.isHit || (this.impactQuality !== null && this.impactQuality !== 'hat' && this.impactTimeline.age !== null)) {
+    const sample = frame?.phase === 'pre' ? this.replayBuffer.sampleAt(frame.simT) : null;
+    if (sample) {
+      target = replayFrame({ x: sample.x, y: sample.y }, view, 2.1);
+      rate = 7;
+    } else if (frame) {
+      target = impactFrame({ x: jonh.x, y: jonh.y }, this.flightDir, view, 1.9);
+      rate = 9;
+    } else if (this.jonhRenderer.isHit || (this.impactQuality !== null && this.impactQuality !== 'hat' && this.impactTimeline.age !== null)) {
       target = impactFrame({ x: jonh.x, y: jonh.y }, this.flightDir, view, FX.impactZoom);
       rate = 9;
     } else if (p && this.attemptMachine.state !== 'aiming') {
@@ -820,6 +949,10 @@ export class PrototypeScene extends Phaser.Scene {
 
   private resetEffects(): void {
     this.impactTimeline.reset();
+    this.replay = null;
+    this.replayCountdown = null;
+    this.replayOverlay?.hide();
+    this.cosmeticBall = null;
     this.pendingLaunch = null;
     this.impactQuality = null;
     this.effects?.reset();
@@ -840,6 +973,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.audioManager.destroy();
     this.effects.destroy();
+    this.replayOverlay.destroy();
     this.physicsAdapter.clear();
     this.htmlControls.destroy();
     this.menuOverlay.destroy();
