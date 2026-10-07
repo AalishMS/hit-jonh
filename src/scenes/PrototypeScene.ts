@@ -781,7 +781,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.trailRenderer.setLandingMarker(
       landing?.xPx ?? state.xPx,
       landing?.yPx ?? state.yPx,
-      `${feedback.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
+      // Misses keep the aim label as a learning aid; hits already have the HUD caption.
+      isBodyHit ? '' : `${feedback.label} · ${this.currentAngleDeg}° / ${this.currentPowerPercent}%`,
     );
     if (this.activeMode === 'multi' && this.shotShooterIndex !== null) {
       this.trailHistory.record(this.shotShooterIndex, this.trailRenderer.exportData());
