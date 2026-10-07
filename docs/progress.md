@@ -1,8 +1,10 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-04_
+_Last updated: 2026-10-08_
 
 ## Current milestone
+
+**Current (2026-10-08): owner-requested polish pass complete on branch `polish-pass`.** See `CHANGELOG.md` and the "Polish pass" entries at the end of this file. The earlier text below is historical.
 
 **Current: Owner-requested usability pass complete on the M0–M5 foundation.** Canvas aiming, automatic shot/turn progression, an obstacle on every map, vocal sound effects, illustrated Home, gameplay Home navigation and multiplayer arena selection are implemented. Final `npm run check`: typecheck/lint passed, **21 test files / 140 tests passed** (1.28s). `npm run build`: **67 modules transformed, built in 1.15s**. Production browser verification is recorded below. The prior M0–M5 release evidence remains historical; it did not establish the subjective completeness of the UI or game feel. See `docs/game-audit.md` for the current remaining-work assessment.
 
@@ -341,3 +343,26 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 **Phase 2.6 — UI and screens.** One display face (Luckiest Guy) and one UI face (Nunito), self-hosted. The page is a halftone comic backdrop; the game is a full-screen comic panel (height-limited, 16:7) with the HUD laid over the canvas: map chip + cannonball attempt pips or player score chips, sound/pause icon buttons, a pop-in caption, a big pulsing FIRE button where the right thumb rests, a "Next" pill after a shot and a collapsible "Precise aim" panel that keeps the native sliders as the accessible fallback (always shown in portrait). Title screen: animated logo over a live attract scene (Jonh reading in the Backyard). All menus/results restyled (mode cards, illustrated map cards with stars, coloured handover name with auto-advance bar, ranked score rows, stars that pop in, NEW BEST/TRICK SHOT ribbons, switch-style settings incl. a new Music toggle); cards pop in, an iris opens into play; button clicks tick. Reduced motion (setting or OS) also turns off CSS animation. Phone landscape now fits everything on one screen (previously the controls were below the fold); portrait stacks controls under the canvas with a rotate hint.
 
 **Phase 2.7 — retention (three cheapest replay reasons).** Chosen for cost vs. pull: (1) **Unlockable hats** — eight hats for Jonh (art already part of the rig), unlocked by milestones (first hit, hat-only hit, trick shot, three stars, a Daily Bonk hit, 25 hits, three stars everywhere); selected in a hat locker and worn everywhere including the title scene. Gives long-term goals and makes clips visibly different. (2) **Daily Bonk** — a date-seeded pick of a map + one of its already physics-validated multiplayer target positions, so every day is solvable with zero new level work; only the first run of the day is recorded, with a day streak; it never touches solo bests. (3) **Hit streak** — consecutive solo body hits, shown as a HUD chip and on results, best streak saved. Pure rules in `rules/progression.ts` (tested), persisted as an optional `progress` field in the existing `hitJonh.v1` save (older saves load unchanged; corrupt progress is sanitised field by field).
+
+**Verification and evidence (end of the polish pass).**
+
+- `npm run check`: typecheck and lint pass, with **34 test files / 218 tests** passing.
+- `npm run build`: passes. Phaser is 1.43 MB (375.6 kB gzip, unchanged) and game code is 193 kB (57 kB gzip). New shipped assets are 56 kB of fonts and 165 kB of audio, about 660 kB transferred in total without sourcemaps.
+- **Headless Chrome (CDP) walkthroughs** with screenshots in `docs/polish/after/`:
+  - every screen at 1440x900, 844x390 (phone landscape) and 390x844 (portrait)
+  - impact frame sequences stepped at exactly 16.667 ms for strong, hat-only, reduced-motion and replay (`impact-seq/`); every layer fires on the contact frame
+  - a 2-player Fence match: alternating turns, the same position per cycle, 325/325 tie with crowns, and a clean rematch
+  - pause in flight and during the replay: frozen exactly, then resumes
+  - a Daily Bonk run that unlocked hats
+  - the production `vite preview` build: no console errors, no dev globals, no tuning panel
+- **Audio** (measured, not listened to): all 15 samples decode; output peaks are 0.22 for music, 0.73 for launch and 0.88 for a hit.
+- **Performance** under 4x CPU throttle in headless Chrome: during flight and impact, update p95 is about 2 ms and render CPU p95 about 8 ms. The contact frame is about 25 ms (about 6 ms unthrottled). The one remaining spike (~77 ms at 4x) happens when the result screen builds its HTML, not during play.
+
+**Known issues / not verified.**
+
+- **Sound and feel:** no listening and no hands-on play were possible.
+- **Real-device frame rate:** headless Chrome renders with SwiftShader, so GPU cost on a phone is unknown.
+- **Ogg decoding on old Safari:** if it fails, the synthesized layers still play.
+- **The hat-locker screen** builds data URLs from textures on first open (a few ms).
+
+**Next task:** owner playtest with sound, on a phone. Then tune with `?tune`. Suggested next steps are in `CHANGELOG.md`.
