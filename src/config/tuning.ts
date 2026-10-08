@@ -237,3 +237,31 @@ export const FX = {
   /** Ball stretch along velocity at maximum launch speed. */
   ballStretch: 0.35,
 };
+
+/**
+ * Online multiplayer (spec 2026-10-08). PROPOSED/TUNE except turnLimitSeconds (owner decision).
+ * Imported by both the browser and the Convex functions.
+ */
+export const ONLINE = {
+  /** Presence check-in interval. */
+  heartbeatSeconds: 15,
+  /** Show "Waiting for {name}…" once the active player is this quiet. */
+  staleWarnSeconds: 60,
+  /** Missing-player skip and lobby pruning. Above 60 s: Chrome throttles hidden-tab timers to ~1/min. */
+  staleSeconds: 90,
+  /** Show the turn countdown from here. */
+  turnWarnSeconds: 90,
+  /** A connected player's turn is skipped after this (owner decision). */
+  turnLimitSeconds: 120,
+  /** An unreported shot falls back to a spectator's outcome (or a miss) after this. */
+  inFlightTimeoutSeconds: 40,
+  /** Time for everyone to press Rematch after the first press. */
+  rematchWindowSeconds: 30,
+  /** Rooms with no game action for this long are deleted. */
+  roomTtlHours: 24,
+  codeLength: 5,
+  /** No 0, O, 1, I or L. */
+  codeAlphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
+  /** Delays between send retries; 15.5 s in total. */
+  retryDelaysSeconds: [0.5, 1, 2, 4, 8],
+} as const;

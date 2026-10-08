@@ -1,6 +1,8 @@
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
 import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
+import { sanitizePlayerName } from '../rules/playerName';
+export { sanitizePlayerName };
 
 export interface LevelScore {
   bestShots: number | null;
@@ -60,12 +62,6 @@ export function defaultPlayerSetups(): PlayerSetup[] {
     lastAngle: 45,
     lastPower: 50,
   }));
-}
-
-/** Trims a name, caps its length and falls back to "Player N" when blank or not text. */
-export function sanitizePlayerName(raw: unknown, index: number): string {
-  const name = typeof raw === 'string' ? raw.trim().substring(0, MULTIPLAYER.maxNameLength).trim() : '';
-  return name || `Player ${index + 1}`;
 }
 
 function sanitizePlayerSetup(raw: Record<string, unknown>, index: number): PlayerSetup {
