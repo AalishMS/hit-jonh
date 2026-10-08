@@ -9,6 +9,8 @@ import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
 export interface MenuSettings { muted: boolean; volume: number; reducedMotion: boolean; music: boolean }
 
 export interface MenuCallbacks {
+  /** Opens online play; undefined when no Convex deployment is configured (the card is then disabled). */
+  onOnline?: (() => void) | undefined;
   onMapSelected: (mapId: string) => void;
   onRetry: () => void;
   onReturnToMenu: () => void;
@@ -24,6 +26,14 @@ export interface MenuCallbacks {
   onClick?: () => void;
 }
 
+export interface OnlineResultExtras {
+  ready: { name: string; color: number; ready: boolean }[];
+  /** Seconds until the rematch window closes, or null before the first press. */
+  countdown: number | null;
+  note: string | null;
+  canRematch: boolean;
+}
+
 export interface SoloResultExtras {
   newBest?: boolean;
   quote?: string;
@@ -32,7 +42,7 @@ export interface SoloResultExtras {
   streak?: number;
 }
 
-export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily';
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
@@ -124,6 +134,10 @@ export class MenuOverlay {
     };
     const solo = card('1', 'Solo challenge', 'Three shots per map. Earn stars, unlock hats.', 'solo', () => this.showMapSelect());
     card('2+', 'Pass the cannon', '2–4 friends, one device. Take turns, steal the glory.', 'multi', () => this.showMultiSetup());
+    const onOnline = this.callbacks.onOnline;
+    const online = card('⇄', 'Play online', onOnline ? 'Friends on their own devices. Share a room code.' : "Online play isn't configured.",
+      'online', () => onOnline?.());
+    online.disabled = !onOnline;
     const actions = el('div', 'menu-actions');
     this.content.appendChild(actions);
     this.button('Settings', '', () => this.showSettings(), signal, actions);
@@ -302,10 +316,10 @@ export class MenuOverlay {
     startBtn.focus();
   }
 
-  showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number): void {
+  showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number, headline?: string): void {
     const signal = this.open('handover');
-    this.content.appendChild(el('div', 'handover-kicker', 'Pass the cannon to'));
-    const name = el('div', 'handover-name', player.name);
+    if (!headline) this.content.appendChild(el('div', 'handover-kicker', 'Pass the cannon to'));
+    const name = el('div', 'handover-name', headline ?? player.name);
     name.style.setProperty('--player-color', cssColor(playerDisplayColor(player.color)));
     this.content.appendChild(name);
     this.content.appendChild(el('p', '', `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}`));
@@ -314,7 +328,7 @@ export class MenuOverlay {
     bar.style.setProperty('--auto-duration', `${FLOW.handoverSeconds}s`);
     bar.appendChild(el('i'));
     this.content.appendChild(bar);
-    this.content.appendChild(el('p', 'auto-note', 'Your turn starts automatically…'));
+    this.content.appendChild(el('p', 'auto-note', headline ? 'Starting automatically…' : 'Your turn starts automatically…'));
     btn.focus();
   }
 
@@ -345,17 +359,39 @@ export class MenuOverlay {
     btn.focus();
   }
 
-  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[]): void {
+  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras): void {
+    const firstRender = this.currentView !== 'match_result';
     const signal = this.open('match_result');
     this.content.appendChild(el('h1', '', winners.length > 1 ? "It's a tie!" : `${winners[0]?.name ?? 'Nobody'} wins!`));
     const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `${p.bodyHits} hit${p.bodyHits === 1 ? '' : 's'}`, winners));
     this.content.appendChild(el('p', 'quote', '“I want it noted that I was here first.” — Jonh'));
+    if (online) {
+      const list = el('div', 'ready-list');
+      for (const row of online.ready) {
+        const item = el('span', `ready-chip${row.ready ? ' on' : ''}`, `${row.name} ${row.ready ? '✓' : '…'}`);
+        item.style.setProperty('--player-color', cssColor(playerDisplayColor(row.color)));
+        list.appendChild(item);
+      }
+      this.content.appendChild(list);
+      if (online.countdown !== null) this.content.appendChild(el('p', 'auto-note', `Rematch starts in ${online.countdown} s`));
+      if (online.note) this.content.appendChild(el('p', 'online-error', online.note));
+    }
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
-    const rematch = this.button('Rematch', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerRematch?.(); }, signal, actions);
-    this.button('Main menu', '', () => { this.hide(); this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
-    rematch.focus();
+    const rematch = this.button(online && !online.canRematch ? 'Ready ✓' : 'Rematch', 'btn-primary', () => {
+      if (!online) this.hide();
+      this.callbacks.onMultiplayerRematch?.();
+    }, signal, actions);
+    rematch.id = 'mp-rematch';
+    rematch.disabled = Boolean(online && !online.canRematch);
+    const leave = this.button(online ? 'Leave' : 'Main menu', '', () => {
+      this.hide();
+      this.callbacks.onReturnToMenu();
+      if (!online) this.showMainMenu();
+    }, signal, actions);
+    leave.id = 'mp-leave';
+    if (firstRender) (rematch.disabled ? leave : rematch).focus();
   }
 
   showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean, extras: SoloResultExtras = {}): void {
@@ -388,14 +424,14 @@ export class MenuOverlay {
     retryBtn.focus();
   }
 
-  showPauseMenu(): void {
+  showPauseMenu(quitLabel = 'Quit to menu'): void {
     const signal = this.open('pause');
     this.content.appendChild(el('h2', '', 'Paused'));
     this.content.appendChild(el('p', 'quote', '“Oh good. A moment of peace.”'));
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
     const resumeBtn = this.button('Resume', 'btn-primary', () => { this.hide(); this.callbacks.onPauseResume?.(); }, signal, actions);
-    this.button('Quit to menu', '', () => { this.hide(); this.callbacks.onPauseQuit?.(); }, signal, actions);
+    this.button(quitLabel, '', () => { this.hide(); this.callbacks.onPauseQuit?.(); }, signal, actions);
     resumeBtn.focus();
   }
 
