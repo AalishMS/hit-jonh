@@ -3,7 +3,7 @@ import { ConvexError } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
-import { planTurnStart } from '../src/rules/onlineRules';
+import { planTurnStart, type TurnPlan } from '../src/rules/onlineRules';
 import { renumberSeats, staleLobbySeats } from '../src/rules/onlineRoster';
 import type { MatchView, OnlineErrorCode, PresenceEntry, Resolution, RoomState, SeatState, ShotRecord } from '../src/rules/onlineTypes';
 import type { ClassifiedOutcome } from '../src/sim/classification';
@@ -108,7 +108,16 @@ export async function pruneLobby(ctx: MutationCtx, roomId: Id<'rooms'>, now: num
 export async function startTurn(ctx: MutationCtx, roomId: Id<'rooms'>, now: number, clockStart: number): Promise<void> {
   const { room, view, presence } = await loadView(ctx, roomId);
   if (room.status !== 'playing') return;
-  const plan = planTurnStart(view, presence, now, clockStart);
+  let plan: TurnPlan;
+  try {
+    plan = planTurnStart(view, presence, now, clockStart);
+  } catch (err) {
+    // Unreachable in practice (the loop is bounded by the match length). Throwing would roll back the
+    // caller (often a timer) and leave nobody scheduled to move the match on, so end it instead, loudly.
+    console.error(`startTurn: room ${roomId} match ${room.matchNumber}: ${String(err)}; finishing the match`);
+    await ctx.db.patch(roomId, { status: 'finished', updatedAt: now });
+    return;
+  }
   for (const skip of plan.skips) await ctx.db.insert('shots', { roomId, matchNumber: room.matchNumber, ...skip });
   await ctx.db.patch(roomId, plan.finished
     ? { status: 'finished', turnClockStart: plan.clockStart, updatedAt: now }
