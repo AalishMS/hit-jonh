@@ -19,6 +19,12 @@ export interface PlayerSetup {
   lastPower: number;
 }
 
+export interface OnlineProfile {
+  name: string;
+  color: number;
+  pattern: string;
+}
+
 export interface Settings {
   muted: boolean;
   volume: number;
@@ -34,6 +40,8 @@ export interface SaveData {
   lastMP?: PlayerSetup[];
   /** Polish pass: hats, streaks and daily results (optional; older saves simply lack it). */
   progress?: Progress;
+  /** Online play: the name and cannon look to use when creating/joining rooms (optional; older saves lack it). */
+  online?: { profile: OnlineProfile };
 }
 
 const STORAGE_KEY = 'hitJonh.v1';
@@ -80,6 +88,23 @@ function sanitizePlayerSetup(raw: Record<string, unknown>, index: number): Playe
   lastPower = Math.max(0, Math.min(100, lastPower));
 
   return { name: sanitizePlayerName(raw.name, index), color, pattern, lastAngle, lastPower };
+}
+
+const ONLINE_TOKEN_KEY = 'hitJonh.v1.onlineToken';
+
+export function defaultOnlineProfile(): OnlineProfile {
+  return { name: 'Player 1', color: MULTIPLAYER.colors[0]!, pattern: MULTIPLAYER.patterns[0]! };
+}
+
+function sanitizeOnlineProfile(raw: unknown): OnlineProfile | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const fallback = defaultOnlineProfile();
+  return {
+    name: sanitizePlayerName(r.name, 0),
+    color: typeof r.color === 'number' && (MULTIPLAYER.colors as readonly number[]).includes(r.color) ? r.color : fallback.color,
+    pattern: typeof r.pattern === 'string' && (MULTIPLAYER.patterns as readonly string[]).includes(r.pattern) ? r.pattern : fallback.pattern,
+  };
 }
 
 /** Returns validated setups, or null when the list is not 2..4 well-formed entries. */
@@ -171,6 +196,12 @@ export function loadSaveData(): SaveData {
     if (validSetups) data.lastMP = validSetups;
     if (parsedObj.progress !== undefined) data.progress = sanitizeProgress(parsedObj.progress, MAPS.map(m => m.id));
 
+    // Validate online profile
+    if (parsedObj.online && typeof parsedObj.online === 'object' && !Array.isArray(parsedObj.online)) {
+      const profile = sanitizeOnlineProfile((parsedObj.online as Record<string, unknown>).profile);
+      if (profile) data.online = { profile };
+    }
+
     return data;
   } catch (e) {
     console.warn('Failed to load save data, starting fresh', e);
@@ -238,4 +269,36 @@ export function saveProgress(progress: Progress): void {
   const data = loadSaveData();
   data.progress = sanitizeProgress(progress, MAPS.map(m => m.id));
   writeSaveData(data);
+}
+
+export function loadOnlineProfile(): OnlineProfile {
+  return loadSaveData().online?.profile ?? defaultOnlineProfile();
+}
+
+export function saveOnlineProfile(profile: OnlineProfile): void {
+  const data = loadSaveData();
+  data.online = { profile: sanitizeOnlineProfile(profile) ?? defaultOnlineProfile() };
+  writeSaveData(data);
+}
+
+export function randomToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * This tab's online identity. sessionStorage survives a reload (the seat is kept) but not a new tab,
+ * so two tabs are two players.
+ */
+export function onlineToken(store: Pick<Storage, 'getItem' | 'setItem'> = sessionStorage, make: () => string = randomToken): string {
+  try {
+    const existing = store.getItem(ONLINE_TOKEN_KEY);
+    if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
+    const fresh = make();
+    store.setItem(ONLINE_TOKEN_KEY, fresh);
+    return fresh;
+  } catch {
+    return make();
+  }
 }
