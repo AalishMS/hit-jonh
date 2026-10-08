@@ -253,6 +253,11 @@ export const ONLINE = {
   turnWarnSeconds: 90,
   /** A connected player's turn is skipped after this (owner decision). */
   turnLimitSeconds: 120,
+  /**
+   * After the turn limit, the server looks again this soon for a check-in proving someone is still connected
+   * (every client checks in when its countdown reaches 0), instead of a whole heartbeat later.
+   */
+  turnLimitRecheckSeconds: 2,
   /** An unreported shot falls back to a spectator's outcome (or a miss) after this. */
   inFlightTimeoutSeconds: 40,
   /** Time for everyone to press Rematch after the first press. */

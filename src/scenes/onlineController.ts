@@ -502,7 +502,10 @@ export class OnlineController {
     this.renderLobbyIfShown();
     if (!session.connected) { this.banner.setText('Reconnecting…'); return; }
     if (!this.match) { this.banner.setText(null); return; }
-    const c = this.tracker.countdowns(session.serverNow);
+    const now = session.serverNow;
+    // Proves we are still here right at the turn limit, so the server can skip the turn at once.
+    if (this.tracker.takeTurnExpiry(now)) session.heartbeat();
+    const c = this.tracker.countdowns(now);
     if (c.missing) this.banner.setText(`Waiting for ${c.missing.name}… skipping in ${c.missing.secondsLeft} s`);
     else if (c.turn) this.banner.setText(c.turn.seat === this.tracker.mySeat ? `${c.turn.secondsLeft} s left to fire` : `${c.turn.name}: ${c.turn.secondsLeft} s left`);
     else this.banner.setText(null);

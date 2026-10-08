@@ -91,6 +91,7 @@ const HEARTBEAT = ONLINE.heartbeatSeconds * 1000;
 const STALE = ONLINE.staleSeconds * 1000;
 const TURN = ONLINE.turnLimitSeconds * 1000;
 const IN_FLIGHT = ONLINE.inFlightTimeoutSeconds * 1000;
+const RECHECK = ONLINE.turnLimitRecheckSeconds * 1000;
 
 /** Check-ins every `interval` ms from `first` until `until` (exclusive), as the presence row would show at `now`. */
 const beats = (first: number, interval: number, until = Number.POSITIVE_INFINITY) => (now: number): number | null => {
@@ -189,11 +190,51 @@ describe('checkTurnDecision: shared outage needs evidence of life before skippin
     }
   });
 
-  it('skips at the turn limit only once someone checked in after it; otherwise rechecks a heartbeat later', () => {
+  it('skips at the turn limit only once someone checked in after it; otherwise rechecks shortly after', () => {
     const presence = [{ seat: 0, lastSeen: TURN - 1_000 }, { seat: 1, lastSeen: TURN - 1_000 }];
-    expect(checkTurnDecision(awaitingSeat1(), presence, TURN, 1)).toEqual({ kind: 'reschedule', at: TURN + HEARTBEAT });
-    expect(checkTurnDecision(awaitingSeat1(), [{ seat: 0, lastSeen: TURN }, { seat: 1, lastSeen: TURN - 1_000 }], TURN + HEARTBEAT, 1).kind)
-      .toBe('skip');
+    expect(RECHECK).toBeLessThan(HEARTBEAT);
+    expect(checkTurnDecision(awaitingSeat1(), presence, TURN, 1)).toEqual({ kind: 'reschedule', at: TURN + RECHECK });
+    expect(checkTurnDecision(awaitingSeat1(), presence, TURN + 5_000, 1)).toEqual({ kind: 'reschedule', at: TURN + 5_000 + RECHECK });
+    const fresh = [{ seat: 0, lastSeen: TURN }, { seat: 1, lastSeen: TURN - 1_000 }];
+    expect(checkTurnDecision(awaitingSeat1(), fresh, TURN, 1).kind).toBe('skip');
+    expect(checkTurnDecision(awaitingSeat1(), fresh, TURN + HEARTBEAT, 1).kind).toBe('skip');
+  });
+
+  it('with the clients\' check-ins at the limit (countdown at 0), the skip lands one recheck after the limit', () => {
+    // Regular beats on their own phases; every client also checks in when its countdown reaches 0 (here 300 ms late).
+    const atZero = TURN + 300;
+    for (let phase = 0; phase < HEARTBEAT; phase += 1_000) {
+      const ins = { 0: [...every(phase, TURN), atZero, ...every(TURN + phase, 2 * TURN)], 1: [...every(phase + 500, TURN), atZero] };
+      const result = runRoomTimers(awaitingSeat1(), ins, 30_000, 2 * TURN);
+      expect(result.skippedAt, `phase ${phase}`).not.toBeNull();
+      expect(result.skippedAt!, `phase ${phase}`).toBeGreaterThanOrEqual(TURN);
+      expect(result.skippedAt!, `phase ${phase}`).toBeLessThanOrEqual(TURN + RECHECK);
+    }
+  });
+
+  it('still never skips at the limit while nobody checks in after it, and still waits once the room is quiet', () => {
+    // Both drop 10 s before the limit; rechecks after the limit run every RECHECK until the room is quiet.
+    const outageStart = TURN - 10_000;
+    const ins = { 0: every(4_000, outageStart), 1: every(0, outageStart) };
+    const lastBeat = Math.max(...ins[0], ...ins[1]);
+    let at = TURN;
+    let clock = 0;
+    const kinds: string[] = [];
+    while (at < TURN + 5 * HEARTBEAT) {
+      const d = checkTurnDecision(roomAt(awaitingSeat1(), ins, at, clock), presenceFrom(ins, at), at, 1);
+      kinds.push(d.kind);
+      expect(d.kind, `at ${at}`).not.toBe('skip');
+      if (d.kind === 'none' || d.kind === 'skip') break;
+      if (d.kind === 'wait') {
+        expect(d).toEqual({ kind: 'wait', clockStart: at, at: at + 2 * HEARTBEAT });
+        expect(at).toBeGreaterThanOrEqual(lastBeat + 2 * HEARTBEAT);
+        clock = d.clockStart;
+      } else if (at < lastBeat + 2 * HEARTBEAT) {
+        expect(d.at, `at ${at}`).toBe(at + RECHECK);
+      }
+      at = d.at;
+    }
+    expect(kinds).toContain('wait');
   });
 
   it('waits and restarts the clock, checking again two heartbeats later, while the room is quiet', () => {

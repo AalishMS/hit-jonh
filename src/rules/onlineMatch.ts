@@ -24,6 +24,8 @@ export class OnlineMatchTracker {
   private presentedSeq = 0;
   private readonly firedByMe = new Set<number>();
   private cache: { snap: RoomSnapshot; result: ReplayResult | null } | null = null;
+  /** The turn whose expiry {@link takeTurnExpiry} last reported. */
+  private expiredTurn: string | null = null;
 
   get snapshot(): RoomSnapshot | null { return this.snap; }
   get mySeat(): number | null { return this.snap?.you ?? null; }
@@ -142,5 +144,20 @@ export class OnlineMatchTracker {
       missing = { seat, name, secondsLeft: Math.max(0, Math.ceil((lastSeen + ONLINE.staleSeconds * MS - now) / MS)) };
     }
     return { turn, missing, rematch };
+  }
+
+  /**
+   * True once per turn expiry: on the first call at which the current turn's countdown reads 0. The caller then
+   * checks in, so the server sees evidence of life right at the limit and skips without waiting a heartbeat
+   * (spec §4 checkTurn). A turn clock restarted by a quiet room is a new expiry.
+   */
+  takeTurnExpiry(now: number): boolean {
+    const snap = this.snap;
+    const turn = this.countdowns(now).turn;
+    if (!snap || turn === null || turn.secondsLeft > 0) return false;
+    const key = `${snap.room.matchNumber}:${this.nextFireSeq()}:${snap.room.turnClockStart}`;
+    if (key === this.expiredTurn) return false;
+    this.expiredTurn = key;
+    return true;
   }
 }

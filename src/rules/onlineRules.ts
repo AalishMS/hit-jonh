@@ -154,8 +154,10 @@ export function checkTurnDecision(view: MatchView, presence: readonly PresenceEn
   const turnEnds = view.room.turnClockStart + ONLINE.turnLimitSeconds * MS;
   if (now >= turnEnds && lastLife(view.seats, presence) >= turnEnds) return skip;
   if (isRoomQuiet(view.seats, presence, now)) return { kind: 'wait', clockStart: now, at: now + 2 * heartbeat };
-  // Not proven yet: look again once the next heartbeats are due.
-  if (stale || now >= turnEnds) return { kind: 'reschedule', at: now + heartbeat };
+  // Not proven yet. Past the limit, every client checks in as its countdown reaches 0, so look again shortly;
+  // a stale seat is only proven by the regular heartbeats, so look again once they are due.
+  if (now >= turnEnds) return { kind: 'reschedule', at: now + ONLINE.turnLimitRecheckSeconds * MS };
+  if (stale) return { kind: 'reschedule', at: now + heartbeat };
   return { kind: 'reschedule', at: Math.min(turnEnds, lastSeen + ONLINE.staleSeconds * MS) };
 }
 

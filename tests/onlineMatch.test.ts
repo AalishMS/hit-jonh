@@ -169,6 +169,20 @@ describe('OnlineMatchTracker: countdowns', () => {
     expect(t.countdowns(265_000).missing).toEqual({ seat: 0, name: 'P1', secondsLeft: 25 });
   });
 
+  it('reports a turn expiry once when the countdown reaches 0; a clock restarted by a quiet room expires again', () => {
+    const t = new OnlineMatchTracker();
+    t.update(snap([], 1));
+    expect(t.takeTurnExpiry(119_999)).toBe(false);
+    expect(t.takeTurnExpiry(120_000)).toBe(true);
+    expect(t.takeTurnExpiry(121_000)).toBe(false);
+    t.update(snap([], 1, { turnClockStart: 150_000 }));
+    expect(t.takeTurnExpiry(269_999)).toBe(false);
+    expect(t.takeTurnExpiry(270_000)).toBe(true);
+    expect(t.takeTurnExpiry(270_500)).toBe(false);
+    t.update(snap(['body'], 1, { status: 'finished' }));
+    expect(t.takeTurnExpiry(500_000)).toBe(false);
+  });
+
   it('counts down the rematch window', () => {
     const t = new OnlineMatchTracker();
     t.update(snap(['body'], 0, { status: 'finished', rematchDeadline: 30_000 }));

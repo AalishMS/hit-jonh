@@ -118,6 +118,9 @@ export class OnlineSession {
     if (code) void this.client.mutation(api.rooms.reportWitness, { code, token: this.token, ...args }).catch(() => undefined);
   }
 
+  /** An extra check-in outside the regular interval (e.g. when the turn countdown reaches 0). */
+  heartbeat(): void { void this.beat(); }
+
   private requireCode(): string {
     if (!this.currentCode) throw new Error('OnlineSession: not in a room');
     return this.currentCode;

@@ -37,6 +37,22 @@ describe('OnlineSession.enter', () => {
   });
 });
 
+describe('OnlineSession.heartbeat', () => {
+  it('checks in to the entered room on demand, and does nothing outside a room', async () => {
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' });
+    const { client } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    session.heartbeat();
+    expect(client.mutation).not.toHaveBeenCalled();
+    session.enter(valid, listener);
+    expect(client.mutation).toHaveBeenCalledTimes(1); // the check-in on entering
+    session.heartbeat();
+    expect(client.mutation).toHaveBeenCalledTimes(2);
+    expect(client.mutation).toHaveBeenLastCalledWith(expect.anything(), { code: valid, token: 't' });
+    session.exit();
+  });
+});
+
 describe('OnlineSession.leaveRoom', () => {
   it('leaves a room it never entered when given its code, and does nothing with no room at all', async () => {
     const { client } = fakeClient();

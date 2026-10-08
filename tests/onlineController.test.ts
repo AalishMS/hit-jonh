@@ -2,7 +2,7 @@
 // The controller is glue, so its collaborators (Convex session, DOM screens, banner, storage) are faked here
 // and the pure tracker, replayMatch and match machine run for real.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MULTIPLAYER } from '../src/config/tuning';
+import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
 import type { MultiplayerMatchMachine } from '../src/rules/multiplayerMatch';
 import type { PresenceEntry, RoomSnapshot, RoomState, ShotRecord } from '../src/rules/onlineTypes';
 import { OnlineController, type OnlineSceneHooks } from '../src/scenes/onlineController';
@@ -41,6 +41,7 @@ const h = vi.hoisted(() => {
     requestRematch = vi.fn((_m: number): void => undefined);
     setMaps = vi.fn(async (_m: string[]): Promise<void> => undefined);
     startMatch = vi.fn(async (): Promise<void> => undefined);
+    heartbeat = vi.fn((): void => undefined);
     constructor() { state.sessions.push(this); }
     enter(typed: string, listener: Listener): void {
       if (this.enterError) throw this.enterError;
@@ -661,6 +662,52 @@ describe('OnlineController: other players’ shots', () => {
     expect(scene.played).toEqual([]);
     expect(scene.skipped).toEqual([`P${shooter + 1} was skipped`]);
     expect(ctl.isMyTurnToAim()).toBe(true);
+  });
+});
+
+describe('OnlineController: turn limit', () => {
+  const TURN = ONLINE.turnLimitSeconds * 1000;
+
+  /** Watching (or playing) a match; `at` moves the display clock and runs one status refresh. */
+  async function clocked(me: number) {
+    const ctx = setup();
+    const listener = await enterRoom(ctx.ctl);
+    listener.onRoom(snapshot([], me));
+    const at = (now: number) => { session().serverNow = now; ctx.ctl.update(1); };
+    return { ...ctx, listener, at };
+  }
+
+  it('checks in once when the turn countdown reaches 0, not again for that turn, and again on the next turn', async () => {
+    const shooter = firstShooter();
+    const me = 1 - shooter;
+    const { listener, at } = await clocked(me);
+    at(TURN - 1_000);
+    at(TURN - 1);
+    expect(session().heartbeat).not.toHaveBeenCalled();
+    at(TURN);
+    expect(session().heartbeat).toHaveBeenCalledTimes(1);
+    at(TURN + 250);
+    at(TURN + 1_900);
+    expect(session().heartbeat).toHaveBeenCalledTimes(1);
+
+    // The server skips the turn 2 s after the limit; the next turn's clock starts then.
+    const next = snapshot(['miss'], me, { turnClockStart: TURN + 2_000 });
+    next.shots[0] = { ...next.shots[0]!, resolution: 'skipped' };
+    listener.onRoom(next);
+    at(TURN + 2_100);
+    at(2 * TURN + 1_999);
+    expect(session().heartbeat).toHaveBeenCalledTimes(1);
+    at(2 * TURN + 2_000);
+    expect(session().heartbeat).toHaveBeenCalledTimes(2);
+    at(2 * TURN + 2_500);
+    expect(session().heartbeat).toHaveBeenCalledTimes(2);
+  });
+
+  it('the active player checks in at 0 too', async () => {
+    const { at } = await clocked(firstShooter());
+    at(TURN + 10);
+    at(TURN + 500);
+    expect(session().heartbeat).toHaveBeenCalledTimes(1);
   });
 });
 
