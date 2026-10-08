@@ -78,9 +78,11 @@ export class OnlineSession {
     this.currentCode = null;
   }
 
-  /** Captures the code synchronously, so calling `exit()` right after is safe. Errors are ignored. */
-  async leaveRoom(): Promise<void> {
-    const code = this.currentCode;
+  /**
+   * Leaves the entered room, or `code` (a room just created/joined but never entered). Captures the code
+   * synchronously, so calling `exit()` right after is safe. Errors are ignored.
+   */
+  async leaveRoom(code: string | null = this.currentCode): Promise<void> {
     if (!code) return;
     try { await this.client.mutation(api.rooms.leaveRoom, { code, token: this.token }); } catch { /* leaving is best-effort */ }
   }

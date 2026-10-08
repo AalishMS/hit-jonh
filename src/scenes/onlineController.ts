@@ -94,6 +94,11 @@ export class OnlineController {
   private code: string | null = null;
   /** Bumped on every room enter/exit so late async results from an earlier room are ignored. */
   private epoch = 0;
+  /**
+   * Bumped every time the setup screen is shown. Convex queues calls while offline, so a reply can land long after
+   * the user moved on; a request only acts if its screen is still the one on show.
+   */
+  private setupScreen = 0;
   private profile: OnlineProfile = loadOnlineProfile();
   private current: CurrentShot | null = null;
   private outbox: Outbox | null = null;
@@ -119,6 +124,7 @@ export class OnlineController {
   isMyTurnToAim(): boolean { return this.tracker.isMyTurnToAim(); }
 
   open(error: string | null = null, code = ''): void {
+    this.setupScreen++;
     showOnlineSetup(this.menu, {
       profile: this.profile, code, error,
       onCreate: profile => void this.create(profile),
@@ -134,14 +140,25 @@ export class OnlineController {
   async openFromLink(raw: string): Promise<void> {
     const code = normalizeRoomCode(raw);
     if (!code) { this.open(); return; }
+    // The seat check can land late; if the user has left the screen it started from, it does nothing.
+    const view = this.menu.getView();
+    const screen = this.setupScreen;
+    let seat: number | null = null;
     try {
-      if ((await this.ensureSession().peekSeat(code)) !== null) {
-        const error = this.enter(code);
-        if (error) this.open(error, code);
-        return;
-      }
+      seat = await this.ensureSession().peekSeat(code);
     } catch { /* fall through to the join screen */ }
+    if (this.menu.getView() !== view || this.setupScreen !== screen) return;
+    if (seat !== null) {
+      const error = this.enter(code);
+      if (error) this.open(error, code);
+      return;
+    }
     this.open(null, code);
+  }
+
+  /** True while the setup screen a request was made from is still the one on show. */
+  private stillOnSetup(screen: number): boolean {
+    return this.setupScreen === screen && this.menu.getView() === 'online_setup';
   }
 
   private ensureSession(): OnlineSession {
@@ -158,13 +175,20 @@ export class OnlineController {
     const profile = cleanProfile(raw);
     this.profile = profile;
     saveOnlineProfile(profile);
+    const screen = this.setupScreen;
     this.connecting = true;
     try {
-      const code = await this.ensureSession().createRoom(profile, [...MULTIPLAYER.maps]);
+      let code: string;
+      try {
+        code = await this.ensureSession().createRoom(profile, [...MULTIPLAYER.maps]);
+      } catch (e) {
+        if (this.stillOnSetup(screen)) this.open(JOIN_ERRORS[errorCode(e) ?? ''] ?? OFFLINE);
+        return;
+      }
+      // The user moved on while this was pending: give the seat back instead of popping a lobby up.
+      if (!this.stillOnSetup(screen)) { void this.session?.leaveRoom(code); return; }
       const error = this.enter(code);
       if (error) this.open(error);
-    } catch (e) {
-      this.open(JOIN_ERRORS[errorCode(e) ?? ''] ?? OFFLINE);
     } finally {
       this.connecting = false;
     }
@@ -178,13 +202,18 @@ export class OnlineController {
     // The setup screen already normalizes; this guards every other caller (defence in depth).
     const code = normalizeRoomCode(rawCode);
     if (!code) { this.open(BAD_CODE, rawCode); return; }
+    const screen = this.setupScreen;
     this.connecting = true;
     try {
-      await this.ensureSession().joinRoom(code, profile);
+      try {
+        await this.ensureSession().joinRoom(code, profile);
+      } catch (e) {
+        if (this.stillOnSetup(screen)) this.open(JOIN_ERRORS[errorCode(e) ?? ''] ?? OFFLINE, code);
+        return;
+      }
+      if (!this.stillOnSetup(screen)) { void this.session?.leaveRoom(code); return; }
       const error = this.enter(code);
       if (error) this.open(error, code);
-    } catch (e) {
-      this.open(JOIN_ERRORS[errorCode(e) ?? ''] ?? OFFLINE, code);
     } finally {
       this.connecting = false;
     }

@@ -53,8 +53,8 @@ const h = vi.hoisted(() => {
       this.code = null;
       this.listener = null;
     }
-    leaveRoom(): Promise<void> {
-      state.calls.push(`leaveRoom:${this.code ?? 'none'}`);
+    leaveRoom(code: string | null = this.code): Promise<void> {
+      state.calls.push(`leaveRoom:${code ?? 'none'}`);
       return Promise.resolve();
     }
   }
@@ -266,6 +266,114 @@ describe('OnlineController: setup screen', () => {
     await ctl.openFromLink('abcde');
     expect(ctl.inRoom).toBe(true);
     expect(h.state.calls).toContain('enter:ABCDE');
+  });
+});
+
+describe('OnlineController: late replies after the user moved on', () => {
+  /** A promise the test settles by hand, like a Convex call queued while offline. */
+  function deferred<T>() {
+    let resolve: (value: T) => void = () => undefined;
+    let reject: (e: unknown) => void = () => undefined;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+  const ann = { name: 'Ann', color: 1, pattern: 'dots' };
+
+  /** On the setup screen with a live session but no room (a room link this tab holds no seat in). */
+  async function onSetup() {
+    const ctx = setup();
+    await ctx.ctl.openFromLink('ABCDE');
+    expect(ctx.menu.view).toBe('online_setup');
+    return ctx;
+  }
+
+  it('a Create that lands after the user left the setup screen opens nothing and leaves the new room', async () => {
+    const { ctl, menu } = await onSetup();
+    const reply = deferred<string>();
+    session().createRoom.mockImplementationOnce(() => reply.promise);
+    lastSetup().onCreate(ann);
+    menu.showMainMenu();
+    const shown = h.state.screens.length;
+    reply.resolve('QWERT');
+    await flush();
+    expect(ctl.inRoom).toBe(false);
+    expect(h.state.screens.length).toBe(shown);
+    expect(menu.view).toBe('main');
+    expect(h.state.calls).not.toContain('enter:QWERT');
+    expect(h.state.calls).toContain('leaveRoom:QWERT');
+    expect(h.state.url).not.toContain('room=');
+  });
+
+  it('a Join that lands after the user started something else opens nothing and leaves the joined room', async () => {
+    const { ctl, menu } = await onSetup();
+    const reply = deferred<void>();
+    session().joinRoom.mockImplementationOnce(() => reply.promise);
+    lastSetup().onJoin(ann, 'K7QPX');
+    menu.view = 'none'; // e.g. a solo game started
+    const shown = h.state.screens.length;
+    reply.resolve();
+    await flush();
+    expect(ctl.inRoom).toBe(false);
+    expect(h.state.screens.length).toBe(shown);
+    expect(menu.view).toBe('none');
+    expect(h.state.calls).not.toContain('enter:K7QPX');
+    expect(h.state.calls.at(-1)).toBe('leaveRoom:K7QPX');
+  });
+
+  it('a failed Create that lands after the user left shows no error screen', async () => {
+    const { menu } = await onSetup();
+    const reply = deferred<string>();
+    session().createRoom.mockImplementationOnce(() => reply.promise);
+    lastSetup().onCreate(ann);
+    menu.showMainMenu();
+    const shown = h.state.screens.length;
+    reply.reject(new Error('socket closed'));
+    await flush();
+    expect(h.state.screens.length).toBe(shown);
+    expect(menu.view).toBe('main');
+  });
+
+  it('a Create from a setup screen the user has since left and reopened is ignored', async () => {
+    const { ctl, menu } = await onSetup();
+    const reply = deferred<string>();
+    session().createRoom.mockImplementationOnce(() => reply.promise);
+    lastSetup().onCreate(ann);
+    menu.showMainMenu();
+    ctl.open(); // back on a fresh setup screen
+    const shown = h.state.screens.length;
+    reply.resolve('QWERT');
+    await flush();
+    expect(ctl.inRoom).toBe(false);
+    expect(h.state.screens.length).toBe(shown);
+    expect(h.state.calls).toContain('leaveRoom:QWERT');
+  });
+
+  it('a room link whose seat check lands after the user started playing does not enter or open anything', async () => {
+    const { ctl, menu } = setup();
+    menu.view = 'home';
+    await ctl.openFromLink('ABCDE'); // creates the session; no seat, so the join screen opens
+    menu.view = 'home';
+    const seat = deferred<number | null>();
+    session().peekSeat.mockImplementationOnce(() => seat.promise);
+    const pending = ctl.openFromLink('ABCDE');
+    menu.view = 'none'; // started a solo game from home
+    const shown = h.state.screens.length;
+    seat.resolve(1);
+    await pending;
+    expect(ctl.inRoom).toBe(false);
+    expect(h.state.calls).not.toContain('enter:ABCDE');
+    expect(h.state.screens.length).toBe(shown);
+    expect(menu.view).toBe('none');
+
+    const none = deferred<number | null>();
+    session().peekSeat.mockImplementationOnce(() => none.promise);
+    menu.view = 'home';
+    const later = ctl.openFromLink('ABCDE');
+    menu.view = 'main';
+    none.resolve(null);
+    await later;
+    expect(h.state.screens.length).toBe(shown);
+    expect(menu.view).toBe('main');
   });
 });
 

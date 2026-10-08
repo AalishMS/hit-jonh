@@ -37,6 +37,17 @@ describe('OnlineSession.enter', () => {
   });
 });
 
+describe('OnlineSession.leaveRoom', () => {
+  it('leaves a room it never entered when given its code, and does nothing with no room at all', async () => {
+    const { client } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    await session.leaveRoom();
+    expect(client.mutation).not.toHaveBeenCalled();
+    await session.leaveRoom(valid);
+    expect(client.mutation).toHaveBeenCalledWith(expect.anything(), { code: valid, token: 't' });
+  });
+});
+
 describe('OnlineSession.peekSeat', () => {
   function withSnapshot(snapshot: unknown) {
     const { client } = fakeClient();
