@@ -9,6 +9,7 @@
  */
 
 import type * as model from "../model.js";
+import type * as rooms from "../rooms.js";
 import type * as timers from "../timers.js";
 import type * as validators from "../validators.js";
 
@@ -20,6 +21,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   model: typeof model;
+  rooms: typeof rooms;
   timers: typeof timers;
   validators: typeof validators;
 }>;
