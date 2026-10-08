@@ -1,6 +1,6 @@
 # Online Multiplayer — Design
 
-**Date:** 2026-10-08 · **Status:** Revised after second design review; awaiting written-spec approval · **Branch:** `online-multiplayer`
+**Date:** 2026-10-08 · **Status:** Revised after third design review; awaiting written-spec approval · **Branch:** `online-multiplayer`
 
 ## 1. Intent
 
@@ -142,12 +142,16 @@ All of them first check that the room, `matchNumber` and `seq` still match what 
 
 | Timer | Scheduled by | Behaviour |
 | --- | --- | --- |
-| `checkTurn(roomId, matchNumber, seq)` | `startMatch`, `requestRematch`/`startRematch`, every shot resolution | If still awaiting fire for `seq`: skip as `'skipped'` miss when the active seat `left`, **or** `now ≥ turnStart + turnLimitSeconds`, **or** presence is stale (`now − lastSeen ≥ staleSeconds`). Otherwise reschedule itself at `min(turnStart + turnLimitSeconds, lastSeen + staleSeconds)`. A skip schedules `checkTurn` for the next seq (or finishes the match). |
+| `checkTurn(roomId, matchNumber, seq)` | see "Starting a turn" below | If still awaiting fire for `seq`: skip as `'skipped'` miss when the active seat `left`, **or** `now ≥ turnStart + turnLimitSeconds`, **or** presence is stale (`now − lastSeen ≥ staleSeconds`). Otherwise reschedule itself at `min(turnStart + turnLimitSeconds, lastSeen + staleSeconds)`. A skip starts the next turn (or finishes the match). |
 | `checkInFlight(roomId, matchNumber, seq)` | `fireShot` | If the shot is still unresolved after `inFlightTimeoutSeconds`, resolve it with `witnessOutcome` (`'witness'`) or `miss` (`'timeout'`). Then continue as after any resolution. |
 | `startRematch(roomId, matchNumber)` | first `requestRematch` | At the deadline: if ≥ `minPlayers` are ready, remove every non-ready seat (row + presence), renumber the ready ones, clear readiness, `matchNumber++`, new `seed`, `matchStartedAt`, `status='playing'`, delete the old shots, schedule `checkTurn`. Otherwise clear readiness and `rematchDeadline` (still `finished`; anyone may press again). Maps are kept. |
 | cleanup (hourly cron) | `crons.ts` | Deletes rooms (players, presence, shots) whose `updatedAt` is older than `ONLINE.roomTtlHours`. |
 
 Starting a rematch immediately (everyone ready) uses the same code path as `startRematch`.
+
+**Starting a turn** is a shared server helper. It is used by `startMatch`, rematch start, every shot resolution (`reportOutcome`, `reportWitness`, `checkInFlight`) and every skip. It **evaluates `checkTurnDecision` immediately, in the same transaction**. If the new active seat has already left or gone stale, it is skipped at once, and the helper loops to the next turn until it reaches a seat that must be waited for (or the match finishes). Only then does it schedule `checkTurn` at the decision's reschedule time. A player who is already gone is never waited on.
+
+**Presence rows** are created or refreshed (`lastSeen = now`) by `createRoom`, `joinRoom` (new seat **and** rejoin) and `heartbeat`. So a new or returning player is never considered stale on arrival. Stale-seat pruning and `checkTurn` treat a missing presence row as stale; that only happens if a write was lost.
 
 **Idempotency:** `fireShot` and `reportOutcome` return success without writing when the identical write already happened. A different write to the same `seq` returns `CONFLICT` / `NOT_YOUR_TURN`; for example, the shooter's report after a timeout, or a fire after the turn was skipped. `reportWitness`, `requestRematch` and `heartbeat` never fail on repeats or lost races; they are no-ops.
 
@@ -159,7 +163,8 @@ Starting a rematch immediately (everyone ready) uses the same code path as `star
 - **`replayMatch({ players, maps, seed, shots })`**:
   - Constructs `new MultiplayerMatchMachine(setups, maps, seededRandom(seed))`, with setups ordered by seat and first-shot aim 45°/50% as in `defaultPlayerSetups`.
   - For each resolved shot it calls `startAiming → fire(angle, power) → resolveShot(outcome) → continueFromResult → (nextRound if round_result)`.
-  - A trailing in-flight shot stops after `fire`.
+  - A trailing in-flight shot stops after `fire`. That gives the server's view, where a shot is in the air.
+  - Takes `{ includeInFlight: boolean }`. The **server** passes `true`. **Clients** pass `false`: they rebuild from **resolved shots only** and let normal playback fire any in-flight shot. `MultiCoordinator.fire` works only from `aiming` (`multiCoordinator.ts:17-19`), so a machine left in `simulating` could never launch it.
   - Returns the machine plus `{ awaitingSeat, inFlightSeq, nextSeq, isMatchComplete }`. It throws if a stored shot's seat disagrees with the machine, which would be a server bug.
 - **`onlineRules.ts`**: `validateFire`, `validateReport`, `acceptWitness`, `turnStartedAt`, `checkTurnDecision(room, shots, presence, now) → skip | reschedule(at) | none`, `checkInFlightDecision(shot, now) → resolve(outcome, resolution) | none`.
 - **`onlineRoster.ts`**: `assignAppearance`, `renumberSeats`, `pruneStaleLobbySeats`, `rematchDecision(players, now, deadline) → startNow | wait | startWith(seats) | reset`.
@@ -178,7 +183,9 @@ Starting a rematch immediately (everyone ready) uses the same code path as `star
   - `reportWitness` is sent once, with no retry, and its errors are ignored.
   - Exposes `client.connectionState()` for a "Reconnecting…" banner.
 - **`src/rules/onlineMatch.ts`** (pure): an `OnlineMatchTracker` fed with room snapshots, presence and display `now`. It derives:
-  - `mySeat`, from the snapshot's `you`. Going from a seat to `null` after a rematch means "not included" (§6).
+  - `mySeat`, from the snapshot's `you`. Going from a seat to `null` means:
+    - after a rematch: "not included" (§6);
+    - in the lobby: pruned while away, so rejoin automatically (§6).
   - `authoritative`, i.e. `replayMatch` over the server shots.
   - The **playback queue**: server shots with `seq ≥ presentedSeq`. In-flight shots are included, so playback starts on fire.
   - **My unfinished shot:** an in-flight shot whose seat is mine but which this page didn't fire, e.g. after a reload or crash. It is played back as **my** shot: re-simulated locally and reported with `reportOutcome`. Same browser and build means the same result.
@@ -190,13 +197,17 @@ Starting a rematch immediately (everyone ready) uses the same code path as `star
 ### Scene changes (`PrototypeScene`)
 
 - New `activeMode: 'online'`, reusing `MultiplayerMatchMachine`, `MultiCoordinator`, `PlayerHistory` trails, target cycles and the round/match overlays.
-- **Fast-forward** on join, reload or resync: the controller builds the machine with `replayMatch`, assigns it to `this.multiMachine`, then calls `loadMultiplayerMap`. That already constructs a fresh `MultiCoordinator` from `this.multiMachine` (`PrototypeScene.ts:1265`, as `startMultiplayer` does at :1214), so `MultiCoordinator` needs no change.
+- **Fast-forward** on join, reload or resync: the controller builds the machine with `replayMatch` over **resolved shots only** (`includeInFlight: false`), assigns it to `this.multiMachine`, then calls `loadMultiplayerMap`. Any in-flight shot then enters the playback queue and is fired normally from `aiming`. That already constructs a fresh `MultiCoordinator` from `this.multiMachine` (`PrototypeScene.ts:1265`, as `startMultiplayer` does at :1214), so `MultiCoordinator` needs no change.
 - **No hot-seat persistence in online mode:** the `onShotFired` callback skips `saveMultiplayerSetup` when `activeMode === 'online'`.
 - **Local shot (my turn, or my unfinished shot after a reload):**
   - Fire launches locally at once and calls `fireShot`; a recovered shot is already fired.
   - At resolution: score locally (optimistic), call `reportOutcome`, record hat/streak progress (own shot).
   - If the server rejects it because the turn was skipped or timed out, show **"Your turn was skipped"** / **"Your shot timed out"** when the local shot ends, then resync.
-- **Remote shot:**
+- **Skipped turn** (`resolution === 'skipped'`, any seat including mine): **nothing is fired or simulated.**
+  - Show "{name} was skipped" (or "Your turn was skipped") in the shot-result slot for the normal shot-result window.
+  - Advance the local machine without animation: `startAiming → fire(stored aim) → resolveShot('miss')`, plus the attempt-machine reset that `MultiCoordinator` normally does.
+  - Then continue to handover or round results as usual. The skipped player's trail and aim are unchanged.
+- **Remote shot** (any other resolution, or still in flight):
   - When a shot appears (outcome may still be `null`), load its angle/power and run the normal fire path with input locked.
   - At local resolution: if the official outcome has arrived, score and label with it. Otherwise send `reportWitness` with the local outcome, hold the result label as "…" until the official outcome arrives, and start the auto-advance timer only then.
   - Jonh's reaction comes from the local simulation. No progress or hat recording.
@@ -229,6 +240,7 @@ New `ONLINE` block in `src/config/tuning.ts` [PROPOSED][TUNE], imported by serve
 - Large room code, **Copy link**, and up to 4 player rows (colour, pattern, name, connected dot).
 - Seat 0 (host) chooses maps with the existing map cards and presses **Start** (enabled at ≥ 2 players). Others see "Waiting for host…". **Leave** is always available.
 - If the host leaves, or stops checking in for `staleSeconds`, seats are renumbered on the next heartbeat and the new seat 0 is host.
+- **Removed while away:** a player whose phone locked for longer than `staleSeconds` is pruned. When their page notices it is no longer seated in a lobby room, it calls `joinRoom` again with the saved profile and continues silently, possibly in a new seat. If the room has filled up meanwhile, it shows "The room filled up while you were away" and returns to the Online menu. If the match has already started, it shows "That match started without you" and returns to the Online menu.
 - Joining a started match is refused with "That match has already started", except when rejoining your own seat.
 
 **Match:**
@@ -256,6 +268,7 @@ New `ONLINE` block in `src/config/tuning.ts` [PROPOSED][TUNE], imported by serve
 | `NOT_FOUND` / `FULL` / `ALREADY_STARTED` | Friendly inline messages on the Join screen. |
 | Rematch window closes with < 2 ready | Readiness clears; the result screen says "Not enough players — press Rematch to try again". |
 | Removed by a rematch | "You weren't included in the rematch" → Online menu. |
+| Pruned from the lobby while away | Automatic `joinRoom`. If that fails with `FULL` / `ALREADY_STARTED`: "The room filled up while you were away" / "That match started without you" → Online menu. |
 | `fireShot`/`reportOutcome` send failure after all retries | Blocking "Couldn't reach the room — Retry" banner. The server's timers still guarantee others aren't stuck. |
 | My fire/report rejected (`NOT_YOUR_TURN`, `CONFLICT`) | "Your turn was skipped" / "Your shot timed out" once the local shot ends, then resync. |
 | Other rejection (`OUT_OF_ORDER`, `STALE_MATCH`) | Resync from the server snapshot; dev-build warning. |
@@ -280,13 +293,17 @@ Pause, the fixed stepper and `AutoAdvance` work as today. Pausing never stops ot
   - Report: shooter only; impossible ricochet rejected.
   - Idempotent and conflicting duplicates for fire/report.
   - Witness: first one wins; immediate resolution when the shooter left.
-  - `checkTurnDecision`: skip for a left seat, the turn limit or stale presence; correct reschedule time otherwise; no-op once the turn has moved on.
+  - `checkTurnDecision`: skip for a left seat, the turn limit, stale presence or a missing presence row; correct reschedule time otherwise; no-op once the turn has moved on.
+  - "Starting a turn" loop: consecutive gone seats are all skipped in one call; the loop stops at the first seat that must be waited for, or at match end.
   - `checkInFlightDecision`: witness, else timeout miss; no-op once resolved.
   - Turn start time.
 - `onlineRoster`: appearance assignment with clashes; renumbering after leaves (host passes to the new seat 0); stale lobby pruning (including a stale host); `rematchDecision` (all ready → now; deadline with ≥ 2 → start with the ready ones and drop the rest; < 2 → reset; left players excluded).
 - `OnlineMatchTracker`:
   - Playback queue order, including in-flight shots.
+  - Client rebuild uses resolved shots only, so a queued in-flight shot starts from `aiming` and `MultiCoordinator.canFire()` is true for it.
+  - Skipped shots are marked "no animation" and advance the machine to the same state as a played miss.
   - My unfinished shot after a reload is treated as mine.
+  - Lobby `you → null` requests an automatic rejoin; rematch `you → null` reports "not included".
   - `isMyTurnToAim` only once caught up.
   - Countdown values.
   - Rematch reset; "not included" detection; fast-forward on join.
@@ -301,7 +318,8 @@ Pause, the fixed stepper and `AutoAdvance` work as today. Pausing never stops ot
 - Reload mid-turn and mid-flight; leave on own turn; stale skip; turn timeout; unfinished-shot timeout with and without a witness.
 - Skip-vs-fire race message.
 - Background tab (> 5 min hidden).
-- Lobby with a vanished host.
+- Lobby with a vanished host; a player pruned from the lobby who comes back.
+- Skipped turns show "{name} was skipped" with no cannon fire.
 - Rematch: all ready, partial ready, "not included".
 - Cleanup cron.
 - Hot-seat roster unchanged after online play.
