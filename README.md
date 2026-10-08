@@ -57,7 +57,7 @@ Online rooms need a Convex deployment. Without one the game runs normally and th
 
 1. `npx convex dev` (first time: log in and create a project). This writes `CONVEX_DEPLOYMENT` and `VITE_CONVEX_URL` to `.env.local` (git-ignored).
 2. Keep `npx convex dev` running while editing `convex/`, or push once with `npx convex dev --once`.
-3. `npm run dev -- --host` and open the printed LAN URL on each device. Every browser tab is a separate player.
+3. `npm run dev -- --host` and open the printed LAN URL on each device. Every browser tab is a separate player: open each player in a **new** tab, not with "Duplicate tab" (a duplicated tab copies `sessionStorage`, so it would share the first tab's seat). On a plain `http://` LAN address the browser offers no Clipboard API, so the lobby's Copy link shows the link selected for you to copy by hand.
 4. `crosscheck.html` (dev server only) checks that shots score identically across browsers.
 
 Deploying later: `npx convex deploy` creates the production backend. Build with `VITE_CONVEX_URL` set to the production URL (`npm run build`), then serve `dist/` from any static host.

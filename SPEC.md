@@ -110,7 +110,7 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 - **Trust.** The shooter's client is trusted. The server checks turn order, aim ranges, duplicates and map-impossible outcomes, and does not re-simulate physics.
 - **Timers run on the server.** Online-only turn limit of 120 s (countdown from 90 s). Missing player skipped after 90 s without a heartbeat (warning from 60 s). Unreported shot resolved after 40 s with a spectator's outcome or a miss. If everyone is disconnected at once, nothing is skipped. Values are [PROPOSED][TUNE] in `ONLINE` (`src/config/tuning.ts`), except the 120 s limit [DECIDED].
 - **Rematch.** Any active player may press Rematch. It starts when everyone is ready, or after a 30 s window with the ready players (at least 2). Others see "You weren't included".
-- **Identity.** One player per browser tab (token in sessionStorage); a reload keeps the seat. The name/colour profile is saved in `hitJonh.v1.online`. The hot-seat roster is untouched.
+- **Identity.** One player per browser tab (token in sessionStorage); a reload keeps the seat. The name/colour profile is saved in the `online` field of the `hitJonh.v1` save. The hot-seat roster is untouched.
 - **Out of scope.** Accounts, matchmaking, chat, spectators, live aim streaming, server physics, async play, deployment, kicking.
 - **Known limitation.** After a reload, previous-shot trails are empty until each player fires again.
 

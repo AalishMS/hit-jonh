@@ -369,7 +369,7 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 
 ## Online multiplayer — 2026-10-08 (branch `online-multiplayer`)
 
-**Built.** Online rooms by code for 2–4 players (SPEC §6.1), on Convex. Each browser tab is one player; the shooter's client reports the official outcome while every client re-simulates locally. The server (`convex/`) owns turn order, aim and duplicate checks, the timers (120 s turn, 90 s stale player, 40 s unreported shot), rematch and an hourly room cleanup. Client modules: room code and session logic, a replay-based match tracker, online setup/lobby/notice screens, and an `OnlineController` wired into `PrototypeScene` (`activeMode` stays `multi`, online is `online?.inMatch`). Hot-seat play and the saved local roster are untouched. Setup: README "Online play (Convex)".
+**Built.** Online rooms by code for 2–4 players (SPEC §6.1), on Convex. Each browser tab is one player; the shooter's client reports the official outcome while every client re-simulates locally. The server (`convex/`) owns turn order, aim and duplicate checks, the timers (120 s turn, 90 s stale player, 40 s unreported shot), rematch and an hourly room cleanup. Client modules: room code and session logic, a replay-based match tracker, online setup/lobby/notice screens, and an `OnlineController` wired into `PrototypeScene` (`activeMode` stays `multi`, online is `online?.inMatch`). Hot-seat play and the saved local roster are unchanged by design and unit-tested (walkthrough item 17 NOT VERIFIED). Setup: README "Online play (Convex)".
 
 **Cross-browser determinism (Task 1).** The user ran `crosscheck.html` in Chrome and Firefox: 639 shots, outcomes and step counts identical (94 Body, 26 Ricochet Body, 2 Hat Only, 517 Miss). One shot (rooftop/near 76/90) ends about 1.08e-11 apart (float rounding) with the same outcome (miss) and 1801 steps. Safari: **NOT VERIFIED** (no digest provided). The user accepted the Chrome+Firefox match on 2026-10-08.
 
@@ -406,14 +406,14 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 
 **Also not verified:** the cleanup cron registration (`_cron_jobs` could not be read; check the Dashboard cron list); the real 120 s / 40 s / 90 s timeouts (only stale timers firing as no-ops were seen); the `IMPOSSIBLE_OUTCOME` rejection; 24 h room deletion; any DOM screen or scene glue in a browser; Safari.
 
-**How to run the walkthrough yourself.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open two tabs (or a desktop browser plus a phone on the same Wi-Fi); each tab is its own player. Work through the 19 items above, using DevTools Offline for items 11–12, and record PASS/FAIL here.
+**How to run the walkthrough yourself.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open two tabs (or a desktop browser plus a phone on the same Wi-Fi); each tab is its own player. Open each player in a NEW tab, not "Duplicate tab": a duplicated tab copies `sessionStorage` and so shares the first tab's seat. Work through the 19 items above, using DevTools Offline for items 11–12, and record PASS/FAIL here.
 
 **Decisions.**
 - One player per tab: the token lives in `sessionStorage`, not `localStorage` (approved deviation), so two tabs can play each other.
 - `activeMode` stays `multi` and online play is `online?.inMatch` (approved; the spec wording said `'online'`).
 - The shooter's client is trusted for the official outcome; the server never re-simulates physics.
 - Chrome+Firefox identical outcomes accepted as the cross-browser gate; float drift only affects animation.
-- The Convex deployment `proper-lapwing-569` is treated as dev; nothing was run against prod (`cheery-pika-694`).
+- The Convex deployment `proper-lapwing-569` is treated as dev; nothing was run against the production deployment.
 - `heartbeat` and `leaveRoom` silently no-op for unknown tokens; room codes are normalized client-side before any server call.
 - A reopened `?room=CODE` link into a seat marked left shows Join prefilled and never auto-rejoins.
 - Server `startTurn` logs and finishes a match that cannot be replayed instead of throwing (a throw inside a timer would wedge it); the client then leaves with "This match ended unexpectedly."
@@ -421,10 +421,18 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 **Known limitations / deferred.**
 - Previous-shot trails are empty after a reload until each player fires again.
 - Trust model: a modified client could report any outcome that is possible on the map.
-- Pause and Mute are inert while another player is aiming.
-- Clipboard copy in `src/ui/onlineScreens.ts` can throw when the Clipboard API is missing. Still unfixed.
 - `joinRoom` clears `left` only when the room is `playing`, so a left seat in a finished room is not cleared by Join.
-- Minor review items remain: unbounded `.collect()` in a few reads, cleanup drains 50 rooms per hour, `destroy()` does not stop a pending create/join, some hard-coded colours in `menu.css`, and small a11y/focus nits on the online screens.
+- Minor review items remain: unbounded `.collect()` in a few reads, `destroy()` does not stop a pending create/join, some hard-coded colours in `menu.css`, and small a11y/focus nits on the online screens.
 - Convex tooling also wrote Convex guidance blocks into `AGENTS.md`/`CLAUDE.md` and files under `.agents/`, `.claude/` and `skills-lock.json`. They are not part of this work and are left uncommitted for the owner.
 
-**Next task:** run the walkthrough above (and confirm the cron in the Convex Dashboard), then fix the clipboard guard.
+**Final review fix wave (after the whole-branch review).**
+- I1: Create, Join and a `?room=` link now act only if the user is still on the screen they started from. Convex queues calls while offline, so a reply could land late and pop a lobby over a solo game or leave an orphan seat; a late Create/Join now gives its seat back (`leaveRoom(code)`). Covered by 5 new controller tests and 1 session test, each watched failing first.
+- I2: on another player's turn the HUD is no longer inert. Mute and Pause stay usable (touch players have no Escape/M), while Fire, the aim sliders and Reset are disabled. Hot-seat is unchanged (there `canUserAct()` is always true). Browser-only: NOT VERIFIED.
+- I3: Copy link did nothing on non-secure origins (it never crashed). `navigator.clipboard` is undefined on a LAN `http://` address. Fixed with a fallback: the lobby shows the link in a read-only, selected field labelled "Copy this link". The pure `copyText()` helper is unit-tested; the DOM fallback is NOT VERIFIED in a browser.
+- M1: the online result screen keeps keyboard focus across its once-a-second countdown re-renders (NOT VERIFIED in a browser).
+- M2: `cleanupRooms` schedules another run immediately after deleting a full batch of 50 rooms. Pushed to dev only (`npx convex dev --once`); not exercised (no smoke run).
+- Docs: SPEC §6.1 now names the `online` field of the `hitJonh.v1` save; README and this file say each player needs a NEW tab, not "Duplicate tab".
+- Evidence after this wave: `npm run check` passes with `Test Files 45 passed (45)` and `Tests 364 passed (364)`. `npm run build` passes: `168 modules transformed`, `main` 288.17 kB (84.91 kB gzip).
+- Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
+
+**Next task:** run the walkthrough above (and confirm the cron in the Convex Dashboard).
