@@ -19,15 +19,12 @@ const ICON = {
   soundOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>',
   home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.5 12 4l8.5 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10v9.5h4.2v-5.2h2.6v5.2h4.2V10" fill="currentColor"/></svg>',
-  sliders: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="9" cy="7" r="2.8" fill="currentColor"/><circle cx="15" cy="17" r="2.8" fill="currentColor"/></svg>',
 };
-
-const PRECISE_KEY = 'hitJonh.v1.preciseOpen';
 
 /**
  * The in-game HUD, laid over the canvas: score chips, icon buttons, the result caption, a big
- * Fire button where a thumb rests and a collapsible "Precise aim" panel that keeps the native,
- * accessible sliders as a fallback to in-world dragging.
+ * Fire button where a thumb rests. The native, accessible Angle/Power sliders live in a bar below
+ * the canvas (not over it), as a precise alternative to in-world dragging.
  */
 export class HTMLControls {
   private container: HTMLElement;
@@ -40,13 +37,13 @@ export class HTMLControls {
   private resetButton!: HTMLButtonElement;
   private muteButton!: HTMLButtonElement;
   private pauseButton!: HTMLButtonElement;
-  private preciseToggle!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
   private homeButton: HTMLButtonElement;
   private matchStatus!: HTMLElement;
   private attemptsEl!: HTMLElement;
   private streakEl!: HTMLElement;
+  private readonly aimBar: HTMLElement;
 
   private cleanupListeners: Array<() => void> = [];
 
@@ -62,8 +59,6 @@ export class HTMLControls {
     this.container.className = 'controls-panel hud';
     this.container.setAttribute('aria-label', 'Cannon Controls');
 
-    this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
-    parentElement.appendChild(this.container);
     this.homeButton = document.createElement('button');
     this.homeButton.type = 'button';
     this.homeButton.className = 'icon-btn game-home-button';
@@ -73,6 +68,14 @@ export class HTMLControls {
     this.homeButton.addEventListener('click', onHome);
     this.cleanupListeners.push(() => this.homeButton.removeEventListener('click', onHome));
     document.body.appendChild(this.homeButton);
+
+    // Precise aim lives below the canvas, in normal flow, never over the game.
+    this.aimBar = document.createElement('section');
+    this.aimBar.className = 'aim-bar';
+    this.aimBar.setAttribute('aria-label', 'Precise aim');
+    (parentElement.closest('.stage-wrap') ?? parentElement).after(this.aimBar);
+    this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
+    parentElement.appendChild(this.container);
   }
 
   private on<K extends keyof HTMLElementEventMap>(el: HTMLElement, type: K, fn: (e: HTMLElementEventMap[K]) => void): void {
@@ -87,21 +90,6 @@ export class HTMLControls {
           <div class="match-status" aria-label="Map and scores"></div>
           <div class="attempts" aria-label="Attempts left"></div>
           <div class="streak" hidden></div>
-        <div class="precise">
-            <button type="button" class="pill-btn precise-toggle" id="precise-toggle" aria-expanded="false" aria-controls="precise-panel">${ICON.sliders}<span>Precise aim</span></button>
-            <div class="precise-panel" id="precise-panel">
-              <div class="control-group">
-                <div class="control-label-row"><label for="angle-slider">Angle</label><span class="value-badge" id="angle-value">${angle}°</span></div>
-                <input type="range" id="angle-slider" min="${AIM.minAngleDeg}" max="${AIM.maxAngleDeg}" step="${AIM.angleStepDeg}" value="${angle}" />
-              </div>
-              <div class="control-group">
-                <div class="control-label-row"><label for="power-slider">Power</label><span class="value-badge" id="power-value">${power}%</span></div>
-                <input type="range" id="power-slider" min="0" max="100" step="${AIM.powerStepPercent}" value="${power}" />
-                <div class="sub-label" id="speed-indicator" hidden>Launch Speed: ${this.calcSpeed(power)} m/s</div>
-              </div>
-              <p class="control-help">Drag the cannon, or drag the field: ↕ angle, ↔ power. Keys: ← → angle, ↑ ↓ power, Space fires.</p>
-            </div>
-          </div>
         </div>
         <div class="hud-icons">
           <button type="button" class="icon-btn btn-mute" id="mute-btn"></button>
@@ -119,8 +107,22 @@ export class HTMLControls {
         <label class="toggle-label" for="debug-toggle"><input type="checkbox" id="debug-toggle" ${debug ? 'checked' : ''} /><span>Debug View</span></label>
       </div>
     `;
+    this.aimBar.innerHTML = `
+      <div class="control-group">
+        <label for="angle-slider">Angle</label>
+        <input type="range" id="angle-slider" min="${AIM.minAngleDeg}" max="${AIM.maxAngleDeg}" step="${AIM.angleStepDeg}" value="${angle}" />
+        <span class="value-badge" id="angle-value">${angle}°</span>
+      </div>
+      <div class="control-group">
+        <label for="power-slider">Power</label>
+        <input type="range" id="power-slider" min="0" max="100" step="${AIM.powerStepPercent}" value="${power}" />
+        <span class="value-badge" id="power-value">${power}%</span>
+      </div>
+      <div class="sub-label" id="speed-indicator" hidden>Launch Speed: ${this.calcSpeed(power)} m/s</div>
+    `;
 
-    const q = <T extends HTMLElement>(sel: string) => this.container.querySelector(sel) as T;
+    const q = <T extends HTMLElement>(sel: string) =>
+      (this.container.querySelector(sel) ?? this.aimBar.querySelector(sel)) as T;
     this.angleSlider = q('#angle-slider');
     this.angleValueLabel = q('#angle-value');
     this.powerSlider = q('#power-slider');
@@ -130,14 +132,12 @@ export class HTMLControls {
     this.resetButton = q('#reset-btn');
     this.muteButton = q('#mute-btn');
     this.pauseButton = q('#pause-btn');
-    this.preciseToggle = q('#precise-toggle');
     this.debugToggle = q('#debug-toggle');
     this.feedbackBanner = q('#shot-feedback');
     this.matchStatus = q('.match-status');
     this.attemptsEl = q('.attempts');
     this.streakEl = q('.streak');
     this.setMuted(muted);
-    this.setPreciseOpen(this.readPreciseOpen());
 
     this.on(this.angleSlider, 'input', () => {
       const val = Number.parseInt(this.angleSlider.value, 10);
@@ -154,18 +154,7 @@ export class HTMLControls {
     this.on(this.resetButton, 'click', () => this.callbacks.onReset());
     this.on(this.muteButton, 'click', () => this.setMuted(this.callbacks.onToggleMute()));
     this.on(this.pauseButton, 'click', () => this.callbacks.onPause?.());
-    this.on(this.preciseToggle, 'click', () => this.setPreciseOpen(this.preciseToggle.getAttribute('aria-expanded') !== 'true', true));
     this.on(this.debugToggle, 'change', () => this.callbacks.onToggleDebug(this.debugToggle.checked));
-  }
-
-  private readPreciseOpen(): boolean {
-    try { return localStorage.getItem(PRECISE_KEY) === '1'; } catch { return false; }
-  }
-
-  private setPreciseOpen(open: boolean, persist = false): void {
-    this.preciseToggle.setAttribute('aria-expanded', String(open));
-    this.container.classList.toggle('precise-open', open);
-    if (persist) { try { localStorage.setItem(PRECISE_KEY, open ? '1' : '0'); } catch { /* per-viewer convenience only */ } }
   }
 
   private calcSpeed(power: number): string {
@@ -208,6 +197,7 @@ export class HTMLControls {
   setVisible(visible: boolean): void {
     this.container.style.display = visible ? '' : 'none';
     this.homeButton.hidden = !visible;
+    this.aimBar.hidden = !visible;
     document.body.classList.toggle('in-game', visible);
   }
 
@@ -285,6 +275,7 @@ export class HTMLControls {
 
   destroy(): void {
     this.homeButton.remove();
+    this.aimBar.remove();
     for (const cleanup of this.cleanupListeners) cleanup();
     this.cleanupListeners = [];
     this.container.remove();
