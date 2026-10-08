@@ -30,3 +30,6 @@ desktop.ini
 .eslintcache
 *.tsbuildinfo
 .vite/
+
+.vercel
+.env*
