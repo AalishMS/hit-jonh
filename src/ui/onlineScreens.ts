@@ -4,6 +4,7 @@ import { MAPS } from '../levels';
 import { normalizeRoomCode } from '../rules/roomCode';
 import type { SeatState } from '../rules/onlineTypes';
 import type { OnlineProfile } from '../storage/storage';
+import { copyText } from './copyText';
 import { mapPreview } from './mapPreview';
 import type { MenuOverlay } from './menuOverlay';
 
@@ -125,6 +126,9 @@ export interface LobbyOptions {
   onLeave(): void;
 }
 
+/** The room link last shown as text because copying failed; it stays visible across lobby re-renders. */
+let revealedLink: string | null = null;
+
 export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
   // Re-rendered on every roster/presence change; keep keyboard focus where it was.
   const focusedId = document.activeElement instanceof HTMLElement ? document.activeElement.id : '';
@@ -132,10 +136,29 @@ export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
     const host = o.mySeat === 0;
     content.appendChild(el('h2', '', 'Room code'));
     content.appendChild(el('div', 'room-code', o.code));
+    // Without the Clipboard API (non-secure http:// origins, e.g. a LAN address) the link is shown selected instead.
+    const linkRow = el('label', 'online-link');
+    linkRow.htmlFor = 'online-link';
+    const linkInput = el('input');
+    linkInput.type = 'text';
+    linkInput.id = 'online-link';
+    linkInput.readOnly = true;
+    linkInput.value = o.link;
+    linkRow.append(el('span', '', 'Copy this link'), linkInput);
+    linkRow.hidden = revealedLink !== o.link;
+    linkInput.addEventListener('focus', () => linkInput.select(), { signal });
     const copy = button(content, 'Copy link', '', () => {
-      navigator.clipboard?.writeText(o.link).then(() => { copy.textContent = 'Link copied!'; }, () => { copy.textContent = o.link; });
+      void copyText(o.link, typeof navigator === 'undefined' ? undefined : navigator.clipboard).then(copied => {
+        if (!copied) revealedLink = o.link; // later re-renders keep showing it
+        if (signal.aborted) return; // this render was replaced or left meanwhile
+        if (copied) { copy.textContent = 'Link copied!'; return; }
+        linkRow.hidden = false;
+        linkInput.focus();
+        linkInput.select();
+      });
     }, signal);
     copy.id = 'online-copy';
+    content.appendChild(linkRow);
 
     const list = el('div', 'score-list');
     for (const seat of o.seats) {
