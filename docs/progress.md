@@ -280,7 +280,7 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Review/known issues:** Independent code review found no blocking correctness issues; the rooftop scenery finding was corrected and re-reviewed. Full three/four-player browser matches, hardware touch and sensory/performance testing were not repeated in this pass; N=3/4 rule behavior is covered by automated tests. Visual enjoyment and target-difficulty balance still require owner playtesting.
 
-**Next task:** Owner playtest of target positions; no further gameplay changes are included in this milestone.
+**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
 
 
 
@@ -305,7 +305,7 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Known issues/verification limits:** Actual physical touch, hardware FPS/stress and long-session heap profiling were not verified. Perceived sound balance and visual enjoyment require owner playtesting. Browser screenshots confirmed contact cues and cleanup; the very brief muzzle flash/recoil were not reliably captured manually, so their timing/render commands are verified by renderer tests rather than claimed as visually verified. OS preference changes during play and the in-flight saved-setting toggle were not manually exercised; cancellation is covered by automated controller/renderer tests and existing preference wiring.
 
-**Next task:** Owner playtest/tune launch and impact feel. Replacement art, recorded audio and world aiming remain separate future milestones.
+**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
 
 ## Rubber Yard Map Addition � 2026-10-05
 
@@ -326,7 +326,7 @@ pm run check passed typecheck/lint, **26 test files / 176 tests**, duration **1.
 pm run build passed: **71 modules transformed / 1.34s**.
 - Brute-forced exclusive trick-shot solutions in headless tests, ensuring physical solvability despite the high 7.0m concrete wall blocking direct shots to Jonh.
 
-**Next task:** Owner playtest/tune Rubber Yard trick shots. Determine if the map should be added to the default 3-map cycle or kept as a bonus unlock/practice stage.
+**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
 
 ## Polish pass — 2026-10-07/08 (branch `polish-pass`)
 
@@ -367,7 +367,7 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - **Ogg decoding on old Safari:** if it fails, the synthesized layers still play.
 - **The hat-locker screen** builds data URLs from textures on first open (a few ms).
 
-**Next task:** owner playtest with sound, on a phone. Then tune with `?tune`. Suggested next steps are in `CHANGELOG.md`.
+**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
 
 ## Online multiplayer — 2026-10-08 (branch `online-multiplayer`)
 
@@ -395,7 +395,7 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 | 9 | Close B's tab on B's turn: warning at 60 s, skip at 90 s | PASS | Warning at 52 s, skip at 82 s after close (about 8 s before the last heartbeat, consistent with 60/90). |
 | 10 | Idle 120 s on own turn: countdown from 90 s, then skip | PASS | "30 s left to fire" at ~88 s, counted to 1 s, then "Your turn was skipped". |
 | 11 | A offline over 40 s mid-flight: B reports witness outcome; A sees "Your shot timed out" | PASS | Witness outcome recorded 40.0 s after fire; shooter saw "Your shot timed out" within 3 s of reconnecting. |
-| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | **FAIL (partly fixed)** | Re-run 2 after commit `47ada62`: during the outage nothing was skipped, the clock restarted every 30 s and was fresh after reconnect, and an in-flight shot was resolved by the shooter's report. But the first player back made the not-yet-reconnected players look missing, so one `reportOutcome` skipped two turns (bug A below). |
+| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | PASS (re-run 3, after `1d97b08`) | Three pages offline, restored staggered (first back 50-61 s before the last): no player who was still reconnecting was skipped; `rooms.lastQuiet` recorded; the in-flight shot was resolved by the shooter's own report. Never-returning player and background-tab spectator NOT VERIFIED in a browser (unit tests only). After an outage the turn clock runs from the last restart in the quiet period (about 54 s were left when the last player returned). |
 | 13 | Background tab over 5 minutes: not skipped while away | NOT VERIFIED | Needs a real hidden window for over 5 minutes. See bug note below. |
 | 14 | Lobby host quiet over 90 s: B becomes host; A rejoins; Leave does not rejoin | PASS | Host handed over at 85 s; A rejoined automatically on reconnect; Leave did not rejoin. |
 | 15 | Rematch: both ready starts at once; one ready counts down; "You weren't included"; "Not enough players…" | PASS (re-run) | Re-run 2 with three players: both-ready starts at once; two ready showed \"Rematch starts in 23 s… 2 s\", then the third saw \"YOU WEREN'T INCLUDED IN THE REMATCH.\" \"Not enough players\" seen in run 1. |
@@ -411,6 +411,14 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - **Bug B (new behaviour):** the turn-limit skip can land up to 15 s after the limit ("0 s left to fire" shows for up to 15 s; a fire in that window is still accepted).
 - **Bug C (new behaviour):** an abandoned room (players quiet but never left) now runs its check timer every 30 s instead of 90 s until the 24 h cleanup, about 2,880 runs per room per day.
 - **"This match ended unexpectedly" cause (open, not fixed):** not a server skip. The client marked itself left: in `src/scenes/onlineController.ts`, `update()` reads state at line 326, may start a playback at 339-341, then calls `isCutShort(view)` at 343 with the stale state. When the last shot of a match is a skip, `startPlayback` marks it presented at once, so `isCutShort` sees a finished room with every shot presented and returns true; `endCutShort` calls `leaveRoom` (`convex/rooms.ts:160` sets `left`). Reproduced without a frozen tab (Carol left on the final turn while Alice watched). Proposed fix: return right after `startPlayback` or re-read the presentation before `isCutShort`, with a controller test for a final-shot skip.
+
+**Bug A and `isCutShort` fixes (evidence: `task-15-walkthrough-4.md`, `-5.md` in `.superpowers/sdd/2026-10-08-online-multiplayer/`).**
+- `a617f40` (client): `onlineController.update()` re-reads the presentation before `isCutShort`, so a final-shot skip shows the result instead of "This match ended unexpectedly" and no longer marks the watcher `left`. Browser: PASS (watcher stayed on "WATCHER WINS!", `left: false` in Convex dev). Genuine cut-shorts still end unexpectedly (regression test).
+- `1d97b08` + `7c426d3` (bug A): `touchPresence` (`convex/model.ts`) records the new optional `rooms.lastQuiet = { start, end }` when a check-in ends a quiet period; staleness and the 2-heartbeat margin count from `end`, for `checkTurn`, `checkInFlight`, report-driven turn start and the client "Waiting for…" warning. Eight new tests (six watched failing). Pushed to dev only. Trade-off, written into the spec: with a once-a-minute background-tab spectator, a truly missing player can be skipped up to about a minute late.
+- Evidence now: `npm run check` 45 files, 386 tests pass; `npm run build` passes.
+- **Bug B (open, undecided): turn-limit skip lands up to 15 s late** (observed limit 1059383, skip 1074408). Options: B1 accept (a fire in that window is still accepted); B2 reject late fires and disable Fire at 0 s (banner honest, skip row still late); B3 recheck about 2 s after the limit plus a client heartbeat at 0 s (skip lands 2-3 s late).
+- **Bug C (open, undecided): abandoned rooms keep timers running** until the 24 h cleanup: about 2,880 runs/room/day (30 s quiet wait), about 5,760 with a shot in flight (15 s). Options: C1 back off to a 10 min recheck after about 10 min quiet (about 163/day; needs C2's clock reset); C2 stop the chain while quiet and re-arm from the check-in that records `lastQuiet`, resetting `turnClockStart` (0 runs while abandoned; most logic); C3 accept.
+- Minor: "0 s left" showed for 0.5-5 s right after a reconnect.
 
 **Bugs / notes from the walkthrough (run 1).**
 - Item 12 FAIL (above): look at `checkTurnDecision` and the presence-staleness threshold.
@@ -452,4 +460,4 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - Evidence after this wave: `npm run check` passes with `Test Files 45 passed (45)` and `Tests 364 passed (364)`. `npm run build` passes: `168 modules transformed`, `main` 288.17 kB (84.91 kB gzip).
 - Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
 
-**Next task:** decide on bug A (reconnect race, needs a schema field) and the `isCutShort` final-shot-skip fix, then re-run item 12 and a real-browser background-tab test (item 13).
+**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
