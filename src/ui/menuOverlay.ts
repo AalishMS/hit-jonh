@@ -361,6 +361,9 @@ export class MenuOverlay {
 
   showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras): void {
     const firstRender = this.currentView !== 'match_result';
+    // Online re-renders this every rematch-countdown second; keep keyboard focus where it was (as the lobby does).
+    const active = document.activeElement;
+    const focusedId = !firstRender && active instanceof HTMLElement && this.content.contains(active) ? active.id : '';
     const signal = this.open('match_result');
     this.content.appendChild(el('h1', '', winners.length > 1 ? "It's a tie!" : `${winners[0]?.name ?? 'Nobody'} wins!`));
     const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
@@ -391,7 +394,9 @@ export class MenuOverlay {
       if (!online) this.showMainMenu();
     }, signal, actions);
     leave.id = 'mp-leave';
-    if (firstRender) (rematch.disabled ? leave : rematch).focus();
+    const again = focusedId === rematch.id ? rematch : focusedId === leave.id ? leave : null;
+    if (again && !again.disabled) again.focus();
+    else if (firstRender || again) (rematch.disabled ? leave : rematch).focus();
   }
 
   showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean, extras: SoloResultExtras = {}): void {
