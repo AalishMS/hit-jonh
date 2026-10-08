@@ -13,21 +13,27 @@ export interface RoomListener {
 }
 
 /** Typed codes are normalized here because the server does an exact lookup. */
-function requireValidCode(code: string): string {
+export function requireValidCode(code: string): string {
   const normalized = normalizeRoomCode(code);
   if (!normalized) throw new Error("That doesn't look like a room code.");
   return normalized;
 }
+
+/** A throwing query must not become an uncaught async error; the connection banner covers outages. */
+function swallowSubscriptionError(): void { /* intentionally ignored */ }
 
 /** The only module that talks to Convex. One instance per tab; `enter`/`exit` switch rooms. */
 export class OnlineSession {
   private unsubscribers: Array<() => void> = [];
   private heartbeatId: ReturnType<typeof setInterval> | null = null;
   private clockOffsetMs = 0;
-  private code: string | null = null;
+  private currentCode: string | null = null;
   private readonly onVisibility = () => { if (document.visibilityState === 'visible') void this.beat(); };
 
   constructor(private readonly client: ConvexClient, private readonly token: string) {}
+
+  /** The normalized code of the room currently entered, or null. */
+  get code(): string | null { return this.currentCode; }
 
   /** Server time estimate, for displaying countdowns only. */
   get serverNow(): number { return Date.now() + this.clockOffsetMs; }
@@ -46,11 +52,12 @@ export class OnlineSession {
     await this.client.mutation(api.rooms.joinRoom, { code: requireValidCode(code), token: this.token, ...profile });
   }
 
-  enter(code: string, listener: RoomListener): void {
+  enter(typedCode: string, listener: RoomListener): void {
+    const code = requireValidCode(typedCode);
     this.exit();
-    this.code = code;
-    this.unsubscribers.push(this.client.onUpdate(api.rooms.getRoom, { code, token: this.token }, s => listener.onRoom(s)));
-    this.unsubscribers.push(this.client.onUpdate(api.rooms.getPresence, { code }, e => listener.onPresence(e)));
+    this.currentCode = code;
+    this.unsubscribers.push(this.client.onUpdate(api.rooms.getRoom, { code, token: this.token }, s => listener.onRoom(s), swallowSubscriptionError));
+    this.unsubscribers.push(this.client.onUpdate(api.rooms.getPresence, { code }, e => listener.onPresence(e), swallowSubscriptionError));
     void this.beat();
     this.heartbeatId = setInterval(() => void this.beat(), ONLINE.heartbeatSeconds * 1000);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -62,12 +69,12 @@ export class OnlineSession {
     if (this.heartbeatId !== null) clearInterval(this.heartbeatId);
     this.heartbeatId = null;
     document.removeEventListener('visibilitychange', this.onVisibility);
-    this.code = null;
+    this.currentCode = null;
   }
 
   /** Captures the code synchronously, so calling `exit()` right after is safe. Errors are ignored. */
   async leaveRoom(): Promise<void> {
-    const code = this.code;
+    const code = this.currentCode;
     if (!code) return;
     try { await this.client.mutation(api.rooms.leaveRoom, { code, token: this.token }); } catch { /* leaving is best-effort */ }
   }
@@ -81,7 +88,7 @@ export class OnlineSession {
   }
 
   requestRematch(matchNumber: number): void {
-    const code = this.code;
+    const code = this.currentCode;
     if (code) void this.client.mutation(api.rooms.requestRematch, { code, token: this.token, matchNumber }).catch(() => undefined);
   }
 
@@ -99,17 +106,17 @@ export class OnlineSession {
 
   /** Sent once; the server ignores late or duplicate witnesses. */
   reportWitness(args: { matchNumber: number; seq: number; outcome: ClassifiedOutcome }): void {
-    const code = this.code;
+    const code = this.currentCode;
     if (code) void this.client.mutation(api.rooms.reportWitness, { code, token: this.token, ...args }).catch(() => undefined);
   }
 
   private requireCode(): string {
-    if (!this.code) throw new Error('OnlineSession: not in a room');
-    return this.code;
+    if (!this.currentCode) throw new Error('OnlineSession: not in a room');
+    return this.currentCode;
   }
 
   private async beat(): Promise<void> {
-    const code = this.code;
+    const code = this.currentCode;
     if (!code) return;
     try {
       const sentAt = Date.now();

@@ -1,0 +1,38 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ConvexClient } from 'convex/browser';
+import { ONLINE } from '../src/config/tuning';
+import { OnlineSession } from '../src/net/onlineSession';
+
+function fakeClient() {
+  const subs: Array<{ args: { code: string }; onError?: unknown }> = [];
+  const client = {
+    onUpdate: vi.fn((_q: unknown, args: { code: string }, _cb: unknown, onError?: unknown) => { subs.push({ args, onError }); return () => {}; }),
+    mutation: vi.fn(async () => ({ now: 1 })),
+    connectionState: () => ({ isWebSocketConnected: true }),
+  };
+  return { client: client as unknown as ConvexClient, subs };
+}
+const valid = ONLINE.codeAlphabet[0]!.repeat(ONLINE.codeLength);
+const listener = { onRoom() {}, onPresence() {} };
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('OnlineSession.enter', () => {
+  it('normalizes the code for subscriptions and exposes it, with error callbacks', () => {
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' });
+    const { client, subs } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    session.enter(` ${valid.toLowerCase()} `, listener);
+    expect(session.code).toBe(valid);
+    expect(subs.length).toBe(2);
+    for (const s of subs) { expect(s.args.code).toBe(session.code); expect(typeof s.onError).toBe('function'); }
+    session.exit();
+  });
+
+  it('rejects an invalid code with a clear message and subscribes to nothing', () => {
+    const { client, subs } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    expect(() => session.enter('!!', listener)).toThrow("That doesn't look like a room code.");
+    expect(subs.length).toBe(0);
+  });
+});
