@@ -40,6 +40,14 @@ describe('AudioManager', () => {
       audio.playImpact('ground');
       audio.playJonhReaction();
       audio.playOutOfBounds();
+      audio.playHit('trick');
+      audio.playHatHit();
+      audio.playSurface('rubber', 0.5);
+      audio.playFuse();
+      audio.playSting(true);
+      audio.playClick();
+      audio.setMusicEnabled(false);
+      audio.duckMusic(true);
       audio.destroy();
     }).not.toThrow();
   });

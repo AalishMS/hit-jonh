@@ -1,8 +1,10 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-04_
+_Last updated: 2026-10-08_
 
 ## Current milestone
+
+**Current (2026-10-08): owner-requested polish pass complete on branch `polish-pass`.** See `CHANGELOG.md` and the "Polish pass" entries at the end of this file. The earlier text below is historical.
 
 **Current: Owner-requested usability pass complete on the M0–M5 foundation.** Canvas aiming, automatic shot/turn progression, an obstacle on every map, vocal sound effects, illustrated Home, gameplay Home navigation and multiplayer arena selection are implemented. Final `npm run check`: typecheck/lint passed, **21 test files / 140 tests passed** (1.28s). `npm run build`: **67 modules transformed, built in 1.15s**. Production browser verification is recorded below. The prior M0–M5 release evidence remains historical; it did not establish the subjective completeness of the UI or game feel. See `docs/game-audit.md` for the current remaining-work assessment.
 
@@ -278,5 +280,184 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Review/known issues:** Independent code review found no blocking correctness issues; the rooftop scenery finding was corrected and re-reviewed. Full three/four-player browser matches, hardware touch and sensory/performance testing were not repeated in this pass; N=3/4 rule behavior is covered by automated tests. Visual enjoyment and target-difficulty balance still require owner playtesting.
 
-**Next task:** Owner playtest of target positions; no further gameplay changes are included in this milestone.
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
 
+
+
+## Launch and impact polish — 2026-10-05
+
+**Done/current:** Completed the owner-approved effects milestone. Accepted fire adds flash/smoke and cosmetic barrel recoil. First confirmed body contact resolves scoring immediately and starts an 80 ms contact freeze, 240 ms reaction at 35% speed, then normal reaction. Matter still receives only the fixed timestep. The impact has a camera shake/zoom punch, contact compression/rebound/tumble, ball squash, bounded dust/hat-coloured flecks/stars and a clamped fading BONK label. Existing hat/newspaper flight remains; duplicated old dust/stars were removed. All effect tuning lives in JUICE. No replacement assets, audio changes or aiming changes were added.
+
+**Lifecycle/accessibility decisions:** Effects use explicitly advanced active presentation time rather than Phaser timer/tween clocks, so pause holds them exactly. The 1.4 s result window remains real-time and includes effects. Next now settles Jonh/ball and clears camera/effects; reset, Home, map loads, handovers, retry/rematch and shutdown use the same cleanup. Hidden-tab restoration discards the first catch-up frame. Saved/OS reduced motion suppresses moving effects and hit timing but keeps a static fading BONK and existing audio/reactions. Enabling it during a sequence cancels remaining motion. The impact label uses the existing system font; replacement typography is outside this milestone.
+
+**Corrections found during verification:** Skipping a successful shot could leave the terminal ball visually squashed; cleanup now redraws it normally and settles Jonh. Per-frame recoil drawing initially picked the next multiplayer player's cannon colour during results; it now retains the shooter's colour/pattern until handover.
+
+**Actual automated summaries:** Final npm run check passed typecheck/lint, **26 test files / 169 tests**, duration **1.45 s**. Production npm run build passed, **70 modules transformed / 897 ms**. git diff --check passed. Added timeline boundary/integration tests at 30/60/144 Hz, pause/reset/reduced-motion/duplicate impact coverage, renderer launch/camera restoration/cancellation/bounded particles/label clamping, and actual Matter replay comparisons for all three maps plus a hat-only case. Reference contacts, classifications, scores and one-shot results are identical across tested frame rates and effects modes. Headless reference incoming speeds include Backyard 11.794 m/s (strong) and Fence 8.347 m/s (weak). Initial sandbox Vitest failed with the historical shared temporary-cache ENOENT; the unchanged required command passed outside the sandbox. Node emitted the existing experimental localStorage warning.
+
+**Production browser evidence:** Walkthrough used npm run preview at http://127.0.0.1:4176. Screenshots were inspected inline during the walkthrough.
+
+- Fence 45°/24% showed BONK at contact and the 125-point ricochet/three-star result. Pausing immediately after contact held the same visible pose across subsequent work; Resume continued the result. Next now opened the result immediately; Retry retained aim.
+- Backyard 45°/40% produced DIRECT HIT (100 points) with BONK. Backyard 25°/62% produced HAT HIT (20 points), flying-hat reaction and no BONK/body effects. A 0% multiplayer miss produced SHORT and automatically restored Player 2's own aim.
+- Reduced-motion Fence hit showed the static label and settled Jonh, with no moving burst. Home during this result and during a later flight returned to Home without stale effects or delayed transitions.
+- At 500×800, document client/scroll widths were both 500. BONK remained inside the canvas and action controls remained usable. The viewport override was reset.
+- Final two-player Fence-only six-shot match used near → far → middle, reference aims 65°/34%, 65°/55%, 65°/44%. Both finished at 325 points and three body hits. Player 2's striped blue cannon remained blue during its hit despite the next player becoming active in the rules. Skips/handovers cleared effects, targets moved at cycle boundaries, personal trails persisted, and rematch restored cycle 1 with zero scores, clean scenery/trails and saved 65°/44% aim.
+- Captured browser warning/error logs were empty. The final preview remains available for owner playtesting.
+
+**Known issues/verification limits:** Actual physical touch, hardware FPS/stress and long-session heap profiling were not verified. Perceived sound balance and visual enjoyment require owner playtesting. Browser screenshots confirmed contact cues and cleanup; the very brief muzzle flash/recoil were not reliably captured manually, so their timing/render commands are verified by renderer tests rather than claimed as visually verified. OS preference changes during play and the in-flight saved-setting toggle were not manually exercised; cancellation is covered by automated controller/renderer tests and existing preference wiring.
+
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
+
+## Rubber Yard Map Addition � 2026-10-05
+
+**Done/current:** Implemented the "Rubber Yard" map featuring a bouncy rubber ceiling and a solid concrete wall obstacle, satisfying the original design proposal for a trick-shot arena. Authored unique rendering for the new 
+ubber material to distinguish it from concrete and wood. Determined and proved stable, exclusive reference solutions for standard play and multiplayer target positions. Passed all physics and orchestration tests.
+
+**Lifecycle/accessibility decisions:**
+- Kept MULTIPLAYER.maps to the core 3 maps (ackyard, ence, 
+ooftop) to preserve existing competitive round tracking/match lengths, treating "Rubber Yard" as a distinct/optional map for solo practice or explicit selection.
+- Rubber material has high restitution (0.9) to allow rich bounce gameplay without breaking standard impact dampening on grass.
+- Multiplayer offsets were standardized to -2, 0, 3 to match other levels and ensure physical exclusion of trick shots.
+- SceneryRenderer gives the rubber surface a distinct pink/red color with a soft highlight and thick border, clearly signaling its bouncy nature to the player.
+
+**Actual automated summaries:**
+- 
+pm run check passed typecheck/lint, **26 test files / 176 tests**, duration **1.40s**.
+- 
+pm run build passed: **71 modules transformed / 1.34s**.
+- Brute-forced exclusive trick-shot solutions in headless tests, ensuring physical solvability despite the high 7.0m concrete wall blocking direct shots to Jonh.
+
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
+
+## Polish pass — 2026-10-07/08 (branch `polish-pass`)
+
+Owner request: make the game look and feel polished and shareable. Audit: `docs/polish-audit.md`. Style guide: `docs/art-direction.md`. Running notes per phase below; full summary in `CHANGELOG.md`.
+
+**Phase 2.1 — impact moment.** Art pipeline: SVG parts in `src/art/` rasterized once at boot (`BootScene`, `render/artTextures.ts`) at 2–3× for crisp zooms. Jonh rebuilt as a layered rig (`render/jonhRenderer.ts`) driven by a pure pose function (`fx/jonhPose.ts`), so the hit-stop holds frame 0 (his most extreme, crumpled pose) and every reaction is replayable. On the contact frame: hit-stop + slow motion with an eased ramp (time fed to the accumulator only), 1–2 frame flash, contact star, shockwave ring, radial particle burst, comic word with overshoot (Luckiest Guy), ball squash, camera punch-in and directional shake, and layered sound (thump + crack + yelp). Intensity is chosen per hit quality (`fx/impactProfile.ts`: trick > strong > weak > hat > obstacle > ground). Reduced motion keeps the comic word and sound, cuts poses, and drops freeze/slow/shake/flash/particles/camera motion. Decisions: body hits now hold the result for 2.6 s (`FLOW.bodyHitResultSeconds`) so the knock-back lands; stored multiplayer colours remain as save identifiers and are mapped to the new palette when drawn.
+
+**Phase 2.2 — Jonh and the world.** Jonh's rig now has idle life (breathing, blinks, a page turn every 8 s, suspicious glances), anticipation (peeks over the paper while the player drags to aim; flinches and raises the paper as the ball closes in) and distinct reactions: weak/strong/trick knock-backs, hat-only (hat flies, he pats his bald head), duck (overhead), smug (short), glare (over) and wince (obstacle). Scenery is four parallax layers (sky+sun+drifting clouds, far hills/skyline, mid hills with trees and birds, garden fence) plus a tiled ground with an ink edge on the collider top; each map has its own light (midday, afternoon, golden-hour town, pink late afternoon). Obstacles are drawn per collider box (shed, fence post, brick terrace, stone wall, rubber beam on chains); flowers/tufts sway. Memory is kept low by tiling small textures. Ambient motion runs on real time and stops under reduced motion.
+
+**Phase 2.3 — cannon and shooting.** New cannon (carriage, spoked wheel, brass-banded barrel painted in the player's colour and pattern). Fire now has anticipation (0.12 s wind-up: barrel squash + fuse sparks + fizz while simulation time is held), then muzzle flash, smoke puffs, sparks and recoil that rolls the carriage. The ball stretches with speed and leaves a speed ribbon; trails are a comic dotted path with an inked X landing mark. Aiming is in the world: grab the cannon (it points at the pointer, distance = power) or drag anywhere (↕ angle, ↔ power, axis-locked), with a 0.3 s analytic launch preview (direction and power, never the landing; SPEC §3.2) and a fairground power meter under the cannon. Sliders and keys remain as the accessible fallback.
+
+**Phase 2.4 — camera and replay.** A camera rig (`render/cameraRig.ts`, pure framing in `fx/cameraDirector.ts`) frames the full field while aiming, follows the ball at a gentle 1.15× in flight, zooms out (bottom-anchored, never below the ground) when the ball climbs above the view, punches in on Jonh at impact (zoom + directional shake on real time, so it moves during the hit-stop) and returns to the full view on reset. Strong and trick hits get a slow-motion replay (`fx/replay.ts`): after Jonh lands, letterbox bars and a blinking REPLAY tag appear, the camera follows the recorded ball at 2.1× and 40 % speed, Jonh (back in his chair) spots it coming, and the full impact replays before easing out. Replays are presentation only (recorded positions + the pure pose curve), skippable with Next/Enter, frozen by pause, and absent under reduced motion. After a body hit the ball now bounces away cosmetically instead of freezing in mid-air. Decision: weak hits and hat hits get no replay, to keep multiplayer turns brisk; the body-hit result window stretches to fit the replay.
+
+**Phase 2.5 — audio.** Kenney "Impact Sounds" (CC0, 15 files, 165 kB Ogg) are layered with synthesized parts; every hit plays a low thump (sine kick + punch sample), a high crack (band-passed noise + wood sample) and Jonh's formant yelp on the same AudioContext time, with a slide whistle for strong hits and a bell for trick shots. Surfaces sound different (grass, wood, stone, rubber "boing"), the hat gets a tinny plink + "fwip", the cannon has a fuse fizz, a sub kick, a crack and air. A speed-following whoosh plays in flight. Every play is pitch-randomised (cosmetic RNG); nothing is slowed during hit-stop or replay. A light 8-bar swung loop ("Sunday Stroll", marimba/pizzicato bass/shaker, synthesized) and occasional birdsong run on a separate music bus with its own setting; everything passes a master compressor. Measured in headless Chrome: all 15 samples decode, output peaks 0.22 (music), 0.73 (launch), 0.88 (hit), no clipping. **Not verified:** how any of it actually sounds to a listener; no listening was possible. If Ogg decoding fails (very old Safari), the synthesized layers still play.
+
+**Phase 2.6 — UI and screens.** One display face (Luckiest Guy) and one UI face (Nunito), self-hosted. The page is a halftone comic backdrop; the game is a full-screen comic panel (height-limited, 16:7) with the HUD laid over the canvas: map chip + cannonball attempt pips or player score chips, sound/pause icon buttons, a pop-in caption, a big pulsing FIRE button where the right thumb rests, a "Next" pill after a shot and a collapsible "Precise aim" panel that keeps the native sliders as the accessible fallback (always shown in portrait). Title screen: animated logo over a live attract scene (Jonh reading in the Backyard). All menus/results restyled (mode cards, illustrated map cards with stars, coloured handover name with auto-advance bar, ranked score rows, stars that pop in, NEW BEST/TRICK SHOT ribbons, switch-style settings incl. a new Music toggle); cards pop in, an iris opens into play; button clicks tick. Reduced motion (setting or OS) also turns off CSS animation. Phone landscape now fits everything on one screen (previously the controls were below the fold); portrait stacks controls under the canvas with a rotate hint.
+
+**Phase 2.7 — retention (three cheapest replay reasons).** Chosen for cost vs. pull: (1) **Unlockable hats** — eight hats for Jonh (art already part of the rig), unlocked by milestones (first hit, hat-only hit, trick shot, three stars, a Daily Bonk hit, 25 hits, three stars everywhere); selected in a hat locker and worn everywhere including the title scene. Gives long-term goals and makes clips visibly different. (2) **Daily Bonk** — a date-seeded pick of a map + one of its already physics-validated multiplayer target positions, so every day is solvable with zero new level work; only the first run of the day is recorded, with a day streak; it never touches solo bests. (3) **Hit streak** — consecutive solo body hits, shown as a HUD chip and on results, best streak saved. Pure rules in `rules/progression.ts` (tested), persisted as an optional `progress` field in the existing `hitJonh.v1` save (older saves load unchanged; corrupt progress is sanitised field by field).
+
+**Verification and evidence (end of the polish pass).**
+
+- `npm run check`: typecheck and lint pass, with **34 test files / 218 tests** passing.
+- `npm run build`: passes. Phaser is 1.43 MB (375.6 kB gzip, unchanged) and game code is 193 kB (57 kB gzip). New shipped assets are 56 kB of fonts and 165 kB of audio, about 660 kB transferred in total without sourcemaps.
+- **Headless Chrome (CDP) walkthroughs** with screenshots in `docs/polish/after/`:
+  - every screen at 1440x900, 844x390 (phone landscape) and 390x844 (portrait)
+  - impact frame sequences stepped at exactly 16.667 ms for strong, hat-only, reduced-motion and replay (`impact-seq/`); every layer fires on the contact frame
+  - a 2-player Fence match: alternating turns, the same position per cycle, 325/325 tie with crowns, and a clean rematch
+  - pause in flight and during the replay: frozen exactly, then resumes
+  - a Daily Bonk run that unlocked hats
+  - the production `vite preview` build: no console errors, no dev globals, no tuning panel
+- **Audio** (measured, not listened to): all 15 samples decode; output peaks are 0.22 for music, 0.73 for launch and 0.88 for a hit.
+- **Performance** under 4x CPU throttle in headless Chrome: during flight and impact, update p95 is about 2 ms and render CPU p95 about 8 ms. The contact frame is about 25 ms (about 6 ms unthrottled). The one remaining spike (~77 ms at 4x) happens when the result screen builds its HTML, not during play.
+
+**Known issues / not verified.**
+
+- **Sound and feel:** no listening and no hands-on play were possible.
+- **Real-device frame rate:** headless Chrome renders with SwiftShader, so GPU cost on a phone is unknown.
+- **Ogg decoding on old Safari:** if it fails, the synthesized layers still play.
+- **The hat-locker screen** builds data URLs from textures on first open (a few ms).
+
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
+
+## Online multiplayer — 2026-10-08 (branch `online-multiplayer`)
+
+**Built.** Online rooms by code for 2–4 players (SPEC §6.1), on Convex. Each browser tab is one player; the shooter's client reports the official outcome while every client re-simulates locally. The server (`convex/`) owns turn order, aim and duplicate checks, the timers (120 s turn, 90 s stale player, 40 s unreported shot), rematch and an hourly room cleanup. Client modules: room code and session logic, a replay-based match tracker, online setup/lobby/notice screens, and an `OnlineController` wired into `PrototypeScene` (`activeMode` stays `multi`, online is `online?.inMatch`). Hot-seat play and the saved local roster are unchanged by design and unit-tested (walkthrough item 17 NOT VERIFIED). Setup: README "Online play (Convex)".
+
+**Cross-browser determinism (Task 1).** The user ran `crosscheck.html` in Chrome and Firefox: 639 shots, outcomes and step counts identical (94 Body, 26 Ricochet Body, 2 Hat Only, 517 Miss). One shot (rooftop/near 76/90) ends about 1.08e-11 apart (float rounding) with the same outcome (miss) and 1801 steps. Safari: **NOT VERIFIED** (no digest provided). The user accepted the Chrome+Firefox match on 2026-10-08.
+
+**Automated evidence (run at the end of Task 15).**
+- `npm run check`: typecheck and lint pass; `Test Files 44 passed (44)`, `Tests 355 passed (355)`, duration 2.35 s.
+- `npm run build`: passes; `167 modules transformed`, `built in 824ms`; Phaser 1,431.43 kB (375.59 kB gzip); `main` 287.01 kB (84.57 kB gzip).
+- Node printed its usual experimental localStorage warning during Vitest.
+
+**Manual walkthrough (Task 15 Step 1): run 2026-10-08 via the chrome-devtools MCP** (one Chromium, three pages in separate browser contexts, Convex dev `proper-lapwing-569`). Full evidence: `.superpowers/sdd/2026-10-08-online-multiplayer/task-15-walkthrough-2.md`. Result: 12 PASS, 1 FAIL (item 12), 1 NOT VERIFIED (item 13), 5 PARTIAL. Same engine and machine throughout, so no cross-browser, phone or Safari/Firefox coverage.
+
+| # | Item | Status | Observed |
+| --- | --- | --- | --- |
+| 1 | Create in tab A; join from B by lowercase code with a space and by link; distinct colour/pattern | PASS | `rx kyd` joined as seat 2; `?room=` link prefilled and joined as seat 3; colours/patterns distinct. |
+| 2 | Bad code `K0QPX` rejected locally; unknown valid code says "No room with that code." | PASS | Both messages seen. |
+| 3 | Host changes arena and B sees it; B has no Start; Start enabled at 2 players | PASS | Arena change reached B within 1.5 s; Start disabled at 1 player, enabled at 2. |
+| 4 | Full single-map match: shots animate on both tabs from fire, scores match, handover text | PASS (ball not eyeballed mid-air) | Both tabs showed "in flight" at fire time; final scores matched (Bob 100, Alice 0). No screenshot of the ball in the air on the spectator tab. |
+| 5 | On the other player's turn Space/arrows/drag/Fire do nothing; "{name} is aiming…" | PASS (canvas drag not tried) | Keys changed nothing; Fire, sliders and Aim again were disabled. |
+| 6 | Pause during the other player's flight; their next shot waits and plays once on resume | PASS | Shot played once after Resume. |
+| 7 | Reload A mid-turn rejoins; reload during own flight replays and reports; B not stuck | PASS (re-run) | Re-run 2: host tab reloaded on its own turn, rejoined seat 0 (\"Your turn!\"), fired, match advanced, never marked `left`. Reload while the ball is airborne not re-tested. |
+| 8 | Leave on own turn: skipped at once, "{name} was skipped", no cannon fire | PARTIAL | Turn advanced with no gap and later turns read "was skipped", but the first skip banner was missed and "no cannon fire" was not checked by screenshot. |
+| 9 | Close B's tab on B's turn: warning at 60 s, skip at 90 s | PASS | Warning at 52 s, skip at 82 s after close (about 8 s before the last heartbeat, consistent with 60/90). |
+| 10 | Idle 120 s on own turn: countdown from 90 s, then skip | PASS | "30 s left to fire" at ~88 s, counted to 1 s, then "Your turn was skipped". |
+| 11 | A offline over 40 s mid-flight: B reports witness outcome; A sees "Your shot timed out" | PASS | Witness outcome recorded 40.0 s after fire; shooter saw "Your shot timed out" within 3 s of reconnecting. |
+| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | PASS (re-run 3, after `1d97b08`) | Three pages offline, restored staggered (first back 50-61 s before the last): no player who was still reconnecting was skipped; `rooms.lastQuiet` recorded; the in-flight shot was resolved by the shooter's own report. Never-returning player and background-tab spectator NOT VERIFIED in a browser (unit tests only). After an outage the turn clock runs from the last restart in the quiet period (about 54 s were left when the last player returned). |
+| 13 | Background tab over 5 minutes: not skipped while away | NOT VERIFIED | Needs a real hidden window for over 5 minutes. See bug note below. |
+| 14 | Lobby host quiet over 90 s: B becomes host; A rejoins; Leave does not rejoin | PASS | Host handed over at 85 s; A rejoined automatically on reconnect; Leave did not rejoin. |
+| 15 | Rematch: both ready starts at once; one ready counts down; "You weren't included"; "Not enough players…" | PASS (re-run) | Re-run 2 with three players: both-ready starts at once; two ready showed \"Rematch starts in 23 s… 2 s\", then the third saw \"YOU WEREN'T INCLUDED IN THE REMATCH.\" \"Not enough players\" seen in run 1. |
+| 16 | Skip-vs-fire race at about 119 s: loser sees "Your turn was skipped", clients agree | PASS (timing approximate) | Fire at "1 s left" won; fire at "0 s left" lost and both clients agreed. Fire time only approximately 119-120 s. |
+| 17 | Hot-seat roster still shows saved local players after online play | PASS | Hot-seat names Zed/Yan survived; online profile stored separately. Roster was entered after the online session. |
+| 18 | Cleanup cron registered and hourly runs error-free; 24 h deletion | PARTIAL | `convex/crons.ts` registers hourly `cleanupRooms`; logs show one Cron run, error null, 0 documents touched. Only one run seen, so "hourly" repeats and the 24 h deletion NOT VERIFIED. |
+| 19 | Dev console `[online] shot … local …, official …` mismatch warnings across browsers | PARTIAL | No mismatch warning in Alice's console. Bob's console not read; single engine, so nothing about cross-browser. |
+
+**Item 12 fix and re-run (evidence: `.superpowers/sdd/2026-10-08-online-multiplayer/task-15-walkthrough-3.md`).**
+- Commits `47ada62` (rules: skips and shot timeouts now need evidence of life; `isRoomEmpty` replaced by `lastLife`/`isRoomQuiet`/`isOutlived`; 9 new or changed tests failed first) and `f14a3d2` (spec). Pushed to dev only. `npm run check`: 45 files, 374 tests pass; `npm run build` passes. Three old tests changed meaning (turn-limit skip needs a later check-in; wait interval is 2 heartbeats; a shooter who left with no witness waits for a check-in).
+- Re-run in a real browser: M1 PASS (focus stayed on Leave through ~21 countdown re-renders); items 7 and 15 PASS (above); item 12 still FAIL because of bug A.
+- **Bug A (open, not fixed): reconnect race.** After a shared outage the first player back makes everyone not yet reconnected look missing; one `reportOutcome` skipped two turns, and `checkTurn` has the same race. Proposed fix: record on the room when a quiet period ends and count staleness and the 2-heartbeat margin from then (needs a new schema field).
+- **Bug B (new behaviour):** the turn-limit skip can land up to 15 s after the limit ("0 s left to fire" shows for up to 15 s; a fire in that window is still accepted).
+- **Bug C (new behaviour):** an abandoned room (players quiet but never left) now runs its check timer every 30 s instead of 90 s until the 24 h cleanup, about 2,880 runs per room per day.
+- **"This match ended unexpectedly" cause (open, not fixed):** not a server skip. The client marked itself left: in `src/scenes/onlineController.ts`, `update()` reads state at line 326, may start a playback at 339-341, then calls `isCutShort(view)` at 343 with the stale state. When the last shot of a match is a skip, `startPlayback` marks it presented at once, so `isCutShort` sees a finished room with every shot presented and returns true; `endCutShort` calls `leaveRoom` (`convex/rooms.ts:160` sets `left`). Reproduced without a frozen tab (Carol left on the final turn while Alice watched). Proposed fix: return right after `startPlayback` or re-read the presentation before `isCutShort`, with a controller test for a final-shot skip.
+
+**Bug A and `isCutShort` fixes (evidence: `task-15-walkthrough-4.md`, `-5.md` in `.superpowers/sdd/2026-10-08-online-multiplayer/`).**
+- `a617f40` (client): `onlineController.update()` re-reads the presentation before `isCutShort`, so a final-shot skip shows the result instead of "This match ended unexpectedly" and no longer marks the watcher `left`. Browser: PASS (watcher stayed on "WATCHER WINS!", `left: false` in Convex dev). Genuine cut-shorts still end unexpectedly (regression test).
+- `1d97b08` + `7c426d3` (bug A): `touchPresence` (`convex/model.ts`) records the new optional `rooms.lastQuiet = { start, end }` when a check-in ends a quiet period; staleness and the 2-heartbeat margin count from `end`, for `checkTurn`, `checkInFlight`, report-driven turn start and the client "Waiting for…" warning. Eight new tests (six watched failing). Pushed to dev only. Trade-off, written into the spec: with a once-a-minute background-tab spectator, a truly missing player can be skipped up to about a minute late.
+- Evidence now: `npm run check` 45 files, 386 tests pass; `npm run build` passes.
+- **Bug B (fixed with option B3, commits `50ac35b`, `92cc4b7`):** after the limit the server rechecks every 2 s (`ONLINE.turnLimitRecheckSeconds`) and each client sends one heartbeat when its countdown hits 0 (`OnlineMatchTracker.takeTurnExpiry`). Browser: the skip landed 2.014 s after the limit, twice (both pages connected; active player offline). A short single-player outage still did not skip. NOT VERIFIED in a browser: a shared outage across the limit (unit tests only). Caveats: if the client's server-clock estimate runs ahead, the 0 s check-in can miss the limit and the skip falls back to the old up-to-15 s worst case; if every tab is hidden the 0 s heartbeat doesn't fire (game loop stops) and the skip waits for a regular heartbeat. Evidence: `task-15-walkthrough-6.md`. `npm run check`: 45 files, 392 tests; build passes.
+- **Bug C (accepted, option C3, no change):** abandoned rooms keep their check timer running (about 2,880 runs/room/day, about 5,760 with a shot in flight) until the 24 h cleanup. Revisit with C2 (stop while quiet, re-arm from the `lastQuiet` check-in) if Convex usage becomes a concern.
+- Minor: "0 s left" showed for 0.5-5 s right after a reconnect.
+
+**Bugs / notes from the walkthrough (run 1).**
+- Item 12 FAIL (above): look at `checkTurnDecision` and the presence-staleness threshold.
+- A tab that was not the DevTools-selected page froze (countdown stuck), stopped heartbeating, was marked `left`, and its match ended with "This match ended unexpectedly." Likely test-environment throttling, not a controlled test, but it is the same area as item 13 and needs a real-browser background test.
+- Minor transient UI after reconnect: "Waiting for Bob… skipping in 6 s" shown for ~2 s on the reconnecting tab; the lobby showed stale host state for ~2 s.
+- Layout: on the spectator tab the other player's cannon is drawn below the ground strip with a "Bob · stripes" label; whether the "is aiming…" banner is ever visibly shown was not verified.
+- No JS errors other than the expected offline WebSocket failures.
+
+**Still not verified:** items 13 and 12's in-flight part, repeated hourly cron runs and 24 h deletion, the `IMPOSSIBLE_OUTCOME` rejection, phone/touch, Safari/Firefox, cross-browser mismatch warnings.
+
+**How to re-run.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open each player in a NEW tab, not "Duplicate tab" (a duplicate shares `sessionStorage` and so the first tab's seat). Use DevTools Offline for items 11-12.
+
+**How to run the walkthrough yourself.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open two tabs (or a desktop browser plus a phone on the same Wi-Fi); each tab is its own player. Open each player in a NEW tab, not "Duplicate tab": a duplicated tab copies `sessionStorage` and so shares the first tab's seat. Work through the 19 items above, using DevTools Offline for items 11–12, and record PASS/FAIL here.
+
+**Decisions.**
+- One player per tab: the token lives in `sessionStorage`, not `localStorage` (approved deviation), so two tabs can play each other.
+- `activeMode` stays `multi` and online play is `online?.inMatch` (approved; the spec wording said `'online'`).
+- The shooter's client is trusted for the official outcome; the server never re-simulates physics.
+- Chrome+Firefox identical outcomes accepted as the cross-browser gate; float drift only affects animation.
+- The Convex deployment `proper-lapwing-569` is treated as dev; nothing was run against the production deployment.
+- `heartbeat` and `leaveRoom` silently no-op for unknown tokens; room codes are normalized client-side before any server call.
+- A reopened `?room=CODE` link into a seat marked left shows Join prefilled and never auto-rejoins.
+- Server `startTurn` logs and finishes a match that cannot be replayed instead of throwing (a throw inside a timer would wedge it); the client then leaves with "This match ended unexpectedly."
+
+**Known limitations / deferred.**
+- Previous-shot trails are empty after a reload until each player fires again.
+- Trust model: a modified client could report any outcome that is possible on the map.
+- `joinRoom` clears `left` only when the room is `playing`, so a left seat in a finished room is not cleared by Join.
+- Minor review items remain: unbounded `.collect()` in a few reads, `destroy()` does not stop a pending create/join, some hard-coded colours in `menu.css`, and small a11y/focus nits on the online screens.
+- Convex tooling also wrote Convex guidance blocks into `AGENTS.md`/`CLAUDE.md` and files under `.agents/`, `.claude/` and `skills-lock.json`. They are not part of this work and are left uncommitted for the owner.
+
+**Final review fix wave (after the whole-branch review).**
+- I1 (browser: PARTIAL PASS: offline Create then Back stayed on the mode screen and the late room was left empty; late Join and late link NOT VERIFIED): Create, Join and a `?room=` link now act only if the user is still on the screen they started from. Convex queues calls while offline, so a reply could land late and pop a lobby over a solo game or leave an orphan seat; a late Create/Join now gives its seat back (`leaveRoom(code)`). Covered by 5 new controller tests and 1 session test, each watched failing first.
+- I2: on another player's turn the HUD is no longer inert. Mute and Pause stay usable (touch players have no Escape/M), while Fire, the aim sliders and Reset are disabled. Hot-seat is unchanged (there `canUserAct()` is always true). Browser: PASS (Mute toggled and Pause worked while Fire, sliders and Aim again were disabled).
+- I3: Copy link did nothing on non-secure origins (it never crashed). `navigator.clipboard` is undefined on a LAN `http://` address. Fixed with a fallback: the lobby shows the link in a read-only, selected field labelled "Copy this link". The pure `copyText()` helper is unit-tested; browser: PASS with `navigator.clipboard` set to undefined (selected read-only field appeared and survived a lobby re-render; the clipboard success path was not exercised).
+- M1: the online result screen keeps keyboard focus across its once-a-second countdown re-renders (browser: PARTIAL PASS: focus on Leave held across a Rematch press and the "Not enough players" note; the "Rematch starts in Ns" re-renders were not observed).
+- M2: `cleanupRooms` schedules another run immediately after deleting a full batch of 50 rooms. Pushed to dev only (`npx convex dev --once`); not exercised (no smoke run).
+- Docs: SPEC §6.1 now names the `online` field of the `hitJonh.v1` save; README and this file say each player needs a NEW tab, not "Duplicate tab".
+- Evidence after this wave: `npm run check` passes with `Test Files 45 passed (45)` and `Tests 364 passed (364)`. `npm run build` passes: `168 modules transformed`, `main` 288.17 kB (84.91 kB gzip).
+- Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
+
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).

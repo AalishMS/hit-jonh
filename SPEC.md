@@ -76,7 +76,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
 
 ## 5. Solo rules
 
@@ -100,6 +100,19 @@ Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extr
 - A brief handover screen names the next player, then automatically opens aiming; Ready now skips the wait. Their saved settings and last trail load automatically. Scores remain visible in the control strip.
 - Players **can** learn from each other's shots; this is intended. **[DECIDED]**
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
+
+## 6.1 Online multiplayer [DECIDED by owner 2026-10-08]
+
+Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summary:
+
+- **Rooms by code.** One player creates a room and gets a 5-character code (shareable as `?room=CODE`); 2–4 friends join. No accounts, no matchmaking. Seat 0 is host in the lobby (maps, Start).
+- **Live and turn-based.** Same rules as §6/§7. Each shot is sent when fired (angle/power) and again when it lands (outcome). Every client re-simulates locally; the **shooter's outcome is official** for score and label. Cross-browser divergence only affects the animation.
+- **Trust.** The shooter's client is trusted. The server checks turn order, aim ranges, duplicates and map-impossible outcomes, and does not re-simulate physics.
+- **Timers run on the server.** Online-only turn limit of 120 s (countdown from 90 s). Missing player skipped after 90 s without a heartbeat (warning from 60 s). Unreported shot resolved after 40 s with a spectator's outcome or a miss. If everyone is disconnected at once, nothing is skipped. Values are [PROPOSED][TUNE] in `ONLINE` (`src/config/tuning.ts`), except the 120 s limit [DECIDED].
+- **Rematch.** Any active player may press Rematch. It starts when everyone is ready, or after a 30 s window with the ready players (at least 2). Others see "You weren't included".
+- **Identity.** One player per browser tab (token in sessionStorage); a reload keeps the seat. The name/colour profile is saved in the `online` field of the `hitJonh.v1` save. The hot-seat roster is untouched.
+- **Out of scope.** Accounts, matchmaking, chat, spectators, live aim streaming, server physics, async play, deployment, kicking.
+- **Known limitation.** After a reload, previous-shot trails are empty until each player fires again.
 
 ## 7. Scoring and scene reset
 
@@ -230,6 +243,27 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
 - Never repeat the same line on consecutive shots. Dialogue randomness uses a cosmetic RNG **separate from simulation**; it must never affect collisions or outcomes. **[DECIDED]**
 - Comic synthesized vocal yelps accompany body hits; a voiced FAAH cue plays once per shot when the ball leaves any visible canvas edge. Leaving the top still allows the ball to return and never changes scoring/end conditions. Mute and master volume apply to all cues. **[DECIDED sound triggers, PROPOSED synthesis]**
 - Reactions are brief (≤ 1.5 s before Continue is offered) and skippable. Reduced-motion disables camera shake and large screen-space effects.
+
+### 10.2 Owner-approved launch and impact polish (5 October 2026) [DECIDED]
+
+- Effects-only milestone using the existing cartoon graphics and audio. Replacement art, recorded audio and world aiming remain outside this pass.
+- Accepted fire adds a muzzle flash, smoke puff and cosmetic barrel recoil. Physical muzzle, launch velocity and colliders are unchanged.
+- First confirmed body contact (direct or ricochet) resolves scoring immediately and ends that frame's physics loop. Freeze ball/Jonh's contact pose for 80 ms, then run their reaction at 35% speed for 240 ms before returning to normal. Scale elapsed time into `FixedStepper`; Matter always receives the unchanged fixed timestep. No slowdown before contact and no body effects for hat-only hits.
+- Camera shake (120 ms), zoom punch (1.03× returning over 180 ms), compression/rebound/tumble, ball squash, bounded dust/hat-coloured flecks/stars and a clamped, ink-outlined BONK label (700 ms) reinforce the hit. Values live in `JUICE` tuning and are [TUNE]. Hat/newspaper reactions remain; duplicate old dust/stars are removed.
+- The existing 1.4 s result window uses active real time including effects. Next now skips/settles effects immediately. Pause freezes every timeline; hidden-tab restoration discards catch-up. Home, reset, map load, handover, retry/rematch and shutdown restore camera and renderer transforms and clear effects.
+- Saved or OS reduced motion keeps existing reduced-motion reactions, audio and a static fading BONK label; suppresses freeze, slow motion, moving particles, recoil, squash and camera motion. Enabling it during effects immediately settles motion.
+
+### 10.3 Owner-requested polish pass (7 October 2026) [DECIDED request, PROPOSED values]
+
+The owner asked for the game to look and feel polished and shareable, with art, animation, camera, audio, UI and retention. Full details are in `CHANGELOG.md`; the art direction is in `docs/art-direction.md`. These decisions supersede conflicting earlier presentation details:
+
+- **Time scaling.** Hit-stop and slow motion are now chosen per hit quality (`FX` in `src/config/tuning.ts`). There is a freeze, then slow motion, then a linear ramp back to full speed. Fire also has a 0.12 s wind-up during which simulation time is held. All of these scale only the real time fed to `FixedStepper`; the fixed step never changes. Determinism is covered by `tests/polishDeterminism.test.ts`.
+- **Result window.** Body hits hold the result for 2.6 s instead of 1.4 s. Strong and trick hits play a skippable slow-motion replay first, and the window stretches to fit it. Other outcomes keep 1.4 s. Pause freezes the replay; Next now/Enter skips it.
+- **Aiming (§3.2).** You can drag on the canvas: up/down sets angle (as before); power is set only by the slider, keys, or the grabbed cannon. Pressing on the cannon grabs it: it points at the pointer, and distance sets power. Sliders remain in a collapsible "Precise aim" panel, and keys are unchanged. The aim aid is now a 0.3 s analytic launch preview: dots from the muzzle showing direction and power, never the landing point.
+- **Camera.** It is fixed while aiming. In flight it follows and zooms gently; at impact it punches in on Jonh; on reset it snaps back to the original full view. It is presentation only.
+- **Reduced motion (§10.1, §10.2).** The comic word fades in place and sound plays. Poses cut to their settled state. Freeze, slow motion, shake, zoom, flash, flying particles, smear, replay, ambient drift and CSS animation are all off.
+- **Retention (cosmetic only; not the deferred "upgrades/economy" of §4.2).** There are unlockable hats for Jonh, a date-seeded Daily Bonk on an authored multiplayer target position, and a solo hit streak. All are stored as an optional `progress` field in `hitJonh.v1`. Daily runs never affect solo bests.
+- **Multiplayer colours.** Saved colour values are unchanged identifiers. They are drawn with the art-direction palette (tomato, sky, leaf, grape), always paired with patterns.
 
 ## 11. Maps [PROPOSED geometry, TUNE]
 

@@ -1,160 +1,147 @@
 import type Phaser from 'phaser';
-import { LOOK } from '../config/tuning';
+import { hex } from '../art/palette';
+import { obstacleKey, themeFor } from '../art/sceneryArt';
+import { hash01 } from '../fx/easing';
 import type { LevelData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
+import { artImage, artMeta, artScale } from './artTextures';
 
+/** Layer depths: background < playfield < actors. */
+const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
+/** Horizontal extent drawn beyond the 1280 px world so camera zoom-outs never show an edge. */
+const LEFT = -700;
+const SPAN = 2700;
+
+interface Drifter { obj: Phaser.GameObjects.Image; speed: number; baseY: number; phase: number }
+
+/**
+ * Four parallax layers (sky, far, mid, garden) plus the playfield. Built from small shared
+ * textures so memory stays low on phones. Ambient motion is slow and small; reduced motion
+ * stops it entirely.
+ */
 export class SceneryRenderer {
-  private graphics: Phaser.GameObjects.Graphics;
+  private objects: Phaser.GameObjects.GameObject[] = [];
+  private clouds: Drifter[] = [];
+  private birds: Drifter[] = [];
+  private flora: Array<{ obj: Phaser.GameObjects.Image; phase: number }> = [];
+  private rays: Phaser.GameObjects.Image | null = null;
+  private time = 0;
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly ppm: number,
     private readonly worldHeightPx: number,
     private readonly worldWidthPx: number,
-  ) {
-    this.graphics = scene.add.graphics();
-    this.graphics.setDepth(0);
-  }
+  ) {}
 
   draw(level: LevelData): void {
-    this.graphics.clear();
+    this.clear();
+    const s = this.scene;
+    const theme = themeFor(level.id);
+    const groundTop = simYToWorldY(level.ground.maxY, this.worldHeightPx, this.ppm);
+    s.cameras.main.setBackgroundColor(theme.skyTop);
+    const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => { this.objects.push(o); return o; };
 
-    // Flat, quiet sky keeps the ball and its trail readable.
-    this.graphics.fillStyle(LOOK.sky);
-    this.graphics.fillRect(0, 0, this.worldWidthPx, this.worldHeightPx);
-
-    // 2. Soft clouds in the background
-    this.graphics.fillStyle(LOOK.cloud);
-    this.drawCloud(225, 145, 28);
-    this.drawCloud(650, 95, 22);
-    this.drawCloud(1050, 175, 32);
-
-    // 3. Distant treeline / garden hedge
-    const groundTopPx = simYToWorldY(level.ground.maxY, this.worldHeightPx, this.ppm);
-    this.graphics.fillStyle(LOOK.distantGreen);
-    for (let x = -40; x < this.worldWidthPx + 80; x += 80) {
-      this.graphics.fillEllipse(x, groundTopPx - 45, 180, 110);
-    }
-    this.graphics.fillRect(0, groundTopPx - 45, this.worldWidthPx, 45);
-    // Distant trees at the edges frame the open flight corridor.
-    for (const x of [25, this.worldWidthPx - 35]) {
-      this.graphics.fillStyle(0xa1ba9c);
-      this.graphics.fillEllipse(x, groundTopPx - 140, 145, 165);
-      this.graphics.fillEllipse(x + 35, groundTopPx - 120, 100, 115);
-      this.graphics.lineStyle(5, 0x8fa78c);
-      this.graphics.lineBetween(x, groundTopPx - 30, x, groundTopPx - 130);
-      this.graphics.lineBetween(x, groundTopPx - 95, x + 25, groundTopPx - 125);
-    }
-    // A pale garden boundary is scenery behind the playfield, not a solid obstacle.
-    this.graphics.fillStyle(0xd5d6b7);
-    this.graphics.fillRect(0, groundTopPx - 35, this.worldWidthPx, 35);
-    this.graphics.lineStyle(2, 0xb7bc9c);
-    for (let x = 10; x < this.worldWidthPx; x += 35) {
-      this.graphics.lineBetween(x, groundTopPx - 35, x, groundTopPx);
-    }
-    this.graphics.fillStyle(LOOK.hedge);
-    this.graphics.fillRect(0, groundTopPx - 12, this.worldWidthPx, 12);
-
-    // A little afternoon context, placed behind Jonh's chair.
-    const jonhX = metresToPixels((level.jonhSpawn.bodyBox.minX + level.jonhSpawn.bodyBox.maxX) / 2, this.ppm);
-    const jonhBaseWorldPx = simYToWorldY(level.jonhSpawn.bodyBox.minY, this.worldHeightPx, this.ppm);
-    const support = level.obstacles.find(o => o.box.maxY === level.jonhSpawn.bodyBox.minY &&
-      o.box.minX <= level.jonhSpawn.bodyBox.minX && o.box.maxX >= level.jonhSpawn.bodyBox.maxX);
-    // Keep the table on the roof when Jonh sits near its right edge.
-    const tableAnchorX = support && jonhX + 107 > metresToPixels(support.box.maxX, this.ppm)
-      ? jonhX - 175 : jonhX;
-    
-    // Draw obstacles before ground so ground overlays bottom slightly if needed, or after ground?
-    // Let's draw obstacles after ground divider.
-    // 4. Ground strip
-    const groundHeightPx = metresToPixels(level.ground.maxY - level.ground.minY, this.ppm);
-    // Grass top
-    this.graphics.fillStyle(LOOK.grass, 1);
-    this.graphics.fillRect(0, groundTopPx, this.worldWidthPx, 12);
-    // Dirt / earth underneath
-    this.graphics.fillStyle(LOOK.earth, 1);
-    this.graphics.fillRect(0, groundTopPx + 12, this.worldWidthPx, groundHeightPx - 12);
-    // Ground divider line
-    this.graphics.lineStyle(2, LOOK.ink, 0.65);
-    this.graphics.lineBetween(0, groundTopPx, this.worldWidthPx, groundTopPx);
-    this.graphics.fillStyle(LOOK.wood, 0.3);
-    for (let x = 20; x < this.worldWidthPx; x += 43) {
-      this.graphics.fillEllipse(x, groundTopPx + 32 + (x % 19), 5, 2);
+    // 1. Sky (fixed), sun and turning rays.
+    add(s.add.image(LEFT - 600, groundTop - 768, `sky-${theme.id}`).setOrigin(0, 0)
+      .setDisplaySize(SPAN + 1200, 800).setScrollFactor(0).setDepth(DEPTH.sky));
+    this.rays = add(s.add.image(1040, theme.sunY, 'sun-rays').setScrollFactor(0.05).setDepth(DEPTH.sun));
+    add(s.add.image(1040, theme.sunY, `sun-${theme.id}`).setScrollFactor(0.05).setDepth(DEPTH.sun));
+    for (let i = 0; i < 6; i++) {
+      const key = ['cloud-a', 'cloud-b', 'cloud-c'][i % 3]!;
+      const x = LEFT + 250 + i * 420 + hash01(i + level.id.length) * 160;
+      const y = 50 + hash01(i * 7.3) * 170;
+      const obj = add(s.add.image(x, y, key).setScrollFactor(0.12, 0.3).setDepth(DEPTH.cloud).setScale(0.8 + hash01(i * 3.1) * 0.5));
+      this.clouds.push({ obj, speed: 5 + hash01(i * 5.7) * 9, baseY: y, phase: 0 });
     }
 
-    // 5. Obstacles
+    // 2. Far hills / skyline and 3. mid hills with trees. Solid fills continue downward
+    //    so vertical parallax never opens a gap above the ground.
+    const far = artMeta(`far-${theme.id}`);
+    add(s.add.tileSprite(LEFT, groundTop - 58, SPAN, far.h, `far-${theme.id}`).setOrigin(0, 1)
+      .setTilePosition(hash01(level.id.length) * 400, 0).setScrollFactor(0.25, 0.6).setDepth(DEPTH.far));
+    add(s.add.rectangle(LEFT, groundTop - 62, SPAN, 400, hex(theme.far)).setOrigin(0, 0).setScrollFactor(0.25, 0.6).setDepth(DEPTH.far));
+    const mid = artMeta(`mid-${theme.id}`);
+    add(s.add.tileSprite(LEFT, groundTop - 10, SPAN, mid.h, `mid-${theme.id}`).setOrigin(0, 1)
+      .setTileScale(1 / mid.scale).setTilePosition(hash01(level.id.length * 2) * 600, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
+    add(s.add.rectangle(LEFT, groundTop - 14, SPAN, 400, hex(theme.mid)).setOrigin(0, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
+    for (let i = 0; i < 3; i++) {
+      const obj = add(s.add.image(-200 - i * 500, 120 + i * 40, 'bird').setScale(artScale('bird')).setScrollFactor(0.3).setDepth(DEPTH.bird));
+      this.birds.push({ obj, speed: 38 + i * 9, baseY: 120 + i * 40, phase: i * 1.7 });
+    }
+
+    // 4. The garden boundary just behind the playfield.
+    add(s.add.tileSprite(LEFT, groundTop + 2, SPAN, 50, 'fence-back').setOrigin(0, 1).setTileScale(0.5).setAlpha(0.85)
+      .setScrollFactor(0.85, 1).setDepth(DEPTH.fence));
+
+    // Playfield ground: ink edge sits exactly on the collider top.
+    add(s.add.tileSprite(LEFT, groundTop - 1.5, SPAN, 40, 'ground-top').setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
+    add(s.add.tileSprite(LEFT, groundTop + 38, SPAN, 400, 'earth').setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
+
+    // Obstacles: textures generated at their collider size.
     for (const obs of level.obstacles) {
-      const xPx = metresToPixels(obs.box.minX, this.ppm);
-      const wPx = metresToPixels(obs.box.maxX - obs.box.minX, this.ppm);
-      // y is inverted
-      const yPx = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
-      const hPx = metresToPixels(obs.box.maxY - obs.box.minY, this.ppm);
-
-      if (obs.id === 'garden-shed') {
-        this.graphics.fillStyle(0xbd8c56);
-        this.graphics.fillRect(xPx, yPx, wPx, hPx);
-        this.graphics.lineStyle(3, LOOK.ink);
-        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
-        this.graphics.fillStyle(0x70523a);
-        this.graphics.fillRect(xPx, yPx, wPx, 12);
-        this.graphics.fillRect(xPx + wPx * 0.35, yPx + hPx * 0.5, wPx * 0.3, hPx * 0.5);
-        this.graphics.fillStyle(LOOK.sky);
-        this.graphics.fillRect(xPx + wPx * 0.2, yPx + hPx * 0.2, wPx * 0.6, hPx * 0.2);
-        this.graphics.strokeRect(xPx + wPx * 0.2, yPx + hPx * 0.2, wPx * 0.6, hPx * 0.2);
-        this.graphics.fillStyle(LOOK.hat);
-        this.graphics.fillCircle(xPx + wPx * 0.58, yPx + hPx * 0.75, 3);
-      } else if (obs.material === 'wood') {
-        this.graphics.fillStyle(0x754a31, 1); // Dark wood
-        this.graphics.fillRect(xPx, yPx, wPx, hPx);
-        this.graphics.lineStyle(2, 0x3d2010, 1);
-        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
-        // Add vertical planks
-        for(let px = xPx + 15; px < xPx + wPx; px += 20) {
-           this.graphics.lineBetween(px, yPx, px, yPx + hPx);
+      const x = metresToPixels(obs.box.minX, this.ppm);
+      const y = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
+      if (obs.material === 'rubber') {
+        // Non-solid hanging chains make the floating bouncy beam read as suspended.
+        const w = metresToPixels(obs.box.maxX - obs.box.minX, this.ppm);
+        for (const cx of [x + 30, x + w - 30]) {
+          add(s.add.rectangle(cx, y - 400, 3, 400, 0x2a1b2e, 0.55).setOrigin(0.5, 0).setDepth(DEPTH.obstacle));
         }
-      } else if (obs.material === 'concrete') {
-        this.graphics.fillStyle(0x8a929e, 1); // Concrete grey
-        this.graphics.fillRect(xPx, yPx, wPx, hPx);
-        this.graphics.lineStyle(2, 0x474c54, 1);
-        this.graphics.strokeRect(xPx, yPx, wPx, hPx);
-        // Windows make the existing solid collider read as a multistory house.
-        this.graphics.fillStyle(LOOK.sky);
-        for(let cy = yPx + 30; cy < yPx + hPx - 28; cy += 70) {
-          for (let cx = xPx + 30; cx < xPx + wPx - 30; cx += 75) {
-            this.graphics.fillRect(cx, cy, 35, 38);
-            this.graphics.strokeRect(cx, cy, 35, 38);
-            this.graphics.lineBetween(cx + 17, cy, cx + 17, cy + 38);
-          }
-        }
-      } else {
-        this.graphics.fillStyle(LOOK.ink, 1);
-        this.graphics.fillRect(xPx, yPx, wPx, hPx);
       }
+      add(s.add.image(x, y, obstacleKey(level.id, obs)).setOrigin(0, 0).setScale(artScale(obstacleKey(level.id, obs))).setDepth(DEPTH.obstacle));
     }
 
-    // Scenery props near Jonh
-    this.graphics.fillStyle(LOOK.ink, 0.14);
-    this.graphics.fillEllipse(jonhX + 8, jonhBaseWorldPx + 3, 120, 12);
-    this.graphics.fillEllipse(125, groundTopPx + 3, 90, 12); // cannon shadow
-    this.graphics.lineStyle(3, LOOK.wood);
-    this.graphics.lineBetween(tableAnchorX + 75, jonhBaseWorldPx, tableAnchorX + 75, jonhBaseWorldPx - 31);
-    this.graphics.lineBetween(tableAnchorX + 99, jonhBaseWorldPx, tableAnchorX + 99, jonhBaseWorldPx - 31);
-    this.graphics.fillStyle(LOOK.wood);
-    this.graphics.fillRoundedRect(tableAnchorX + 68, jonhBaseWorldPx - 35, 39, 5, 2);
-    this.graphics.fillStyle(LOOK.paper);
-    this.graphics.fillRoundedRect(tableAnchorX + 78, jonhBaseWorldPx - 48, 13, 13, 2);
-    this.graphics.lineStyle(2, LOOK.paper);
-    this.graphics.strokeCircle(tableAnchorX + 93, jonhBaseWorldPx - 42, 4);
+    // Jonh's tea table, kept on his support surface.
+    const b = level.jonhSpawn.bodyBox;
+    const jonhX = metresToPixels((b.minX + b.maxX) / 2, this.ppm);
+    const baseY = simYToWorldY(b.minY, this.worldHeightPx, this.ppm);
+    const support = level.obstacles.find(o => Math.abs(o.box.maxY - b.minY) < 1e-6 && o.box.minX <= b.minX && o.box.maxX >= b.maxX);
+    const rightEdge = support ? metresToPixels(support.box.maxX, this.ppm) : this.worldWidthPx;
+    const tableX = jonhX + 82 + 32 > rightEdge ? jonhX - 82 : jonhX + 82;
+    add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
 
+    // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
+    const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
+      level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6);
+    for (let i = 0; i < 26; i++) {
+      const x = 20 + i * 50 + hash01(i * 2.7 + level.id.length) * 30;
+      if (blocked(x) || x > this.worldWidthPx - 10) continue;
+      const key = i % 3 === 0 ? 'flower-a' : i % 3 === 1 ? 'tuft' : (i % 2 ? 'flower-b' : 'tuft');
+      const obj = add(artImage(s, x, groundTop + 6, key).setDepth(DEPTH.flora));
+      obj.setScale(obj.scaleX * (0.8 + hash01(i) * 0.4));
+      this.flora.push({ obj, phase: hash01(i * 9.1) * Math.PI * 2 });
+    }
   }
 
-  private drawCloud(x: number, y: number, r: number): void {
-    this.graphics.fillCircle(x, y, r);
-    this.graphics.fillCircle(x - r * 0.6, y + r * 0.2, r * 0.7);
-    this.graphics.fillCircle(x + r * 0.6, y + r * 0.2, r * 0.7);
+  /** Ambient motion on the real-time clock (not the hit-stop clock). */
+  update(dt: number, reduced: boolean): void {
+    if (reduced || !(dt > 0)) return;
+    this.time += dt;
+    this.rays?.setRotation(this.time * 0.05);
+    for (const c of this.clouds) {
+      c.obj.x += c.speed * dt;
+      if (c.obj.x > LEFT + SPAN) c.obj.x = LEFT - 100;
+    }
+    for (const b of this.birds) {
+      const cycle = 26;
+      const local = (this.time + b.phase * 7) % cycle;
+      b.obj.setVisible(local < 22);
+      b.obj.x = -150 + local * b.speed;
+      b.obj.y = b.baseY + Math.sin(local * 1.3) * 6;
+      b.obj.scaleY = artScale('bird') * (Math.sin((this.time + b.phase) * 12) > 0 ? 1 : -0.7);
+    }
+    for (const f of this.flora) f.obj.setRotation(Math.sin(this.time * 1.4 + f.phase) * 0.08);
   }
 
-  destroy(): void {
-    this.graphics.destroy();
+  private clear(): void {
+    for (const o of this.objects) o.destroy();
+    this.objects = [];
+    this.clouds = [];
+    this.birds = [];
+    this.flora = [];
+    this.rays = null;
   }
+
+  destroy(): void { this.clear(); }
 }

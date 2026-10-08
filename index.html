@@ -2,20 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Hit Jonh — set the angle, set the power, hit Jonh." />
+    <meta name="theme-color" content="#FFE9C2" />
     <title>Hit Jonh</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <header class="title-bar">
-      <h1>Hit Jonh</h1>
-      <p class="tagline">Set the angle. Set the power. Hit Jonh.</p>
-    </header>
-    <main>
-      <div id="game-status" role="status" aria-live="polite" class="boot-status">Loading Hit Jonh...</div>
-      <div id="game" aria-label="Hit Jonh game area"></div>
+    <h1 class="visually-hidden">Hit Jonh</h1>
+    <main class="app">
+      <div id="game-status" role="status" aria-live="polite" class="boot-status">Loading Hit Jonh…</div>
+      <div class="stage-wrap">
+        <div id="game" aria-label="Hit Jonh game area"></div>
+      </div>
+      <p class="rotate-hint" aria-hidden="true">Turn your phone sideways for a bigger garden ⟳</p>
     </main>
     <script type="module" src="/src/bootstrap.ts"></script>
   </body>

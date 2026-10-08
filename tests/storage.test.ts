@@ -209,3 +209,16 @@ describe('Storage', () => {
   });
 
 });
+
+describe('Progress persistence (polish pass)', () => {
+  it('round-trips progress and ignores corrupt progress safely', async () => {
+    const { loadProgress, saveProgress } = await import('../src/storage/storage');
+    const { freshProgress, recordShot } = await import('../src/rules/progression');
+    localStorage.clear();
+    expect(loadProgress()).toEqual(freshProgress());
+    saveProgress(recordShot(freshProgress(), 'body', true));
+    expect(loadProgress()).toMatchObject({ totalHits: 1, currentStreak: 1 });
+    localStorage.setItem('hitJonh.v1', JSON.stringify({ version: 'hitJonh.v1', progress: [1, 2] }));
+    expect(loadProgress()).toEqual(freshProgress());
+  });
+});

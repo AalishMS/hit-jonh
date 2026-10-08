@@ -1,5 +1,8 @@
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
+import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
+import { sanitizePlayerName } from '../rules/playerName';
+export { sanitizePlayerName };
 
 export interface LevelScore {
   bestShots: number | null;
@@ -16,10 +19,18 @@ export interface PlayerSetup {
   lastPower: number;
 }
 
+export interface OnlineProfile {
+  name: string;
+  color: number;
+  pattern: string;
+}
+
 export interface Settings {
   muted: boolean;
   volume: number;
   reducedMotion: boolean;
+  /** Background music loop (sound effects follow `muted`). */
+  music: boolean;
 }
 
 export interface SaveData {
@@ -27,6 +38,10 @@ export interface SaveData {
   solo: Record<string, LevelScore>;
   settings: Settings;
   lastMP?: PlayerSetup[];
+  /** Polish pass: hats, streaks and daily results (optional; older saves simply lack it). */
+  progress?: Progress;
+  /** Online play: the name and cannon look to use when creating/joining rooms (optional; older saves lack it). */
+  online?: { profile: OnlineProfile };
 }
 
 const STORAGE_KEY = 'hitJonh.v1';
@@ -35,6 +50,7 @@ const DEFAULT_SETTINGS: Settings = {
   muted: false,
   volume: 1.0,
   reducedMotion: false,
+  music: true,
 };
 
 function getFreshData(): SaveData {
@@ -56,12 +72,6 @@ export function defaultPlayerSetups(): PlayerSetup[] {
   }));
 }
 
-/** Trims a name, caps its length and falls back to "Player N" when blank or not text. */
-export function sanitizePlayerName(raw: unknown, index: number): string {
-  const name = typeof raw === 'string' ? raw.trim().substring(0, MULTIPLAYER.maxNameLength).trim() : '';
-  return name || `Player ${index + 1}`;
-}
-
 function sanitizePlayerSetup(raw: Record<string, unknown>, index: number): PlayerSetup {
   const defaults = defaultPlayerSetups()[index]!;
   const color = typeof raw.color === 'number' && (MULTIPLAYER.colors as readonly number[]).includes(raw.color)
@@ -78,6 +88,23 @@ function sanitizePlayerSetup(raw: Record<string, unknown>, index: number): Playe
   lastPower = Math.max(0, Math.min(100, lastPower));
 
   return { name: sanitizePlayerName(raw.name, index), color, pattern, lastAngle, lastPower };
+}
+
+const ONLINE_TOKEN_KEY = 'hitJonh.v1.onlineToken';
+
+export function defaultOnlineProfile(): OnlineProfile {
+  return { name: 'Player 1', color: MULTIPLAYER.colors[0]!, pattern: MULTIPLAYER.patterns[0]! };
+}
+
+function sanitizeOnlineProfile(raw: unknown): OnlineProfile | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const fallback = defaultOnlineProfile();
+  return {
+    name: sanitizePlayerName(r.name, 0),
+    color: typeof r.color === 'number' && (MULTIPLAYER.colors as readonly number[]).includes(r.color) ? r.color : fallback.color,
+    pattern: typeof r.pattern === 'string' && (MULTIPLAYER.patterns as readonly string[]).includes(r.pattern) ? r.pattern : fallback.pattern,
+  };
 }
 
 /** Returns validated setups, or null when the list is not 2..4 well-formed entries. */
@@ -130,6 +157,7 @@ export function loadSaveData(): SaveData {
         ? Math.max(0, Math.min(1, pSet.volume)) 
         : DEFAULT_SETTINGS.volume;
       data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
+      data.settings.music = typeof pSet.music === 'boolean' ? pSet.music : DEFAULT_SETTINGS.music;
     }
 
     // Validate solo
@@ -166,6 +194,13 @@ export function loadSaveData(): SaveData {
     // Validate lastMP
     const validSetups = sanitizePlayerSetups(parsedObj.lastMP);
     if (validSetups) data.lastMP = validSetups;
+    if (parsedObj.progress !== undefined) data.progress = sanitizeProgress(parsedObj.progress, MAPS.map(m => m.id));
+
+    // Validate online profile
+    if (parsedObj.online && typeof parsedObj.online === 'object' && !Array.isArray(parsedObj.online)) {
+      const profile = sanitizeOnlineProfile((parsedObj.online as Record<string, unknown>).profile);
+      if (profile) data.online = { profile };
+    }
 
     return data;
   } catch (e) {
@@ -225,3 +260,46 @@ export function saveMultiplayerSetup(setups: readonly PlayerSetup[]): void {
   writeSaveData(data);
 }
 
+
+export function loadProgress(): Progress {
+  return loadSaveData().progress ?? freshProgress();
+}
+
+export function saveProgress(progress: Progress): void {
+  const data = loadSaveData();
+  data.progress = sanitizeProgress(progress, MAPS.map(m => m.id));
+  writeSaveData(data);
+}
+
+export function loadOnlineProfile(): OnlineProfile {
+  return loadSaveData().online?.profile ?? defaultOnlineProfile();
+}
+
+export function saveOnlineProfile(profile: OnlineProfile): void {
+  const data = loadSaveData();
+  data.online = { profile: sanitizeOnlineProfile(profile) ?? defaultOnlineProfile() };
+  writeSaveData(data);
+}
+
+export function randomToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * This tab's online identity. sessionStorage survives a reload (the seat is kept) but not a new tab,
+ * so two tabs are two players.
+ */
+export function onlineToken(store?: Pick<Storage, 'getItem' | 'setItem'>, make: () => string = randomToken): string {
+  try {
+    const target = store ?? sessionStorage;
+    const existing = target.getItem(ONLINE_TOKEN_KEY);
+    if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
+    const fresh = make();
+    target.setItem(ONLINE_TOKEN_KEY, fresh);
+    return fresh;
+  } catch {
+    return make();
+  }
+}

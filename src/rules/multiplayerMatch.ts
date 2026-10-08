@@ -28,7 +28,7 @@ export interface MPPlayerView extends Readonly<MPPlayerSetup> {
 }
 
 // Points per outcome come from SCORING in config/tuning.ts.
-const OUTCOME_POINTS: Record<ClassifiedOutcome, number> = {
+export const OUTCOME_POINTS: Record<ClassifiedOutcome, number> = {
   ricochet_body: SCORING.ricochetBodyPoints,
   body: SCORING.bodyPoints,
   hat_only: SCORING.hatOnlyPoints,

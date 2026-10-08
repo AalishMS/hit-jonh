@@ -44,6 +44,13 @@ export const AIM = {
   angleStepDeg: 1,
   /** Dragging through half of the canvas height covers the entire angle range. */
   dragDegreesPerCanvasHeight: 160,
+  /** Pressing within this radius of the cannon pivot grabs the cannon directly. */
+  grabRadiusPx: 70,
+  /** Grab mode: pointer distance from the pivot mapped to 0–100 % power. */
+  grabMinPx: 60,
+  grabMaxPx: 380,
+  /** Short analytic launch preview (seconds of flight shown); not a full trajectory (SPEC §3.2). */
+  previewSeconds: 0.3,
   /** Power is shown as a percentage 0–100. */
   powerStepPercent: 1,
   barrelLengthMetres: 1.2,
@@ -64,8 +71,54 @@ export const SHOT = {
   boundsMarginMetres: 1,
 } as const;
 
+export const JUICE = {
+  freezeSeconds: 0.08,
+  slowSeconds: 0.24,
+  slowScale: 0.35,
+  shakeSeconds: 0.12,
+  shakePixels: 3,
+  zoomSeconds: 0.18,
+  zoomScale: 1.03,
+  labelSeconds: 0.7,
+  labelPopSeconds: 0.12,
+  labelSizePx: 42,
+  labelMarginPx: 100,
+  labelOffsetXPx: -100,
+  flashSeconds: 0.06,
+  flashRadiusPx: 22,
+  smokeSeconds: 0.32,
+  recoilSeconds: 0.22,
+  recoilPixels: 8,
+  compressionSeconds: 0.07,
+  reboundSeconds: 0.09,
+  squashAmount: 0.22,
+  burstSeconds: 0.55,
+  burstCount: 18,
+  burstSpeedPx: 95,
+  burstGravityPx: 180,
+  tumbleSlidePx: 20,
+  labelStartScale: 0.6,
+  labelStrokePx: 6,
+  shakeFrequencyX: 170,
+  shakeFrequencyY: 137,
+  smokeCount: 3,
+  smokeSpacingPx: 8,
+  smokeRisePx: 30,
+  smokeOffsetYPx: 4,
+  smokeRadiusPx: 5,
+  smokeGrowthPx: 12,
+  smokeAlpha: 0.6,
+  starRadiusPx: 5,
+  fleckWidthPx: 4,
+  fleckHeightPx: 3,
+  dustRadiusPx: 4,
+  dustGrowthPx: 8,
+} as const;
+
 export const FLOW = {
   shotResultSeconds: 1.4,
+  /** Body hits hold longer so Jonh's knock-back (and the replay) can land. Polish pass [TUNE]. */
+  bodyHitResultSeconds: 2.6,
   handoverSeconds: 1.2,
   roundResultSeconds: 2.4,
   /** Ignore background-tab catch-up for presentation timers. */
@@ -119,7 +172,7 @@ export const MULTIPLAYER = {
   patterns: ['solid', 'stripes', 'dots', 'checks'],
   /** Decorative inactive cannon slots: render-only, in the earth strip below the ground surface. */
   slots: {
-    startXPx: 24,
+    startXPx: 260,
     spacingPx: 280,
     yPx: 538,
     barrelWidthPx: 44,
@@ -137,6 +190,83 @@ export const MATERIALS = {
   grass: { restitution: 0.2, friction: 0.8 },
   wood: { restitution: 0.3, friction: 0.6 },
   concrete: { restitution: 0.4, friction: 0.5 },
+  rubber: { restitution: 0.9, friction: 0.2 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
+
+/**
+ * Polish-pass presentation tuning [TUNE]. Deliberately mutable: the dev-only tuning panel
+ * (?tune) edits these live. Simulation never reads them; they only shape presentation time,
+ * camera and effects. Durations are real (unscaled) seconds.
+ */
+export const FX = {
+  /** Hit-stop per hit quality (seconds frozen on the contact frame). */
+  freezeTrick: 0.13,
+  freezeStrong: 0.1,
+  freezeWeak: 0.075,
+  freezeHat: 0.045,
+  /** Slow motion after the freeze: duration, speed, and ease back to full speed. */
+  slowSeconds: 0.3,
+  slowScale: 0.3,
+  rampSeconds: 0.25,
+  /** Directional camera shake along the ball's travel direction. */
+  shakePx: 14,
+  shakeSeconds: 0.4,
+  shakeHz: 21,
+  /** Zoom punch added on top of the impact framing, and how long it takes to settle. */
+  zoomPunch: 0.14,
+  punchSeconds: 0.35,
+  /** Camera framing while Jonh reacts. */
+  impactZoom: 1.6,
+  flashFrames: 2,
+  flashAlpha: 0.7,
+  particles: 34,
+  textSeconds: 1.0,
+  /** Slow-motion replay of a body hit: playback speed and seconds of flight shown before contact. */
+  replay: 1,
+  replaySpeed: 0.4,
+  replayLeadSeconds: 0.75,
+  replayAfterSeconds: 1.1,
+  /** Cannon anticipation: physics waits this long after Fire while the cannon winds up. */
+  windupSeconds: 0.12,
+  recoilPx: 18,
+  /** Camera follow during flight. */
+  flightZoomMin: 0.72,
+  followRate: 5,
+  /** Ball stretch along velocity at maximum launch speed. */
+  ballStretch: 0.35,
+};
+
+/**
+ * Online multiplayer (spec 2026-10-08). PROPOSED/TUNE except turnLimitSeconds (owner decision).
+ * Imported by both the browser and the Convex functions.
+ */
+export const ONLINE = {
+  /** Presence check-in interval. */
+  heartbeatSeconds: 15,
+  /** Show "Waiting for {name}…" once the active player is this quiet. */
+  staleWarnSeconds: 60,
+  /** Missing-player skip and lobby pruning. Above 60 s: Chrome throttles hidden-tab timers to ~1/min. */
+  staleSeconds: 90,
+  /** Show the turn countdown from here. */
+  turnWarnSeconds: 90,
+  /** A connected player's turn is skipped after this (owner decision). */
+  turnLimitSeconds: 120,
+  /**
+   * After the turn limit, the server looks again this soon for a check-in proving someone is still connected
+   * (every client checks in when its countdown reaches 0), instead of a whole heartbeat later.
+   */
+  turnLimitRecheckSeconds: 2,
+  /** An unreported shot falls back to a spectator's outcome (or a miss) after this. */
+  inFlightTimeoutSeconds: 40,
+  /** Time for everyone to press Rematch after the first press. */
+  rematchWindowSeconds: 30,
+  /** Rooms with no game action for this long are deleted. */
+  roomTtlHours: 24,
+  codeLength: 5,
+  /** No 0, O, 1, I or L. */
+  codeAlphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
+  /** Delays between send retries; 15.5 s in total. */
+  retryDelaysSeconds: [0.5, 1, 2, 4, 8],
+} as const;

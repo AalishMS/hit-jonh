@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { PHYSICS, WORLD } from './config/tuning';
+import { BootScene } from './scenes/BootScene';
 import { PrototypeScene } from './scenes/PrototypeScene';
 import { matterGravityY } from './sim/units';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game',
-  backgroundColor: '#bfe6ff',
+  backgroundColor: '#5EC2EC',
   width: WORLD.designWidthPx,
   height: WORLD.designHeightPx,
   scale: {
@@ -27,7 +28,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: import.meta.env.DEV && new URLSearchParams(location.search).has('debug'),
     },
   },
-  scene: [PrototypeScene],
+  scene: [BootScene, PrototypeScene],
 };
 
 const statusEl = document.getElementById('game-status');
@@ -57,9 +58,10 @@ try {
     }
   });
 
-  // Expose for dev-only inspection in the browser console.
+  // Expose for dev-only inspection in the browser console; `?tune` opens the FX tuning panel.
   if (import.meta.env.DEV) {
     (window as unknown as { __HIT_JONH__: Phaser.Game }).__HIT_JONH__ = game;
+    if (new URLSearchParams(location.search).has('tune')) void import('./ui/tuningPanel').then(m => m.mountTuningPanel());
   }
 } catch {
   showBootError();
