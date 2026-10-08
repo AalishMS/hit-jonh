@@ -5,11 +5,6 @@ export function angleFromDrag(startAngle: number, verticalFraction: number): num
     Math.round(startAngle - verticalFraction * AIM.dragDegreesPerCanvasHeight)));
 }
 
-/** Dragging right adds power; the same fraction of the canvas works at every screen size. */
-export function powerFromDrag(startPower: number, horizontalFraction: number): number {
-  return Math.max(0, Math.min(100, Math.round(startPower + horizontalFraction * AIM.dragPowerPerCanvasWidth)));
-}
-
 /** Grabbing the cannon itself: the barrel points at the pointer, distance sets power. */
 export function aimFromCannonPoint(pivot: { x: number; y: number }, point: { x: number; y: number }): { angle: number; power: number } {
   const dx = point.x - pivot.x;
@@ -20,13 +15,7 @@ export function aimFromCannonPoint(pivot: { x: number; y: number }, point: { x: 
   return { angle, power };
 }
 
-/** A relative drag commits to one axis once it has moved far enough, for precise adjustments. */
-export function lockAxis(dxFraction: number, dyFraction: number, threshold = 0.02): 'angle' | 'power' | null {
-  if (Math.hypot(dxFraction, dyFraction) < threshold) return null;
-  return Math.abs(dyFraction) >= Math.abs(dxFraction) ? 'angle' : 'power';
-}
-
-export type AimDragMode = 'grab' | 'pending' | 'angle' | 'power';
+export type AimDragMode = 'grab' | 'angle';
 
 export interface CanvasAimHooks {
   canAim: () => boolean;
@@ -40,7 +29,7 @@ export interface CanvasAimHooks {
 
 /**
  * In-world aiming. Press on the cannon to grab it (it points at the pointer; distance is power),
- * or drag anywhere on the field: up/down sets angle, left/right sets power (axis-locked).
+ * or drag anywhere on the field: up/down sets angle (power stays on the slider/keys).
  * Pointer capture lets a drag finish outside the canvas; touch uses the same input.
  */
 export class CanvasAim {
@@ -57,7 +46,7 @@ export class CanvasAim {
       const onCannon = Math.hypot(world.x - pivot.x, world.y - pivot.y) <= AIM.grabRadiusPx;
       const aim = hooks.getAim();
       this.drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, angle: aim.angle, power: aim.power,
-        width: Math.max(1, rect.width), height: Math.max(1, rect.height), mode: onCannon ? 'grab' : 'pending' };
+        width: Math.max(1, rect.width), height: Math.max(1, rect.height), mode: onCannon ? 'grab' : 'angle' };
       canvas.setPointerCapture(event.pointerId);
       event.preventDefault();
     }, options);
@@ -70,11 +59,8 @@ export class CanvasAim {
         hooks.onAim(aim.angle, aim.power);
         return;
       }
-      const fx = (event.clientX - d.x) / d.width;
       const fy = (event.clientY - d.y) / d.height;
-      if (d.mode === 'pending') d.mode = lockAxis(fx, fy) ?? 'pending';
-      if (d.mode === 'angle') hooks.onAim(angleFromDrag(d.angle, fy), d.power);
-      else if (d.mode === 'power') hooks.onAim(d.angle, powerFromDrag(d.power, fx));
+      hooks.onAim(angleFromDrag(d.angle, fy), d.power);
     }, options);
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
       canvas.addEventListener(type, () => this.cancel(), options);

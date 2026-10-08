@@ -53,7 +53,7 @@ Before and after screenshots: `docs/polish/before/` and `docs/polish/after/`. Im
 - **New cannon:** carriage, spoked wheel, and a brass-banded barrel painted in the player's colour and pattern.
 - **Firing now has a 0.12 s anticipation.** The barrel squashes and the fuse sparks while simulation time is held. Then come a muzzle flash, smoke, sparks, a recoil that rolls the carriage, and a sub-bass boom.
 - **In flight,** the ball stretches with speed, leaves a speed ribbon and whooshes. Trails are a comic dotted path with an inked X where the ball lands.
-- **Aiming happens in the world.** Grab the cannon and it points at your finger, with distance setting power. Or drag anywhere: up/down sets angle and left/right sets power, locked to one axis for precision. A fairground power meter sits under the cannon.
+- **Aiming happens in the world.** Grab the cannon and it points at your finger, with distance setting power. Or drag anywhere: up/down sets angle (power stays on the slider). A fairground power meter sits under the cannon.
 - **A 0.3 s analytic launch preview** shows direction and power, never the landing point, per SPEC §3.2.
 - **The sliders remain as an accessible fallback** in a collapsible "Precise aim" panel. Keyboard aiming and firing are unchanged.
 

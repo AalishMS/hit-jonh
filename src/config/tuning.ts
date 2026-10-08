@@ -44,8 +44,6 @@ export const AIM = {
   angleStepDeg: 1,
   /** Dragging through half of the canvas height covers the entire angle range. */
   dragDegreesPerCanvasHeight: 160,
-  /** Dragging across the whole canvas width changes power by this many percent (polish pass). */
-  dragPowerPerCanvasWidth: 160,
   /** Pressing within this radius of the cannon pivot grabs the cannon directly. */
   grabRadiusPx: 70,
   /** Grab mode: pointer distance from the pivot mapped to 0–100 % power. */

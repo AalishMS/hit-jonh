@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aimFromCannonPoint, angleFromDrag, lockAxis, powerFromDrag } from '../src/input/canvasAim';
+import { aimFromCannonPoint, angleFromDrag } from '../src/input/canvasAim';
 
 describe('Canvas drag aiming', () => {
   it('raises the cannon on an upward drag and lowers it on a downward drag', () => {
@@ -17,20 +17,6 @@ describe('Canvas drag aiming', () => {
 });
 
 describe('In-world aiming', () => {
-  it('adds power when dragging right, bounded to whole percent', () => {
-    expect(powerFromDrag(50, 0.1)).toBe(66);
-    expect(powerFromDrag(50, -0.1)).toBe(34);
-    expect(powerFromDrag(50, 5)).toBe(100);
-    expect(powerFromDrag(50, -5)).toBe(0);
-    expect(Number.isInteger(powerFromDrag(50, 0.0313))).toBe(true);
-  });
-
-  it('locks a relative drag to the dominant axis after a small threshold', () => {
-    expect(lockAxis(0.005, 0.005)).toBeNull();
-    expect(lockAxis(0.01, -0.05)).toBe('angle');
-    expect(lockAxis(0.05, 0.01)).toBe('power');
-  });
-
   it('points a grabbed cannon at the pointer with distance as power', () => {
     const pivot = { x: 125, y: 450 };
     const up45 = aimFromCannonPoint(pivot, { x: 125 + 200, y: 450 - 200 });
