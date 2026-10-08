@@ -34,3 +34,17 @@ npm run preview      # serve dist/ locally
 - Matter.js has no CCD — fast shots need the swept guard and thickness rules (SPEC §9.2).
 - Matter velocity units are px per 1000/60 ms; convert only in `sim/units.ts` / the physics adapter.
 - TypeScript is pinned to 6.0.x because `typescript-eslint` 8.x does not support TS 7.
+
+<!-- convex-ai-start -->
+
+This project uses [Convex](https://convex.dev) as its backend.
+
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
+
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
+
+<!-- convex-ai-end -->
