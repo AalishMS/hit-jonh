@@ -159,6 +159,16 @@ describe('OnlineMatchTracker: countdowns', () => {
     expect(t.countdowns(85_000).missing).toBeNull();
   });
 
+  it('after a shared outage, warns about the active player only a stale window after the first check-in back', () => {
+    const t = new OnlineMatchTracker();
+    // P1 (seat 0) is up. Both went quiet at about 14 s; P2 came back at 200 s, P1 has not yet.
+    t.update(snap([], 1, { lastQuiet: { start: 14_000, end: 200_000 } }));
+    t.setPresence([{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 214_000 }]);
+    expect(t.countdowns(215_000).missing).toBeNull();
+    t.setPresence([{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 259_000 }]);
+    expect(t.countdowns(265_000).missing).toEqual({ seat: 0, name: 'P1', secondsLeft: 25 });
+  });
+
   it('counts down the rematch window', () => {
     const t = new OnlineMatchTracker();
     t.update(snap(['body'], 0, { status: 'finished', rematchDeadline: 30_000 }));

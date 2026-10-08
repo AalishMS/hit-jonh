@@ -18,7 +18,15 @@ export interface RoomState {
   matchStartedAt: number;
   turnClockStart: number;
   rematchDeadline: number | null;
+  /** The latest quiet period a check-in ended (spec §4 "Empty room"); absent until the first one. */
+  lastQuiet?: QuietPeriod;
 }
+
+/**
+ * A stretch when nobody still in the match checked in: `start` is the last check-in before it,
+ * `end` the check-in that ended it.
+ */
+export interface QuietPeriod { start: number; end: number }
 
 export interface SeatState {
   seat: number;

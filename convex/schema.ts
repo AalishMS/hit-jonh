@@ -12,6 +12,8 @@ export default defineSchema({
     matchStartedAt: v.number(),
     turnClockStart: v.number(),
     rematchDeadline: v.union(v.number(), v.null()),
+    /** The latest quiet period a check-in ended (spec §4 "Empty room"); staleness counts from its end. */
+    lastQuiet: v.optional(v.object({ start: v.number(), end: v.number() })),
     /** Last game action (never heartbeats); drives cleanup. */
     updatedAt: v.number(),
   }).index('by_code', ['code']).index('by_updatedAt', ['updatedAt']),

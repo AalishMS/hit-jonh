@@ -2,7 +2,7 @@
 import { AIM, MULTIPLAYER, ONLINE } from '../config/tuning';
 import { MAPS } from '../levels';
 import type { ClassifiedOutcome } from '../sim/classification';
-import type { MatchView, OnlineErrorCode, PresenceEntry, SeatState, ShotRecord } from './onlineTypes';
+import type { MatchView, OnlineErrorCode, PresenceEntry, QuietPeriod, SeatState, ShotRecord } from './onlineTypes';
 import { replayMatch, type ReplayResult } from './replayMatch';
 
 const MS = 1000;
@@ -51,11 +51,39 @@ export function isRoomQuiet(seats: readonly SeatState[], presence: readonly Pres
 }
 
 /**
- * Evidence that `seat` went quiet on its own: someone else still in the match checked in at least two heartbeats
- * after `seat` last did. In a shared outage everyone's last check-ins are within one heartbeat of each other.
+ * The quiet period that a check-in arriving at `now` ends, to record on the room (`rooms.lastQuiet`); null when the
+ * room was not quiet. `presence` is as it was just before the check-in.
  */
-export function isOutlived(seats: readonly SeatState[], presence: readonly PresenceEntry[], seat: number): boolean {
-  return lastLife(seats, presence, seat) >= lastSeenOf(seat, presence) + 2 * ONLINE.heartbeatSeconds * MS;
+export function quietEnded(seats: readonly SeatState[], presence: readonly PresenceEntry[], now: number): QuietPeriod | null {
+  const start = lastLife(seats, presence);
+  return Number.isFinite(start) && isRoomQuiet(seats, presence, now) ? { start, end: now } : null;
+}
+
+/**
+ * `seat` went quiet together with the room in `quiet` and has not checked in since: its last check-in was not
+ * already outlived when the room went quiet.
+ */
+function caughtInQuiet(seat: number, presence: readonly PresenceEntry[], quiet: QuietPeriod | undefined): quiet is QuietPeriod {
+  const seen = lastSeenOf(seat, presence);
+  return quiet !== undefined && seen < quiet.end && seen > quiet.start - 2 * ONLINE.heartbeatSeconds * MS;
+}
+
+/**
+ * When `seat` counts as last seen. The check-in that ends a quiet period counts as one for every seat caught in it
+ * ({@link caughtInQuiet}), so after a shared outage nobody looks missing just because someone else came back first:
+ * staleness and the two-heartbeat margin count from the first check-in back.
+ */
+export function lastSeenAfterQuiet(seat: number, presence: readonly PresenceEntry[], quiet?: QuietPeriod): number {
+  return caughtInQuiet(seat, presence, quiet) ? quiet.end : lastSeenOf(seat, presence);
+}
+
+/**
+ * Evidence that `seat` went quiet on its own: someone else still in the match checked in at least two heartbeats
+ * after `seat` last did (counting a quiet period's end, see {@link lastSeenAfterQuiet}). In a shared outage
+ * everyone's last check-ins are within one heartbeat of each other.
+ */
+export function isOutlived(seats: readonly SeatState[], presence: readonly PresenceEntry[], seat: number, quiet?: QuietPeriod): boolean {
+  return lastLife(seats, presence, seat) >= lastSeenAfterQuiet(seat, presence, quiet) + 2 * ONLINE.heartbeatSeconds * MS;
 }
 
 export function validateFire(view: MatchView, callerSeat: number,
@@ -108,7 +136,7 @@ export type TurnDecision =
  * What the server does about turn `seq` right now (spec §4 checkTurn and "Quiet room"). A skip needs evidence that
  * someone was still connected: a seat that left is skipped at once; a stale seat only when another seat checked in
  * well after it ({@link isOutlived}); the turn limit only when someone checked in after it ran out. While the whole
- * room is quiet, the turn clock restarts instead.
+ * room is quiet, the turn clock restarts instead. After a quiet period, staleness counts from its end.
  */
 export function checkTurnDecision(view: MatchView, presence: readonly PresenceEntry[], now: number, seq: number): TurnDecision {
   if (view.room.status !== 'playing') return { kind: 'none' };
@@ -119,9 +147,10 @@ export function checkTurnDecision(view: MatchView, presence: readonly PresenceEn
   const skip: TurnDecision = { kind: 'skip', seat, angle: player.lastAngle, power: player.lastPower };
   if (view.seats.find(s => s.seat === seat)?.left ?? true) return skip;
   const heartbeat = ONLINE.heartbeatSeconds * MS;
-  const lastSeen = lastSeenOf(seat, presence);
+  const quiet = view.room.lastQuiet;
+  const lastSeen = lastSeenAfterQuiet(seat, presence, quiet);
   const stale = now - lastSeen >= ONLINE.staleSeconds * MS;
-  if (stale && isOutlived(view.seats, presence, seat)) return skip;
+  if (stale && isOutlived(view.seats, presence, seat, quiet)) return skip;
   const turnEnds = view.room.turnClockStart + ONLINE.turnLimitSeconds * MS;
   if (now >= turnEnds && lastLife(view.seats, presence) >= turnEnds) return skip;
   if (isRoomQuiet(view.seats, presence, now)) return { kind: 'wait', clockStart: now, at: now + 2 * heartbeat };
@@ -180,14 +209,19 @@ export type InFlightDecision =
 /**
  * What the server does about an unreported shot (spec §4 checkInFlight). After the deadline it falls back only once
  * someone still in the match has checked in since the deadline (or nobody is left to wait for), so a shared outage
- * leaves the shooter's own report a chance to arrive.
+ * leaves the shooter's own report a chance to arrive. A shooter caught in a quiet period ({@link lastSeenAfterQuiet})
+ * gets until a full stale window after its end, so a spectator who is back first does not time the shot out.
  */
 export function checkInFlightDecision(view: MatchView, presence: readonly PresenceEntry[], now: number, seq: number): InFlightDecision {
   const shot = view.shots.find(s => s.seq === seq);
   if (!shot || shot.outcome !== null) return { kind: 'none' };
   const shooterLeft = view.seats.find(s => s.seat === shot.seat)?.left ?? true;
   if (shooterLeft && shot.witnessOutcome !== null) return { kind: 'resolve', outcome: shot.witnessOutcome, resolution: 'witness' };
-  const deadline = shot.firedAt + ONLINE.inFlightTimeoutSeconds * MS;
+  const timeout = shot.firedAt + ONLINE.inFlightTimeoutSeconds * MS;
+  const quiet = view.room.lastQuiet;
+  const deadline = !shooterLeft && caughtInQuiet(shot.seat, presence, quiet)
+    ? Math.max(timeout, quiet.end + ONLINE.staleSeconds * MS)
+    : timeout;
   if (now < deadline) return { kind: 'reschedule', at: deadline };
   const someoneIn = view.seats.some(s => !s.left);
   if (someoneIn && lastLife(view.seats, presence) < deadline) return { kind: 'reschedule', at: now + ONLINE.heartbeatSeconds * MS };

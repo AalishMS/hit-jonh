@@ -1,7 +1,7 @@
 // src/rules/onlineMatch.ts
 import { ONLINE } from '../config/tuning';
 import type { ClassifiedOutcome } from '../sim/classification';
-import { isFresh, isOutlived } from './onlineRules';
+import { isFresh, isOutlived, lastSeenAfterQuiet } from './onlineRules';
 import type { PresenceEntry, RoomSnapshot, ShotRecord } from './onlineTypes';
 import { replayMatch, type ReplayResult } from './replayMatch';
 
@@ -135,9 +135,10 @@ export class OnlineMatchTracker {
       turn = { seat, name, secondsLeft: Math.max(0, Math.ceil((snap.room.turnClockStart + ONLINE.turnLimitSeconds * MS - now) / MS)) };
     }
     let missing: Countdown | null = null;
-    const lastSeen = this.presence.find(p => p.seat === seat)?.lastSeen;
+    const quiet = snap.room.lastQuiet;
+    const lastSeen = this.presence.some(p => p.seat === seat) ? lastSeenAfterQuiet(seat, this.presence, quiet) : undefined;
     // Same evidence rule as the server's skip: someone else checked in well after the active player went quiet.
-    if (lastSeen !== undefined && now - lastSeen >= ONLINE.staleWarnSeconds * MS && isOutlived(snap.seats, this.presence, seat)) {
+    if (lastSeen !== undefined && now - lastSeen >= ONLINE.staleWarnSeconds * MS && isOutlived(snap.seats, this.presence, seat, quiet)) {
       missing = { seat, name, secondsLeft: Math.max(0, Math.ceil((lastSeen + ONLINE.staleSeconds * MS - now) / MS)) };
     }
     return { turn, missing, rematch };

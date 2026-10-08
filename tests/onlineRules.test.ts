@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
 import {
   acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomQuiet, lastLife, mapHasRicochet,
-  planTurnStart, validMaps, validateFire, validateReport,
+  planTurnStart, quietEnded, validMaps, validateFire, validateReport,
 } from '../src/rules/onlineRules';
-import type { MatchView, PresenceEntry, ShotRecord } from '../src/rules/onlineTypes';
+import type { MatchView, PresenceEntry, QuietPeriod, ShotRecord } from '../src/rules/onlineTypes';
+import { replayMatch } from '../src/rules/replayMatch';
 import { freshPresence, makeSeats, makeView } from './onlineFixtures';
 
 /** Two players on backyard: seat 0 hit, seat 1 is up (seq 1). */
@@ -178,7 +179,7 @@ describe('checkTurnDecision: shared outage needs evidence of life before skippin
     expect(runTurnTimers(view, { 1: missing, 0: beats(7_000, HEARTBEAT) }, 5_001, 400_000).skippedAt).toBe(5_000 + STALE);
   });
 
-  it('skips a truly missing player at 90 s even when the spectator only checks in once a minute (background tab)', () => {
+  it('skips a truly missing player at 90 s even when the spectator only checks in once a minute (background tab), with no quiet period recorded', () => {
     const view = makeView(2, ['body'], { turnClockStart: 5_000 });
     const missing = beats(5_000, HEARTBEAT, 5_001);
     const throttled = 60_000;
@@ -233,6 +234,152 @@ describe('checkInFlightDecision: deadline during an outage', () => {
       .toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
     const everyoneLeft = makeView(2, ['body', null], {}, [{ left: true }, { left: true }]);
     expect(checkInFlightDecision(everyoneLeft, [], deadline, 1)).toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
+  });
+});
+
+/** Each seat's check-in times (ascending): heartbeats, fires, reports, rejoins. */
+type CheckIns = Record<number, readonly number[]>;
+/** Check-ins every heartbeat from `from` until `until` (exclusive). */
+const every = (from: number, until: number, step = HEARTBEAT): number[] =>
+  Array.from({ length: Math.max(0, Math.ceil((until - from) / step)) }, (_, i) => from + i * step);
+const presenceFrom = (ins: CheckIns, now: number): PresenceEntry[] =>
+  Object.entries(ins).flatMap(([seat, times]) => {
+    const seen = times.filter(t => t <= now);
+    return seen.length === 0 ? [] : [{ seat: Number(seat), lastSeen: seen[seen.length - 1]! }];
+  });
+
+/** The room's `lastQuiet` at `now`, as the server's check-in helper records it: every check-in replays `quietEnded`. */
+function quietFrom(view: MatchView, ins: CheckIns, now: number): QuietPeriod | undefined {
+  const events = Object.values(ins).flatMap(times => times.filter(t => t <= now)).sort((a, b) => a - b);
+  let quiet: QuietPeriod | undefined;
+  for (const t of events) quiet = quietEnded(view.seats, presenceFrom(ins, t - 1), t) ?? quiet;
+  return quiet;
+}
+const roomAt = (view: MatchView, ins: CheckIns, now: number, clock = view.room.turnClockStart): MatchView => {
+  const quiet = quietFrom(view, ins, now);
+  return { ...view, room: { ...view.room, turnClockStart: clock, ...(quiet ? { lastQuiet: quiet } : {}) } };
+};
+
+/** {@link runTurnTimers} with check-ins recording quiet periods, as on the server. */
+function runRoomTimers(view: MatchView, ins: CheckIns, firstAt: number, until: number, seq = 1) {
+  let clock = view.room.turnClockStart;
+  let at = firstAt;
+  while (at <= until) {
+    const d = checkTurnDecision(roomAt(view, ins, at, clock), presenceFrom(ins, at), at, seq);
+    if (d.kind === 'skip') return { skippedAt: at, clock };
+    if (d.kind === 'none') throw new Error('unexpected none');
+    if (d.kind === 'wait') clock = d.clockStart;
+    if (d.at <= at) throw new Error(`timer did not advance at ${at}`);
+    at = d.at;
+  }
+  return { skippedAt: null, clock };
+}
+
+/** Runs `checkInFlight` for seq 1 from its deadline until it resolves; returns when and how. */
+function runInFlightTimers(view: MatchView, ins: CheckIns, until: number) {
+  let at = view.shots[1]!.firedAt + IN_FLIGHT;
+  while (at <= until) {
+    const d = checkInFlightDecision(roomAt(view, ins, at), presenceFrom(ins, at), at, 1);
+    if (d.kind === 'resolve') return { at, ...d };
+    if (d.kind === 'none') throw new Error('unexpected none');
+    if (d.at <= at) throw new Error(`timer did not advance at ${at}`);
+    at = d.at;
+  }
+  return null;
+}
+
+describe('after a shared outage, everyone gets a full stale window from the first check-in back', () => {
+  const down = 30_000;
+  const back = 200_000; // first check-in after a 170 s outage
+  const end = 1_000_000;
+
+  it('records a quiet period when a check-in lands in a quiet room, and only then', () => {
+    const seats = makeSeats(2);
+    const before = [{ seat: 0, lastSeen: 19_000 }, { seat: 1, lastSeen: 15_000 }];
+    expect(quietEnded(seats, before, back)).toEqual({ start: 19_000, end: back });
+    expect(quietEnded(seats, before, 19_000 + 2 * HEARTBEAT - 1)).toBeNull();
+    expect(quietEnded(seats, [], back)).toBeNull();
+  });
+
+  it('checkTurn: the active player is not skipped while reconnecting 40 s after the other player', () => {
+    // Alice (seat 1) is up. Bob (seat 0) is back at 200 s, Alice at 240 s.
+    const ins = { 0: [...every(4_000, down), ...every(back, end)], 1: [...every(0, down), ...every(back + 40_000, end)] };
+    const result = runRoomTimers(awaitingSeat1(), ins, 10_000, end);
+    // Only the turn limit ends her turn, on the clock restarted during the outage.
+    expect(result.skippedAt).not.toBeNull();
+    expect(result.skippedAt!).toBeGreaterThanOrEqual(back + STALE);
+    expect(result.skippedAt).toBe(result.clock + TURN);
+  });
+
+  it('checkTurn: an active player who never comes back is skipped a full stale window after the first check-in back', () => {
+    const ins = { 0: [...every(4_000, down), ...every(back, end)], 1: every(0, down) };
+    expect(runRoomTimers(awaitingSeat1(), ins, 10_000, end).skippedAt).toBe(back + STALE);
+  });
+
+  it('the shooter\'s report after an outage does not skip the players who have not reconnected yet', () => {
+    const view = makeView(3, ['body', null]);
+    const shooter = view.shots[1]!.seat;
+    const [first, second] = [0, 1, 2].filter(s => s !== shooter) as [number, number];
+    const ins = {
+      [shooter]: [...every(0, down), ...every(back, end)], // the report is the first check-in back
+      [first]: [...every(5_000, down), ...every(back + 20_000, end)],
+      [second]: [...every(10_000, down), ...every(back + 40_000, end)],
+    };
+    const resolved = withShot(view, 1, { outcome: 'miss', resolution: 'shooter', resolvedAt: back });
+    const plan = planTurnStart(roomAt(resolved, ins, back), presenceFrom(ins, back), back, back);
+    expect(plan.skips).toEqual([]);
+    expect(plan.checkSeq).toBe(2);
+    const next = { ...resolved, room: { ...resolved.room, turnClockStart: back } };
+    expect(runRoomTimers(next, ins, plan.checkAt!, end, 2).skippedAt).toBe(back + TURN);
+  });
+
+  it('a truly missing player after the report is still skipped a full stale window after it', () => {
+    const view = makeView(3, ['body', null]);
+    const shooter = view.shots[1]!.seat;
+    const resolved = withShot(view, 1, { outcome: 'miss', resolution: 'shooter', resolvedAt: back });
+    const up = replayMatch({ seats: resolved.seats, maps: resolved.room.maps, seed: resolved.room.seed, shots: resolved.shots },
+      { includeInFlight: true }).awaitingSeat!;
+    const other = [0, 1, 2].find(s => s !== shooter && s !== up)!;
+    const ins = {
+      [shooter]: [...every(0, down), ...every(back, end)],
+      [up]: every(5_000, down), // never comes back
+      [other]: [...every(10_000, down), ...every(back + 20_000, end)],
+    };
+    const plan = planTurnStart(roomAt(resolved, ins, back), presenceFrom(ins, back), back, back);
+    expect(plan.skips).toEqual([]);
+    const next = { ...resolved, room: { ...resolved.room, turnClockStart: back } };
+    expect(runRoomTimers(next, ins, plan.checkAt!, end, 2).skippedAt).toBe(back + STALE);
+  });
+
+  it('in-flight: a spectator back first does not time out the shooter who reconnects 30 s later', () => {
+    // Alice (seat 1) fired at 1 s; the deadline passes during the outage. Bob is back at 200 s, Alice at 230 s.
+    const ins = { 0: [...every(4_000, down), ...every(back, end)], 1: [...every(1_001, down), ...every(back + 30_000, end)] };
+    const result = runInFlightTimers(inFlight(), ins, end);
+    expect(result).not.toBeNull();
+    expect(result!.at).toBeGreaterThan(back + 30_000);
+  });
+
+  it('in-flight: a shooter who never comes back times out a full stale window after the first check-in back', () => {
+    const ins = { 0: [...every(4_000, down), ...every(back, end)], 1: every(1_001, down) };
+    expect(runInFlightTimers(inFlight(), ins, end)).toEqual({ at: back + STALE, kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
+    const witnessed = withShot(inFlight(), 1, { witnessOutcome: 'body' });
+    expect(runInFlightTimers(witnessed, ins, end)).toMatchObject({ at: back + STALE, outcome: 'body', resolution: 'witness' });
+  });
+
+  it('a background-tab spectator (one check-in a minute) still gets a missing player skipped, one minute late at most', () => {
+    // Each of Bob's minute-apart check-ins ends a "quiet" room. The first such quiet period still catches Alice;
+    // the next one does not, because by then Bob had outlived her.
+    const throttled = 60_000;
+    for (let phase = 0; phase < throttled; phase += 1_000) {
+      const bob = every(5_000 + phase - throttled, end, throttled);
+      const ins = { 0: bob, 1: [5_000] };
+      const view = makeView(2, ['body'], { turnClockStart: 5_000 });
+      const skippedAt = runRoomTimers(view, ins, 5_001, end).skippedAt;
+      const firstBeatAfterStale = bob.find(b => b >= 5_000 + STALE)!;
+      expect(skippedAt, `phase ${phase}`).not.toBeNull();
+      expect(skippedAt!, `phase ${phase}`).toBeGreaterThanOrEqual(5_000 + STALE);
+      expect(skippedAt!, `phase ${phase}`).toBeLessThanOrEqual(firstBeatAfterStale + 2 * HEARTBEAT);
+    }
   });
 });
 

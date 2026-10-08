@@ -3,7 +3,7 @@ import { ConvexError } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
-import { planTurnStart, type TurnPlan } from '../src/rules/onlineRules';
+import { planTurnStart, quietEnded, type TurnPlan } from '../src/rules/onlineRules';
 import { renumberSeats, staleLobbySeats } from '../src/rules/onlineRoster';
 import type { MatchView, OnlineErrorCode, PresenceEntry, Resolution, RoomState, SeatState, ShotRecord } from '../src/rules/onlineTypes';
 import type { ClassifiedOutcome } from '../src/sim/classification';
@@ -57,6 +57,7 @@ export async function listPresence(ctx: Reader, roomId: Id<'rooms'>, players: re
 export const toRoomState = (r: Doc<'rooms'>): RoomState => ({
   code: r.code, status: r.status, maps: r.maps, seed: r.seed, matchNumber: r.matchNumber,
   matchStartedAt: r.matchStartedAt, turnClockStart: r.turnClockStart, rematchDeadline: r.rematchDeadline,
+  ...(r.lastQuiet ? { lastQuiet: r.lastQuiet } : {}),
 });
 
 export const toSeat = (p: Doc<'players'>): SeatState => ({
@@ -77,7 +78,18 @@ export async function loadView(ctx: Reader, roomId: Id<'rooms'>) {
   return { room, players, shotDocs, presence, view };
 }
 
+/**
+ * Every check-in (create, join, start, heartbeat, fire, report) goes through here. During a match, a check-in that
+ * lands in a quiet room first records that quiet period on the room, so staleness counts from the first check-in
+ * back (spec §4 "Empty room").
+ */
 export async function touchPresence(ctx: MutationCtx, roomId: Id<'rooms'>, playerId: Id<'players'>, now: number): Promise<void> {
+  const room = await ctx.db.get(roomId);
+  if (room?.status === 'playing') {
+    const players = await listPlayers(ctx, roomId);
+    const quiet = quietEnded(players.map(toSeat), await listPresence(ctx, roomId, players), now);
+    if (quiet) await ctx.db.patch(roomId, { lastQuiet: quiet });
+  }
   const existing = await ctx.db.query('presence').withIndex('by_player', q => q.eq('playerId', playerId)).unique();
   if (existing) await ctx.db.patch(existing._id, { lastSeen: now });
   else await ctx.db.insert('presence', { roomId, playerId, lastSeen: now });
