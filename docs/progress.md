@@ -309,10 +309,12 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 ## Rubber Yard Map Addition � 2026-10-05
 
-**Done/current:** Implemented the "Rubber Yard" map featuring a bouncy rubber ceiling and a solid concrete wall obstacle, satisfying the original design proposal for a trick-shot arena. Authored unique rendering for the new ubber material to distinguish it from concrete and wood. Determined and proved stable, exclusive reference solutions for standard play and multiplayer target positions. Passed all physics and orchestration tests.
+**Done/current:** Implemented the "Rubber Yard" map featuring a bouncy rubber ceiling and a solid concrete wall obstacle, satisfying the original design proposal for a trick-shot arena. Authored unique rendering for the new 
+ubber material to distinguish it from concrete and wood. Determined and proved stable, exclusive reference solutions for standard play and multiplayer target positions. Passed all physics and orchestration tests.
 
 **Lifecycle/accessibility decisions:**
-- Kept MULTIPLAYER.maps to the core 3 maps (ackyard, ence, ooftop) to preserve existing competitive round tracking/match lengths, treating "Rubber Yard" as a distinct/optional map for solo practice or explicit selection.
+- Kept MULTIPLAYER.maps to the core 3 maps (ackyard, ence, 
+ooftop) to preserve existing competitive round tracking/match lengths, treating "Rubber Yard" as a distinct/optional map for solo practice or explicit selection.
 - Rubber material has high restitution (0.9) to allow rich bounce gameplay without breaking standard impact dampening on grass.
 - Multiplayer offsets were standardized to -2, 0, 3 to match other levels and ensure physical exclusion of trick shots.
 - SceneryRenderer gives the rubber surface a distinct pink/red color with a soft highlight and thick border, clearly signaling its bouncy nature to the player.
@@ -378,33 +380,40 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - `npm run build`: passes; `167 modules transformed`, `built in 824ms`; Phaser 1,431.43 kB (375.59 kB gzip); `main` 287.01 kB (84.57 kB gzip).
 - Node printed its usual experimental localStorage warning during Vitest.
 
-**Convex smoke runs (Convex MCP, dev deployment `proper-lapwing-569` only, never prod).** Task 8 (commit `e9306f9`): create/join/getRoom/start, NOT_HOST, ALREADY_STARTED, INVALID_MAPS and NOT_MEMBER behaved as specified. Task 9 (commit `1ff8b1b`): fire/report/witness/leave/rematch paths, duplicate and conflict handling, STALE_MATCH, OUT_OF_ORDER, INVALID_AIM, a full 6-shot match with immediate rematch, a manual `cleanupRooms` run (nothing deleted, all rooms under 24 h), 0 failed scheduled functions, and only the intentional ConvexError rejections in the logs. Details are in those commit bodies.
+**Manual walkthrough (Task 15 Step 1): run 2026-10-08 via the chrome-devtools MCP** (one Chromium, three pages in separate browser contexts, Convex dev `proper-lapwing-569`). Full evidence: `.superpowers/sdd/2026-10-08-online-multiplayer/task-15-walkthrough-2.md`. Result: 12 PASS, 1 FAIL (item 12), 1 NOT VERIFIED (item 13), 5 PARTIAL. Same engine and machine throughout, so no cross-browser, phone or Safari/Firefox coverage.
 
-**Manual walkthrough (Task 15 Step 1): NOT PERFORMED, every item NOT VERIFIED.** Reason: the Chrome automation browser could not reach the local Vite dev server (localhost, 127.0.0.1 and the LAN IP all failed from the browser although `curl` from the shell returned 200), and the Convex MCP had disconnected. No item below was observed; none is marked PASS.
+| # | Item | Status | Observed |
+| --- | --- | --- | --- |
+| 1 | Create in tab A; join from B by lowercase code with a space and by link; distinct colour/pattern | PASS | `rx kyd` joined as seat 2; `?room=` link prefilled and joined as seat 3; colours/patterns distinct. |
+| 2 | Bad code `K0QPX` rejected locally; unknown valid code says "No room with that code." | PASS | Both messages seen. |
+| 3 | Host changes arena and B sees it; B has no Start; Start enabled at 2 players | PASS | Arena change reached B within 1.5 s; Start disabled at 1 player, enabled at 2. |
+| 4 | Full single-map match: shots animate on both tabs from fire, scores match, handover text | PASS (ball not eyeballed mid-air) | Both tabs showed "in flight" at fire time; final scores matched (Bob 100, Alice 0). No screenshot of the ball in the air on the spectator tab. |
+| 5 | On the other player's turn Space/arrows/drag/Fire do nothing; "{name} is aiming…" | PASS (canvas drag not tried) | Keys changed nothing; Fire, sliders and Aim again were disabled. |
+| 6 | Pause during the other player's flight; their next shot waits and plays once on resume | PASS | Shot played once after Resume. |
+| 7 | Reload A mid-turn rejoins; reload during own flight replays and reports; B not stuck | PARTIAL | Only the second tab (Bob) reloaded ~1 s after firing: rejoined, replayed, match advanced. Host-tab reload mid-turn and reload while the ball is airborne NOT VERIFIED. |
+| 8 | Leave on own turn: skipped at once, "{name} was skipped", no cannon fire | PARTIAL | Turn advanced with no gap and later turns read "was skipped", but the first skip banner was missed and "no cannon fire" was not checked by screenshot. |
+| 9 | Close B's tab on B's turn: warning at 60 s, skip at 90 s | PASS | Warning at 52 s, skip at 82 s after close (about 8 s before the last heartbeat, consistent with 60/90). |
+| 10 | Idle 120 s on own turn: countdown from 90 s, then skip | PASS | "30 s left to fire" at ~88 s, counted to 1 s, then "Your turn was skipped". |
+| 11 | A offline over 40 s mid-flight: B reports witness outcome; A sees "Your shot timed out" | PASS | Witness outcome recorded 40.0 s after fire; shooter saw "Your shot timed out" within 3 s of reconnecting. |
+| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | **FAIL** | Both pages offline ~140 s on Alice's turn: her turn was resolved `skipped` during the outage, and she saw "Your turn was skipped" on reconnect. Spec says nothing should be skipped when everyone is disconnected. Not ruled out: an offline-emulation artefact or a presence row counted fresh. In-flight-shot part not tested. NOT FIXED, needs investigation. |
+| 13 | Background tab over 5 minutes: not skipped while away | NOT VERIFIED | Needs a real hidden window for over 5 minutes. See bug note below. |
+| 14 | Lobby host quiet over 90 s: B becomes host; A rejoins; Leave does not rejoin | PASS | Host handed over at 85 s; A rejoined automatically on reconnect; Leave did not rejoin. |
+| 15 | Rematch: both ready starts at once; one ready counts down; "You weren't included"; "Not enough players…" | PARTIAL | Both ready started at once; one ready gave "Not enough players". Countdown and "You weren't included" NOT VERIFIED (need 3 players). |
+| 16 | Skip-vs-fire race at about 119 s: loser sees "Your turn was skipped", clients agree | PASS (timing approximate) | Fire at "1 s left" won; fire at "0 s left" lost and both clients agreed. Fire time only approximately 119-120 s. |
+| 17 | Hot-seat roster still shows saved local players after online play | PASS | Hot-seat names Zed/Yan survived; online profile stored separately. Roster was entered after the online session. |
+| 18 | Cleanup cron registered and hourly runs error-free; 24 h deletion | PARTIAL | `convex/crons.ts` registers hourly `cleanupRooms`; logs show one Cron run, error null, 0 documents touched. Only one run seen, so "hourly" repeats and the 24 h deletion NOT VERIFIED. |
+| 19 | Dev console `[online] shot … local …, official …` mismatch warnings across browsers | PARTIAL | No mismatch warning in Alice's console. Bob's console not read; single engine, so nothing about cross-browser. |
 
-| # | Item | Status |
-| --- | --- | --- |
-| 1 | Create in tab A; join from B by lowercase code with a space and by link; distinct colour/pattern | NOT VERIFIED |
-| 2 | Bad code `K0QPX` rejected locally; unknown valid code says "No room with that code." | NOT VERIFIED |
-| 3 | Host changes arena and B sees it; B has no Start; Start enabled at 2 players | NOT VERIFIED |
-| 4 | Full single-map match: shots animate on both tabs from fire, scores match, handover text | NOT VERIFIED |
-| 5 | On the other player's turn Space/arrows/drag/Fire do nothing; "{name} is aiming…" | NOT VERIFIED |
-| 6 | Pause during the other player's flight; their next shot waits and plays once on resume | NOT VERIFIED |
-| 7 | Reload A mid-turn rejoins; reload during own flight replays and reports; B not stuck | NOT VERIFIED |
-| 8 | Leave on own turn: skipped at once, "{name} was skipped", no cannon fire | NOT VERIFIED |
-| 9 | Close B's tab on B's turn: warning at 60 s, skip at 90 s | NOT VERIFIED |
-| 10 | Idle 120 s on own turn: countdown from 90 s, then skip | NOT VERIFIED |
-| 11 | A offline over 40 s mid-flight: B reports witness outcome; A sees "Your shot timed out" | NOT VERIFIED |
-| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | NOT VERIFIED |
-| 13 | Background tab over 5 minutes: not skipped while away | NOT VERIFIED |
-| 14 | Lobby host quiet over 90 s: B becomes host; A rejoins; Leave does not rejoin | NOT VERIFIED |
-| 15 | Rematch: both ready starts at once; one ready counts down; "You weren't included"; "Not enough players…" | NOT VERIFIED |
-| 16 | Skip-vs-fire race at about 119 s: loser sees "Your turn was skipped", clients agree | NOT VERIFIED |
-| 17 | Hot-seat roster still shows saved local players after online play | NOT VERIFIED |
-| 18 | Cleanup cron registered and hourly runs error-free; 24 h deletion | NOT VERIFIED |
-| 19 | Dev console `[online] shot … local …, official …` mismatch warnings across browsers | NOT VERIFIED |
+**Bugs / notes from the walkthrough (none fixed).**
+- Item 12 FAIL (above): look at `checkTurnDecision` and the presence-staleness threshold.
+- A tab that was not the DevTools-selected page froze (countdown stuck), stopped heartbeating, was marked `left`, and its match ended with "This match ended unexpectedly." Likely test-environment throttling, not a controlled test, but it is the same area as item 13 and needs a real-browser background test.
+- Minor transient UI after reconnect: "Waiting for Bob… skipping in 6 s" shown for ~2 s on the reconnecting tab; the lobby showed stale host state for ~2 s.
+- Layout: on the spectator tab the other player's cannon is drawn below the ground strip with a "Bob · stripes" label; whether the "is aiming…" banner is ever visibly shown was not verified.
+- No JS errors other than the expected offline WebSocket failures.
 
-**Also not verified:** the cleanup cron registration (`_cron_jobs` could not be read; check the Dashboard cron list); the real 120 s / 40 s / 90 s timeouts (only stale timers firing as no-ops were seen); the `IMPOSSIBLE_OUTCOME` rejection; 24 h room deletion; any DOM screen or scene glue in a browser; Safari.
+**Still not verified:** items 13 and 12's in-flight part, repeated hourly cron runs and 24 h deletion, the `IMPOSSIBLE_OUTCOME` rejection, phone/touch, Safari/Firefox, cross-browser mismatch warnings.
+
+**How to re-run.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open each player in a NEW tab, not "Duplicate tab" (a duplicate shares `sessionStorage` and so the first tab's seat). Use DevTools Offline for items 11-12.
 
 **How to run the walkthrough yourself.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open two tabs (or a desktop browser plus a phone on the same Wi-Fi); each tab is its own player. Open each player in a NEW tab, not "Duplicate tab": a duplicated tab copies `sessionStorage` and so shares the first tab's seat. Work through the 19 items above, using DevTools Offline for items 11–12, and record PASS/FAIL here.
 
@@ -426,13 +435,13 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - Convex tooling also wrote Convex guidance blocks into `AGENTS.md`/`CLAUDE.md` and files under `.agents/`, `.claude/` and `skills-lock.json`. They are not part of this work and are left uncommitted for the owner.
 
 **Final review fix wave (after the whole-branch review).**
-- I1: Create, Join and a `?room=` link now act only if the user is still on the screen they started from. Convex queues calls while offline, so a reply could land late and pop a lobby over a solo game or leave an orphan seat; a late Create/Join now gives its seat back (`leaveRoom(code)`). Covered by 5 new controller tests and 1 session test, each watched failing first.
-- I2: on another player's turn the HUD is no longer inert. Mute and Pause stay usable (touch players have no Escape/M), while Fire, the aim sliders and Reset are disabled. Hot-seat is unchanged (there `canUserAct()` is always true). Browser-only: NOT VERIFIED.
-- I3: Copy link did nothing on non-secure origins (it never crashed). `navigator.clipboard` is undefined on a LAN `http://` address. Fixed with a fallback: the lobby shows the link in a read-only, selected field labelled "Copy this link". The pure `copyText()` helper is unit-tested; the DOM fallback is NOT VERIFIED in a browser.
-- M1: the online result screen keeps keyboard focus across its once-a-second countdown re-renders (NOT VERIFIED in a browser).
+- I1 (browser: PARTIAL PASS: offline Create then Back stayed on the mode screen and the late room was left empty; late Join and late link NOT VERIFIED): Create, Join and a `?room=` link now act only if the user is still on the screen they started from. Convex queues calls while offline, so a reply could land late and pop a lobby over a solo game or leave an orphan seat; a late Create/Join now gives its seat back (`leaveRoom(code)`). Covered by 5 new controller tests and 1 session test, each watched failing first.
+- I2: on another player's turn the HUD is no longer inert. Mute and Pause stay usable (touch players have no Escape/M), while Fire, the aim sliders and Reset are disabled. Hot-seat is unchanged (there `canUserAct()` is always true). Browser: PASS (Mute toggled and Pause worked while Fire, sliders and Aim again were disabled).
+- I3: Copy link did nothing on non-secure origins (it never crashed). `navigator.clipboard` is undefined on a LAN `http://` address. Fixed with a fallback: the lobby shows the link in a read-only, selected field labelled "Copy this link". The pure `copyText()` helper is unit-tested; browser: PASS with `navigator.clipboard` set to undefined (selected read-only field appeared and survived a lobby re-render; the clipboard success path was not exercised).
+- M1: the online result screen keeps keyboard focus across its once-a-second countdown re-renders (browser: PARTIAL PASS: focus on Leave held across a Rematch press and the "Not enough players" note; the "Rematch starts in Ns" re-renders were not observed).
 - M2: `cleanupRooms` schedules another run immediately after deleting a full batch of 50 rooms. Pushed to dev only (`npx convex dev --once`); not exercised (no smoke run).
 - Docs: SPEC §6.1 now names the `online` field of the `hitJonh.v1` save; README and this file say each player needs a NEW tab, not "Duplicate tab".
 - Evidence after this wave: `npm run check` passes with `Test Files 45 passed (45)` and `Tests 364 passed (364)`. `npm run build` passes: `168 modules transformed`, `main` 288.17 kB (84.91 kB gzip).
 - Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
 
-**Next task:** run the walkthrough above (and confirm the cron in the Convex Dashboard).
+**Next task:** investigate the item 12 FAIL (shared outage skipped a turn), then a real-browser background-tab test (item 13) and the 3-player rematch items.
