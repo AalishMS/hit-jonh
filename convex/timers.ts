@@ -71,11 +71,15 @@ export const startRematch = internalMutation({
   },
 });
 
+/** Rooms deleted per transaction; a full batch schedules the next one straight away. */
+const CLEANUP_BATCH = 50;
+
 export const cleanupRooms = internalMutation({
   args: {},
   handler: async ctx => {
     const cutoff = Date.now() - ONLINE.roomTtlHours * 3600 * 1000;
-    const old = await ctx.db.query('rooms').withIndex('by_updatedAt', q => q.lt('updatedAt', cutoff)).take(50);
+    const old = await ctx.db.query('rooms').withIndex('by_updatedAt', q => q.lt('updatedAt', cutoff)).take(CLEANUP_BATCH);
     for (const room of old) await deleteRoomCascade(ctx, room._id);
+    if (old.length === CLEANUP_BATCH) await ctx.scheduler.runAfter(0, internal.timers.cleanupRooms, {});
   },
 });
