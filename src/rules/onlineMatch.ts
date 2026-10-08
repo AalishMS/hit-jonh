@@ -23,7 +23,7 @@ export class OnlineMatchTracker {
   private builtMatch: number | null = null;
   private presentedSeq = 0;
   private readonly firedByMe = new Set<number>();
-  private cache: { snap: RoomSnapshot; result: ReplayResult } | null = null;
+  private cache: { snap: RoomSnapshot; result: ReplayResult | null } | null = null;
 
   get snapshot(): RoomSnapshot | null { return this.snap; }
   get mySeat(): number | null { return this.snap?.you ?? null; }
@@ -76,7 +76,13 @@ export class OnlineMatchTracker {
     const snap = this.snap;
     if (!snap || snap.room.status === 'lobby') return null;
     if (this.cache?.snap !== snap) {
-      this.cache = { snap, result: replayMatch({ seats: snap.seats, maps: snap.room.maps, seed: snap.room.seed, shots: snap.shots }, { includeInFlight: true }) };
+      let result: ReplayResult | null;
+      try {
+        result = replayMatch({ seats: snap.seats, maps: snap.room.maps, seed: snap.room.seed, shots: snap.shots }, { includeInFlight: true });
+      } catch {
+        result = null; // server may finish a room with an unreplayable shot list
+      }
+      this.cache = { snap, result };
     }
     return this.cache.result;
   }
@@ -121,7 +127,7 @@ export class OnlineMatchTracker {
     const deadline = snap?.room.rematchDeadline ?? null;
     const rematch = deadline === null ? null : Math.max(0, Math.ceil((deadline - now) / MS));
     const view = this.serverView();
-    if (!snap || !view || view.awaitingSeat === null) return { turn: null, missing: null, rematch };
+    if (!snap || snap.room.status !== 'playing' || !view || view.awaitingSeat === null) return { turn: null, missing: null, rematch };
     const seat = view.awaitingSeat;
     const name = this.seatName(seat);
     let turn: Countdown | null = null;

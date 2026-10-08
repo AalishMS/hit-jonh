@@ -216,3 +216,31 @@ describe('OnlineMatchTracker: review-focus guarantees', () => {
     expect(t.isMyTurnToAim()).toBe(false);
   });
 });
+
+describe('OnlineMatchTracker: malformed finished match (server fallback)', () => {
+  function malformed(kind: 'gap' | 'wrongSeat'): RoomSnapshot {
+    const s = snap(['body', 'miss', 'body'], 0, { status: 'finished' });
+    if (kind === 'gap') s.shots = [s.shots[0]!, s.shots[2]!];
+    else s.shots[1] = { ...s.shots[1]!, seat: s.shots[0]!.seat };
+    return s;
+  }
+  for (const kind of ['gap', 'wrongSeat'] as const) {
+    it(`does not throw on a ${kind} shot list`, () => {
+      const t = new OnlineMatchTracker();
+      expect(() => t.update(malformed(kind))).not.toThrow();
+      expect(() => t.nextFireSeq()).not.toThrow();
+      expect(() => t.countdowns(1000)).not.toThrow();
+      expect(() => t.isMyTurnToAim()).not.toThrow();
+      expect(() => t.nextPlayback()).not.toThrow();
+      expect(t.isMyTurnToAim()).toBe(false);
+    });
+  }
+
+  it('shows no countdowns outside a playing room', () => {
+    const t = new OnlineMatchTracker();
+    t.update(snap(['body'], 0, { status: 'finished', turnClockStart: 0 }));
+    const c = t.countdowns(500_000);
+    expect(c.turn).toBeNull();
+    expect(c.missing).toBeNull();
+  });
+});
