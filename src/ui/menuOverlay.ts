@@ -114,6 +114,19 @@ export class MenuOverlay {
     this.content.appendChild(row);
     this.callbacks.onHomeExtras?.(row, signal);
     this.button('Settings', '', () => this.showSettings(), signal, row);
+    // Same switch as the in-game button: silences effects and music together.
+    const settings = loadSaveData().settings;
+    let silenced = settings.muted || !settings.music;
+    const label = () => `Sound: ${silenced ? 'off' : 'on'}`;
+    const mute = this.button(label(), '', () => {
+      silenced = !silenced;
+      const next = { ...loadSaveData().settings, muted: silenced, music: !silenced };
+      saveSettings(next);
+      this.callbacks.onSettingsChange?.({ muted: next.muted, volume: next.volume, reducedMotion: next.reducedMotion, music: next.music });
+      mute.textContent = label();
+      mute.setAttribute('aria-pressed', String(silenced));
+    }, signal, row);
+    mute.setAttribute('aria-pressed', String(silenced));
     this.content.appendChild(el('div', 'home-note', 'Solo challenges · 2–4 friends on one device · One very annoyed man'));
     play.focus();
   }
@@ -167,15 +180,10 @@ export class MenuOverlay {
       list.appendChild(row);
       return input;
     };
-    // Mute audio is the same switch as the in-game button: it silences effects and music together.
-    const muteInput = toggle('settings-mute', 'Mute audio', muted || !music, v => {
-      muted = v;
-      music = !v;
-      musicInput.checked = music;
-    });
-    const musicInput = toggle('settings-music', 'Music', music, v => {
+    // Mute lives on the home screen; turning music back on here also lifts the mute.
+    toggle('settings-music', 'Music', music && !muted, v => {
       music = v;
-      muteInput.checked = muted || !music;
+      if (v) muted = false;
     });
     const volRow = el('div', 'setting-row volume');
     const head = el('div');
