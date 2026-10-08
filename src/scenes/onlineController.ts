@@ -340,7 +340,9 @@ export class OnlineController {
       const item = this.tracker.nextPlayback();
       if (item && item.shot.seat === view.activeSeat) this.startPlayback(item);
     }
-    if (this.isCutShort(view)) { this.endCutShort(); return; }
+    // Re-read: finishing or starting a shot above moves the scene on (a skipped turn resolves at once), and judging
+    // the room against the stale "aiming" would mistake a match that just ended normally for a cut-short one.
+    if (this.isCutShort(this.hooks.presentation())) { this.endCutShort(); return; }
     const canAct = this.tracker.isMyTurnToAim();
     if (canAct !== this.lastCanAct) {
       this.lastCanAct = canAct;

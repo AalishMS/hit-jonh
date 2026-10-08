@@ -686,6 +686,69 @@ describe('OnlineController: finished matches', () => {
     expect(screens('notice').at(-1)!.message).toBe('This match ended unexpectedly.');
   });
 
+  /**
+   * Watching a 2-player match: every shot but the last is already resolved, then the server finishes the match
+   * with `last` as the final shot (edited by `edit`).
+   */
+  async function finalShot(last: ClassifiedOutcome | null, edit?: (shot: ShotRecord) => ShotRecord, status: RoomState['status'] = 'finished') {
+    const ctx = setup();
+    const listener = await enterRoom(ctx.ctl);
+    const total = MULTIPLAYER.shotsPerRound * 2;
+    const before = Array.from({ length: total - 1 }, () => 'miss' as const);
+    const lastSeat = playShots(makeSeats(2), makeRoom(), [...before, null]).at(-1)!.seat;
+    const me = 1 - lastSeat;
+    listener.onRoom(snapshot(before, me));
+    expect(ctx.scene.machine!.state).toBe('aiming');
+    const s = snapshot([...before, last], me, { status });
+    if (edit) s.shots[total - 1] = edit(s.shots[total - 1]!);
+    listener.onRoom(s);
+    return { ...ctx, listener, me, before };
+  }
+
+  it('shows the result, without leaving, when the final shot of the match is a skip', async () => {
+    const { ctl, scene } = await finalShot('miss', shot => ({ ...shot, resolution: 'skipped' }));
+    ctl.update(0.016);
+    ctl.update(0.016);
+    expect(scene.skipped.length).toBe(1);
+    expect(scene.machine!.state).toBe('match_result');
+    expect(ctl.inRoom).toBe(true);
+    expect(h.state.calls).not.toContain('leaveRoom:ABCDE');
+    expect(screens('notice')).toEqual([]);
+  });
+
+  it('shows the result, without leaving, when the final remote shot is scored after a witness report', async () => {
+    const { ctl, scene, listener, me, before } = await finalShot(null, undefined, 'playing');
+    ctl.update(0.016);
+    expect(scene.played.length).toBe(1);
+    ctl.onLocalResolution('miss');
+    scene.inFlight = false;
+    expect(session().reportWitness).toHaveBeenCalled();
+    listener.onRoom(snapshot([...before, 'body'], me, { status: 'finished' }));
+    ctl.update(0.016);
+    ctl.update(0.016);
+    expect(scene.applied).toEqual([['body', false]]);
+    expect(scene.machine!.state).toBe('match_result');
+    expect(ctl.inRoom).toBe(true);
+    expect(h.state.calls).not.toContain('leaveRoom:ABCDE');
+    expect(screens('notice')).toEqual([]);
+  });
+
+  it('still leaves with a notice when a finished match stops short right after a skipped turn', async () => {
+    const { ctl, scene } = setup();
+    const listener = await enterRoom(ctl);
+    const shooter = firstShooter();
+    listener.onRoom(snapshot([], 1 - shooter));
+    const s = snapshot(['miss'], 1 - shooter, { status: 'finished' });
+    s.shots[0] = { ...s.shots[0]!, resolution: 'skipped' };
+    listener.onRoom(s);
+    ctl.update(0.016);
+    ctl.update(0.016);
+    expect(scene.skipped.length).toBe(1);
+    expect(ctl.inRoom).toBe(false);
+    expect(h.state.calls.slice(-2)).toEqual(['leaveRoom:ABCDE', 'exit']);
+    expect(screens('notice').at(-1)!.message).toBe('This match ended unexpectedly.');
+  });
+
   it('shows a complete finished match as a result with rematch extras', async () => {
     const { ctl, scene } = setup();
     const listener = await enterRoom(ctl);
