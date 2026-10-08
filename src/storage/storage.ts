@@ -291,12 +291,13 @@ export function randomToken(): string {
  * This tab's online identity. sessionStorage survives a reload (the seat is kept) but not a new tab,
  * so two tabs are two players.
  */
-export function onlineToken(store: Pick<Storage, 'getItem' | 'setItem'> = sessionStorage, make: () => string = randomToken): string {
+export function onlineToken(store?: Pick<Storage, 'getItem' | 'setItem'>, make: () => string = randomToken): string {
   try {
-    const existing = store.getItem(ONLINE_TOKEN_KEY);
+    const target = store ?? sessionStorage;
+    const existing = target.getItem(ONLINE_TOKEN_KEY);
     if (existing && /^[0-9a-f]{32}$/.test(existing)) return existing;
     const fresh = make();
-    store.setItem(ONLINE_TOKEN_KEY, fresh);
+    target.setItem(ONLINE_TOKEN_KEY, fresh);
     return fresh;
   } catch {
     return make();

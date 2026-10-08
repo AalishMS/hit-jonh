@@ -1,5 +1,5 @@
 // tests/onlineStorage.test.ts
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MULTIPLAYER } from '../src/config/tuning';
 import {
   defaultOnlineProfile, loadOnlineProfile, loadSaveData, onlineToken, randomToken,
@@ -16,6 +16,7 @@ function memoryStore() {
 }
 const local = memoryStore();
 vi.stubGlobal('localStorage', local);
+afterAll(() => vi.unstubAllGlobals());
 
 describe('online profile', () => {
   beforeEach(() => local.clear());
@@ -69,6 +70,20 @@ describe('onlineToken', () => {
     const tab = memoryStore();
     tab.setItem('hitJonh.v1.onlineToken', 'not-a-token');
     expect(onlineToken(tab, () => 'a'.repeat(32))).toBe('a'.repeat(32));
+  });
+
+  it('falls back to a fresh token when sessionStorage itself throws (no-arg call)', () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get() { throw new Error('blocked'); },
+    });
+    try {
+      expect(onlineToken()).toMatch(/^[0-9a-f]{32}$/);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+      else delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    }
   });
 
   it('still returns a token when storage throws', () => {
