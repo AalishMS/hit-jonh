@@ -194,6 +194,11 @@ export class HTMLControls {
     }
   }
 
+  /** Online spectators: the panel stays live (Mute/Pause) while Reset is off; Fire and the sliders follow setCanFire. */
+  setResetEnabled(enabled: boolean): void {
+    this.resetButton.disabled = !enabled;
+  }
+
   setVisible(visible: boolean): void {
     this.container.style.display = visible ? '' : 'none';
     this.homeButton.hidden = !visible;

@@ -1400,10 +1400,13 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     } else if (match.state === 'aiming') {
+      // Hot-seat: canAct is always true, so this is the plain live panel. Online, on someone else's turn, the panel
+      // stays live so Mute and Pause work (touch has no Escape/M); Fire, the sliders and Reset stay disabled.
       const canAct = this.canUserAct();
-      this.htmlControls.setControlsInert(!canAct);
+      this.htmlControls.setControlsInert(false);
       this.inputCoordinator.setCanFire(canAct);
       this.htmlControls.setCanFire(canAct);
+      this.htmlControls.setResetEnabled(canAct);
       this.htmlControls.setResetLabel('Aim again ↵');
       const movement = match.activeCycleIndex > 0 ? ' · Jonh has moved—adjust your aim' : '';
       const status = this.online?.inMatch && match.activePlayerIndex !== this.online.mySeat
