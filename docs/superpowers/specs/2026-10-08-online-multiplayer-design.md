@@ -71,7 +71,7 @@ The rules logic exists in one place. The server handlers in `convex/` are thin w
 | `seed` | number | 32-bit seed for the current match's position shuffle. Set at start and rematch. |
 | `matchNumber` | number | Starts at 0; incremented on rematch. |
 | `matchStartedAt` | number | Server ms when the current match started. |
-| `turnClockStart` | number | Server ms the current turn's clock started. Set by "Starting a turn" (= the previous shot's `resolvedAt`, or `matchStartedAt` for seq 0), and **restarted while the room is empty** (see "Empty room" below). |
+| `turnClockStart` | number | Server ms the current turn's clock started. Set by "Starting a turn" (= the previous shot's `resolvedAt`, or `matchStartedAt` for seq 0), and **restarted while the room is quiet** (see "Empty room" below). |
 | `rematchDeadline` | number \| null | Server ms when the rematch window closes; set by the first Rematch press. |
 | `updatedAt` | number | Server ms of the last **game action** (not heartbeats); drives cleanup. |
 
@@ -143,8 +143,8 @@ All of them first check that the room, `matchNumber` and `seq` still match what 
 
 | Timer | Scheduled by | Behaviour |
 | --- | --- | --- |
-| `checkTurn(roomId, matchNumber, seq)` | see "Starting a turn" below | If still awaiting fire for `seq`: skip as `'skipped'` miss when the active seat `left`. **If the room is empty** (below), do nothing else: restart `turnClockStart = now` and reschedule at `now + staleSeconds`. Otherwise skip when `now ≥ turnClockStart + turnLimitSeconds` **or** presence is stale (`now − lastSeen ≥ staleSeconds`). If not skipping, reschedule itself at `min(turnClockStart + turnLimitSeconds, lastSeen + staleSeconds)`. A skip starts the next turn (or finishes the match). |
-| `checkInFlight(roomId, matchNumber, seq)` | `fireShot` | If the shot is still unresolved after `inFlightTimeoutSeconds`: **if the room is empty and the shooter hasn't `left`**, reschedule at `now + staleSeconds` (the shooter's result may still arrive). Otherwise resolve it with `witnessOutcome` (`'witness'`) or `miss` (`'timeout'`), then continue as after any resolution. |
+| `checkTurn(roomId, matchNumber, seq)` | see "Starting a turn" below | If still awaiting fire for `seq`, skip it as a `'skipped'` miss when (a) the active seat `left`; (b) the active seat is stale (`now − lastSeen ≥ staleSeconds`) **and** another non-left seat checked in at least `2 × heartbeatSeconds` after it; or (c) `now ≥ turnClockStart + turnLimitSeconds` **and** some non-left seat checked in at or after that moment. Otherwise, **if the room is quiet** (below), restart `turnClockStart = now` and reschedule at `now + 2 × heartbeatSeconds`. Otherwise, while the active seat is stale or the turn limit has passed, reschedule at `now + heartbeatSeconds`; else at `min(turnClockStart + turnLimitSeconds, lastSeen + staleSeconds)`. A skip starts the next turn (or finishes the match). |
+| `checkInFlight(roomId, matchNumber, seq)` | `fireShot` | If the shot is still unresolved after `inFlightTimeoutSeconds`: resolve it with `witnessOutcome` (`'witness'`) or `miss` (`'timeout'`) **only once some non-left seat has checked in at or after the deadline** (or no seat is left in the match), then continue as after any resolution. Until then reschedule at `now + heartbeatSeconds`: the shooter's result may still arrive. A shooter who `left` with a witness on record is resolved at once, as before. |
 | `startRematch(roomId, matchNumber)` | first `requestRematch` | At the deadline: if ≥ `minPlayers` are ready, remove every non-ready seat (row + presence), renumber the ready ones, clear readiness, `matchNumber++`, new `seed`, `matchStartedAt`, `status='playing'`, delete the old shots, schedule `checkTurn`. Otherwise clear readiness and `rematchDeadline` (still `finished`; anyone may press again). Maps are kept. |
 | cleanup (hourly cron) | `crons.ts` | Deletes rooms (players, presence, shots) whose `updatedAt` is older than `ONLINE.roomTtlHours`. |
 
@@ -152,11 +152,15 @@ Starting a rematch immediately (everyone ready) uses the same code path as `star
 
 **Starting a turn** is a shared server helper. It is used by `startMatch`, rematch start, every shot resolution (`reportOutcome`, `reportWitness`, `checkInFlight`) and every skip. It **evaluates `checkTurnDecision` immediately, in the same transaction**. If the new active seat has already left or gone stale, it is skipped at once, and the helper loops to the next turn until it reaches a seat that must be waited for (or the match finishes). Only then does it schedule `checkTurn` at the decision's reschedule time. A player who is already gone is never waited on.
 
-**Empty room (shared connection drop):**
-- The room is **empty** when no non-left seat has a fresh presence (`now − lastSeen < staleSeconds`). This is what happens when friends on one router lose the internet together.
-- While the room is empty, the server **waits instead of skipping**. Stale and turn-limit skips are suspended; only seats that explicitly `left` are skipped. The turn clock restarts, so on reconnection the active player gets a fresh `turnLimitSeconds` (give or take one reschedule interval). Unfinished shots wait for the shooter's report.
-- As soon as anyone checks in, the normal rules apply again. A player who doesn't come back is then skipped as stale.
-- This rule lives in `checkTurnDecision` and `checkInFlightDecision`, and therefore also in the "Starting a turn" loop. One outage can never skip a run of turns.
+**Empty room (shared connection drop) — skips need evidence of life:**
+- Players' heartbeats run on their own phases, up to `heartbeatSeconds` apart. When friends on one router lose the internet together, their last check-ins are therefore staggered by up to one heartbeat, and a plain "is anyone fresh?" test would see the active seat go stale while another seat still looks fresh. So the server only skips or falls back on **evidence that someone was still connected**:
+  - *Missing player:* the active seat is stale **and** another non-left seat checked in at least `2 × heartbeatSeconds` after the active seat's last check-in.
+  - *Turn limit:* some non-left seat checked in at or after the moment the limit ran out.
+  - *Unfinished shot:* some non-left seat checked in at or after the in-flight deadline.
+- The room is **quiet** when no non-left seat has checked in for `2 × heartbeatSeconds` (`lastLife`, the latest non-left check-in, is that old). While it is quiet, the turn clock restarts every `2 × heartbeatSeconds`, so on reconnection the active player gets a fresh `turnLimitSeconds` (give or take one such interval). Unfinished shots wait for the shooter's report. Only seats that explicitly `left` are skipped.
+- Without evidence and without quiet (e.g. just after the limit, before the next check-ins land), the server looks again `heartbeatSeconds` later. So a turn-limit skip lands up to one heartbeat after the limit.
+- As soon as anyone checks in, the normal rules apply again. A player who doesn't come back is then skipped as stale once the others have outlived them by two heartbeats.
+- This rule lives in `checkTurnDecision` and `checkInFlightDecision`, and therefore also in the "Starting a turn" loop. One outage can never skip a run of turns. The client's "Waiting for {name}…" warning uses the same evidence rule.
 
 **Presence rows** are created or refreshed (`lastSeen = now`) by `createRoom`, `joinRoom` (new seat **and** rejoin) and `heartbeat`. So a new or returning player is never considered stale on arrival. Stale-seat pruning and `checkTurn` treat a missing presence row as stale; that only happens if a write was lost.
 
@@ -173,7 +177,7 @@ Starting a rematch immediately (everyone ready) uses the same code path as `star
   - A trailing in-flight shot stops after `fire`. That gives the server's view, where a shot is in the air.
   - Takes `{ includeInFlight: boolean }`. The **server** passes `true`. **Clients** pass `false`: they rebuild from **resolved shots only** and let normal playback fire any in-flight shot. `MultiCoordinator.fire` works only from `aiming` (`multiCoordinator.ts:17-19`), so a machine left in `simulating` could never launch it.
   - Returns the machine plus `{ awaitingSeat, inFlightSeq, nextSeq, isMatchComplete }`. It throws if a stored shot's seat disagrees with the machine, which would be a server bug.
-- **`onlineRules.ts`**: `validateFire`, `validateReport`, `acceptWitness`, `isRoomEmpty(players, presence, now)`, `checkTurnDecision(room, shots, players, presence, now) → skip | wait(restartClock, at) | reschedule(at) | none`, `checkInFlightDecision(shot, players, presence, now) → resolve(outcome, resolution) | reschedule(at) | none`.
+- **`onlineRules.ts`**: `validateFire`, `validateReport`, `acceptWitness`, `lastLife(seats, presence, except?)`, `isRoomQuiet(seats, presence, now)`, `isOutlived(seats, presence, seat)`, `checkTurnDecision(room, shots, players, presence, now) → skip | wait(restartClock, at) | reschedule(at) | none`, `checkInFlightDecision(shot, players, presence, now) → resolve(outcome, resolution) | reschedule(at) | none`.
 - **`onlineRoster.ts`**: `assignAppearance`, `renumberSeats`, `pruneStaleLobbySeats`, `rematchDecision(players, now, deadline) → startNow | wait | startWith(seats) | reset`.
 - Seats that left mid-match stay in that match's machine; their turns are skipped.
 
@@ -228,7 +232,7 @@ New `ONLINE` block in `src/config/tuning.ts` [PROPOSED][TUNE], imported by serve
 
 | Constant | Value | Purpose |
 | --- | --- | --- |
-| `heartbeatSeconds` | 15 | Presence check-in interval. |
+| `heartbeatSeconds` | 15 | Presence check-in interval. Twice this is the evidence-of-life margin and the quiet-room threshold (§4 "Empty room"). |
 | `staleWarnSeconds` | 60 | Show "Waiting for {name}…". |
 | `staleSeconds` | 90 | Missing-player skip; lobby pruning. Kept above 60 s because Chrome throttles timers in tabs hidden for more than 5 min to about once a minute. |
 | `turnWarnSeconds` | 90 | Show the turn countdown. |
@@ -255,9 +259,9 @@ New `ONLINE` block in `src/config/tuning.ts` [PROPOSED][TUNE], imported by serve
 **Match:**
 - Handover overlay: **"Your turn!"** for the local player, **"{name} is up"** otherwise. Same auto-advance timing as local.
 - Spectators watch each shot from the moment it is fired. The aiming player's cannon is **not** streamed (no live aim writes).
-- **Turn timer:** from 90 s everyone sees "{name}: 30 s left" counting down; the aiming player sees it on their HUD. At 120 s the server skips the turn.
+- **Turn timer:** from 90 s everyone sees "{name}: 30 s left" counting down; the aiming player sees it on their HUD. At 120 s the server skips the turn, as soon as a check-in after that moment proves someone is still connected (normally within one heartbeat).
 - Pause is local-only and does **not** stop the server's timers. Pausing during your own shot for longer than `inFlightTimeoutSeconds` means another player's result is used ("Your shot timed out"). The pause menu offers **Resume** / **Leave match**. Home also leaves (`leaveRoom`).
-- **Missing player:** from `staleWarnSeconds` everyone sees "Waiting for {name}… skipping in Ns"; at `staleSeconds` the server skips. A player who leaves on their turn is skipped immediately. **If everyone loses the connection at once** (e.g. a shared router), nothing is skipped: the match waits, and the active player gets a fresh turn clock when people reconnect.
+- **Missing player:** from `staleWarnSeconds` everyone sees "Waiting for {name}… skipping in Ns"; at `staleSeconds` the server skips. Both need another player to have checked in at least two heartbeats after the missing one. A player who leaves on their turn is skipped immediately. **If everyone loses the connection at once** (e.g. a shared router), nothing is skipped: the match waits, and the active player gets a fresh turn clock when people reconnect.
 - **Shooter vanishes mid-flight:** the result label shows "…". After `inFlightTimeoutSeconds` the server uses a spectator's local outcome, or a miss if none was reported. If the shooter explicitly left, the first spectator outcome is used at once.
 - **Shooter reloads mid-flight:** their page replays the shot as their own and reports the outcome itself; nobody waits for a timeout.
 - Own connection lost: "Reconnecting…" banner; the queue catches up on reconnect.
@@ -304,7 +308,7 @@ Pause, the fixed stepper and `AutoAdvance` work as today. Pausing never stops ot
   - Witness: first one wins; immediate resolution when the shooter left.
   - `checkTurnDecision`: skip for a left seat, the turn limit, stale presence or a missing presence row; correct reschedule time otherwise; no-op once the turn has moved on.
   - "Starting a turn" loop: consecutive gone seats are all skipped in one call; the loop stops at the first seat that must be waited for, or at match end.
-  - **Empty room:** with every non-left seat stale, `checkTurnDecision` returns `wait` (clock restart), not `skip`, even past the turn limit. Explicitly left seats are still skipped. The "Starting a turn" loop over an all-stale room skips nothing and stops at the first non-left seat. Once one seat is fresh again, a stale active seat is skipped and the turn limit counts from the restarted clock. `checkInFlightDecision` reschedules in an empty room unless the shooter left.
+  - **Empty room / evidence of life:** a shared outage with staggered heartbeats (the active player's last check-in up to a heartbeat before the others') never skips; a turn limit expiring during an outage doesn't skip, and the clock restarts once the room is quiet; a truly missing player is skipped at `staleSeconds` while a spectator is present, including one heartbeating only once a minute; an in-flight deadline during an outage reschedules, then resolves once someone checks in after it; the "Starting a turn" loop over a quiet room skips only left seats. Explicitly left seats are always skipped.
   - `checkInFlightDecision`: witness, else timeout miss; no-op once resolved.
   - Turn start time.
 - `onlineRoster`: appearance assignment with clashes; renumbering after leaves (host passes to the new seat 0); stale lobby pruning (including a stale host); `rematchDecision` (all ready → now; deadline with ≥ 2 → start with the ready ones and drop the rest; < 2 → reset; left players excluded).
