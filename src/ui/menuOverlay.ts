@@ -151,9 +151,18 @@ export class MenuOverlay {
       input.addEventListener('change', () => { set(input.checked); notify(); }, { signal });
       row.append(el('span', '', label), input);
       list.appendChild(row);
+      return input;
     };
-    toggle('settings-mute', 'Mute audio', muted, v => { muted = v; });
-    toggle('settings-music', 'Music', music, v => { music = v; });
+    // Mute audio is the same switch as the in-game button: it silences effects and music together.
+    const muteInput = toggle('settings-mute', 'Mute audio', muted || !music, v => {
+      muted = v;
+      music = !v;
+      musicInput.checked = music;
+    });
+    const musicInput = toggle('settings-music', 'Music', music, v => {
+      music = v;
+      muteInput.checked = muted || !music;
+    });
     const volRow = el('div', 'setting-row volume');
     const head = el('div');
     const volLabel = el('label', '', 'Master volume');

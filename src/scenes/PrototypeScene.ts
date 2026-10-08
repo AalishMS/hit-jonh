@@ -194,7 +194,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.currentAngleDeg,
       this.currentPowerPercent,
       this.isDebugEnabled,
-      this.audioManager.isMuted,
+      this.audioManager.isSilenced,
     );
     this.htmlControls.setDebugOptIn(this.isDevOptIn);
 
@@ -227,7 +227,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.audioManager.setMuted(settings.muted);
         this.audioManager.setVolume(settings.volume);
         this.audioManager.setMusicEnabled(settings.music);
-        this.htmlControls.setMuted(settings.muted);
+        this.htmlControls.setMuted(this.audioManager.isSilenced);
         document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
         if (this.jonhRenderer) this.jonhRenderer.setReducedMotion(settings.reducedMotion);
         this.attract?.jonh.setReducedMotion(settings.reducedMotion);

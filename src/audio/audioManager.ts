@@ -141,10 +141,16 @@ export class AudioManager {
     this.masterGain.gain.value = target;
   }
 
+  /** True when any sound is switched off: the in-game button and the menu both show this. */
+  get isSilenced(): boolean { return this._isMuted || !this._music; }
+
+  /** The in-game mute button controls all sound: effects and music switch together. */
   toggleMute(): boolean {
     this.unlock();
-    this.setMuted(!this._isMuted);
-    return this._isMuted;
+    const silence = !this.isSilenced;
+    this.setMuted(silence);
+    this.setMusicEnabled(!silence);
+    return silence;
   }
 
   private ready(): AudioContext | null {
