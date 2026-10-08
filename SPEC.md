@@ -76,7 +76,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
 
 ## 5. Solo rules
 
@@ -100,6 +100,19 @@ Online play/accounts; simultaneous firing; AI opponents; wind/drag/weather; extr
 - A brief handover screen names the next player, then automatically opens aiming; Ready now skips the wait. Their saved settings and last trail load automatically. Scores remain visible in the control strip.
 - Players **can** learn from each other's shots; this is intended. **[DECIDED]**
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
+
+## 6.1 Online multiplayer [DECIDED by owner 2026-10-08]
+
+Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summary:
+
+- **Rooms by code.** One player creates a room and gets a 5-character code (shareable as `?room=CODE`); 2–4 friends join. No accounts, no matchmaking. Seat 0 is host in the lobby (maps, Start).
+- **Live and turn-based.** Same rules as §6/§7. Each shot is sent when fired (angle/power) and again when it lands (outcome). Every client re-simulates locally; the **shooter's outcome is official** for score and label. Cross-browser divergence only affects the animation.
+- **Trust.** The shooter's client is trusted. The server checks turn order, aim ranges, duplicates and map-impossible outcomes, and does not re-simulate physics.
+- **Timers run on the server.** Online-only turn limit of 120 s (countdown from 90 s). Missing player skipped after 90 s without a heartbeat (warning from 60 s). Unreported shot resolved after 40 s with a spectator's outcome or a miss. If everyone is disconnected at once, nothing is skipped. Values are [PROPOSED][TUNE] in `ONLINE` (`src/config/tuning.ts`), except the 120 s limit [DECIDED].
+- **Rematch.** Any active player may press Rematch. It starts when everyone is ready, or after a 30 s window with the ready players (at least 2). Others see "You weren't included".
+- **Identity.** One player per browser tab (token in sessionStorage); a reload keeps the seat. The name/colour profile is saved in `hitJonh.v1.online`. The hot-seat roster is untouched.
+- **Out of scope.** Accounts, matchmaking, chat, spectators, live aim streaming, server physics, async play, deployment, kicking.
+- **Known limitation.** After a reload, previous-shot trails are empty until each player fires again.
 
 ## 7. Scoring and scene reset
 

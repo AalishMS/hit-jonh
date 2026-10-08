@@ -51,6 +51,17 @@ npm run test        # Vitest unit tests
 npm run check       # all three
 ```
 
+## Online play (Convex)
+
+Online rooms need a Convex deployment. Without one the game runs normally and the Online card is disabled.
+
+1. `npx convex dev` (first time: log in and create a project). This writes `CONVEX_DEPLOYMENT` and `VITE_CONVEX_URL` to `.env.local` (git-ignored).
+2. Keep `npx convex dev` running while editing `convex/`, or push once with `npx convex dev --once`.
+3. `npm run dev -- --host` and open the printed LAN URL on each device. Every browser tab is a separate player.
+4. `crosscheck.html` (dev server only) checks that shots score identically across browsers.
+
+Deploying later: `npx convex deploy` creates the production backend. Build with `VITE_CONVEX_URL` set to the production URL (`npm run build`), then serve `dist/` from any static host.
+
 ## Project documents
 
 - [`SPEC.md`](SPEC.md) — authoritative implementation specification.

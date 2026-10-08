@@ -307,7 +307,7 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Next task:** Owner playtest/tune launch and impact feel. Replacement art, recorded audio and world aiming remain separate future milestones.
 
-## Rubber Yard Map Addition � 2026-10-05
+## Rubber Yard Map Addition � 2026-10-05
 
 **Done/current:** Implemented the "Rubber Yard" map featuring a bouncy rubber ceiling and a solid concrete wall obstacle, satisfying the original design proposal for a trick-shot arena. Authored unique rendering for the new ubber material to distinguish it from concrete and wood. Determined and proved stable, exclusive reference solutions for standard play and multiplayer target positions. Passed all physics and orchestration tests.
 
@@ -366,3 +366,65 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - **The hat-locker screen** builds data URLs from textures on first open (a few ms).
 
 **Next task:** owner playtest with sound, on a phone. Then tune with `?tune`. Suggested next steps are in `CHANGELOG.md`.
+
+## Online multiplayer — 2026-10-08 (branch `online-multiplayer`)
+
+**Built.** Online rooms by code for 2–4 players (SPEC §6.1), on Convex. Each browser tab is one player; the shooter's client reports the official outcome while every client re-simulates locally. The server (`convex/`) owns turn order, aim and duplicate checks, the timers (120 s turn, 90 s stale player, 40 s unreported shot), rematch and an hourly room cleanup. Client modules: room code and session logic, a replay-based match tracker, online setup/lobby/notice screens, and an `OnlineController` wired into `PrototypeScene` (`activeMode` stays `multi`, online is `online?.inMatch`). Hot-seat play and the saved local roster are untouched. Setup: README "Online play (Convex)".
+
+**Cross-browser determinism (Task 1).** The user ran `crosscheck.html` in Chrome and Firefox: 639 shots, outcomes and step counts identical (94 Body, 26 Ricochet Body, 2 Hat Only, 517 Miss). One shot (rooftop/near 76/90) ends about 1.08e-11 apart (float rounding) with the same outcome (miss) and 1801 steps. Safari: **NOT VERIFIED** (no digest provided). The user accepted the Chrome+Firefox match on 2026-10-08.
+
+**Automated evidence (run at the end of Task 15).**
+- `npm run check`: typecheck and lint pass; `Test Files 44 passed (44)`, `Tests 355 passed (355)`, duration 2.35 s.
+- `npm run build`: passes; `167 modules transformed`, `built in 824ms`; Phaser 1,431.43 kB (375.59 kB gzip); `main` 287.01 kB (84.57 kB gzip).
+- Node printed its usual experimental localStorage warning during Vitest.
+
+**Convex smoke runs (Convex MCP, dev deployment `proper-lapwing-569` only, never prod).** Task 8 (commit `e9306f9`): create/join/getRoom/start, NOT_HOST, ALREADY_STARTED, INVALID_MAPS and NOT_MEMBER behaved as specified. Task 9 (commit `1ff8b1b`): fire/report/witness/leave/rematch paths, duplicate and conflict handling, STALE_MATCH, OUT_OF_ORDER, INVALID_AIM, a full 6-shot match with immediate rematch, a manual `cleanupRooms` run (nothing deleted, all rooms under 24 h), 0 failed scheduled functions, and only the intentional ConvexError rejections in the logs. Details are in those commit bodies.
+
+**Manual walkthrough (Task 15 Step 1): NOT PERFORMED, every item NOT VERIFIED.** Reason: the Chrome automation browser could not reach the local Vite dev server (localhost, 127.0.0.1 and the LAN IP all failed from the browser although `curl` from the shell returned 200), and the Convex MCP had disconnected. No item below was observed; none is marked PASS.
+
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | Create in tab A; join from B by lowercase code with a space and by link; distinct colour/pattern | NOT VERIFIED |
+| 2 | Bad code `K0QPX` rejected locally; unknown valid code says "No room with that code." | NOT VERIFIED |
+| 3 | Host changes arena and B sees it; B has no Start; Start enabled at 2 players | NOT VERIFIED |
+| 4 | Full single-map match: shots animate on both tabs from fire, scores match, handover text | NOT VERIFIED |
+| 5 | On the other player's turn Space/arrows/drag/Fire do nothing; "{name} is aiming…" | NOT VERIFIED |
+| 6 | Pause during the other player's flight; their next shot waits and plays once on resume | NOT VERIFIED |
+| 7 | Reload A mid-turn rejoins; reload during own flight replays and reports; B not stuck | NOT VERIFIED |
+| 8 | Leave on own turn: skipped at once, "{name} was skipped", no cannon fire | NOT VERIFIED |
+| 9 | Close B's tab on B's turn: warning at 60 s, skip at 90 s | NOT VERIFIED |
+| 10 | Idle 120 s on own turn: countdown from 90 s, then skip | NOT VERIFIED |
+| 11 | A offline over 40 s mid-flight: B reports witness outcome; A sees "Your shot timed out" | NOT VERIFIED |
+| 12 | Shared outage over 120 s: no skips, fresh turn clock, in-flight shot reported by shooter | NOT VERIFIED |
+| 13 | Background tab over 5 minutes: not skipped while away | NOT VERIFIED |
+| 14 | Lobby host quiet over 90 s: B becomes host; A rejoins; Leave does not rejoin | NOT VERIFIED |
+| 15 | Rematch: both ready starts at once; one ready counts down; "You weren't included"; "Not enough players…" | NOT VERIFIED |
+| 16 | Skip-vs-fire race at about 119 s: loser sees "Your turn was skipped", clients agree | NOT VERIFIED |
+| 17 | Hot-seat roster still shows saved local players after online play | NOT VERIFIED |
+| 18 | Cleanup cron registered and hourly runs error-free; 24 h deletion | NOT VERIFIED |
+| 19 | Dev console `[online] shot … local …, official …` mismatch warnings across browsers | NOT VERIFIED |
+
+**Also not verified:** the cleanup cron registration (`_cron_jobs` could not be read; check the Dashboard cron list); the real 120 s / 40 s / 90 s timeouts (only stale timers firing as no-ops were seen); the `IMPOSSIBLE_OUTCOME` rejection; 24 h room deletion; any DOM screen or scene glue in a browser; Safari.
+
+**How to run the walkthrough yourself.** Have `.env.local` from `npx convex dev`, run `npm run dev -- --host`, and open two tabs (or a desktop browser plus a phone on the same Wi-Fi); each tab is its own player. Work through the 19 items above, using DevTools Offline for items 11–12, and record PASS/FAIL here.
+
+**Decisions.**
+- One player per tab: the token lives in `sessionStorage`, not `localStorage` (approved deviation), so two tabs can play each other.
+- `activeMode` stays `multi` and online play is `online?.inMatch` (approved; the spec wording said `'online'`).
+- The shooter's client is trusted for the official outcome; the server never re-simulates physics.
+- Chrome+Firefox identical outcomes accepted as the cross-browser gate; float drift only affects animation.
+- The Convex deployment `proper-lapwing-569` is treated as dev; nothing was run against prod (`cheery-pika-694`).
+- `heartbeat` and `leaveRoom` silently no-op for unknown tokens; room codes are normalized client-side before any server call.
+- A reopened `?room=CODE` link into a seat marked left shows Join prefilled and never auto-rejoins.
+- Server `startTurn` logs and finishes a match that cannot be replayed instead of throwing (a throw inside a timer would wedge it); the client then leaves with "This match ended unexpectedly."
+
+**Known limitations / deferred.**
+- Previous-shot trails are empty after a reload until each player fires again.
+- Trust model: a modified client could report any outcome that is possible on the map.
+- Pause and Mute are inert while another player is aiming.
+- Clipboard copy in `src/ui/onlineScreens.ts` can throw when the Clipboard API is missing. Still unfixed.
+- `joinRoom` clears `left` only when the room is `playing`, so a left seat in a finished room is not cleared by Join.
+- Minor review items remain: unbounded `.collect()` in a few reads, cleanup drains 50 rooms per hour, `destroy()` does not stop a pending create/join, some hard-coded colours in `menu.css`, and small a11y/focus nits on the online screens.
+- Convex tooling also wrote Convex guidance blocks into `AGENTS.md`/`CLAUDE.md` and files under `.agents/`, `.claude/` and `skills-lock.json`. They are not part of this work and are left uncommitted for the owner.
+
+**Next task:** run the walkthrough above (and confirm the cron in the Convex Dashboard), then fix the clipboard guard.

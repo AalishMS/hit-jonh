@@ -1,5 +1,15 @@
 # Changelog
 
+## Online multiplayer (branch `online-multiplayer`, 8 October 2026)
+
+Play with 2–4 friends over the internet. One player creates a room and shares a 5-character code or a `?room=CODE` link; the others join. Turns are live: everyone sees each shot as it is fired, and the shooter's result decides the score.
+
+- **No accounts, no matchmaking.** Each browser tab is one player; a reload keeps your seat. The host picks maps and presses Start; anyone can ask for a rematch.
+- **Turns can't stall the room.** The server skips a player who goes quiet for 90 s (warning from 60 s), limits a turn to 120 s (countdown from 90 s), and resolves an unreported shot after 40 s.
+- **Needs a Convex deployment** (README, "Online play (Convex)"). Without one the Online card is disabled and the game plays as before. Hot-seat play and your saved local players are unchanged.
+- **Known limits:** previous-shot trails are empty after a reload; the shooter's client is trusted; Pause and Mute do nothing while someone else aims.
+- **Not verified:** the in-browser two-player walkthrough could not be run in this session (see `docs/progress.md`). Automated: 44 test files / 355 tests pass; Convex handlers were smoke-tested on the dev deployment.
+
 ## Polish pass (branch `polish-pass`, 7–8 October 2026)
 
 The engineering was solid, but the game looked like a tidy prototype, and the one moment worth clipping (Jonh getting hit) barely happened on screen. The audit (`docs/polish-audit.md`) measured it frame by frame. On the contact frame Jonh was drawn in his ordinary pose. At +400 ms he was upright again. The knock-down finished about 0.9 s after contact. On phones in landscape, the controls sat below the fold. This pass rebuilds the presentation around that moment, under one art direction (`docs/art-direction.md`, "Sunday Funnies"). Simulation, scoring, rules and multiplayer logic are unchanged.
