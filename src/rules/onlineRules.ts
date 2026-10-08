@@ -33,9 +33,29 @@ export function isFresh(seat: number, presence: readonly PresenceEntry[], now: n
   return entry !== undefined && now - entry.lastSeen < ONLINE.staleSeconds * MS;
 }
 
-/** Nobody still in the match has checked in recently, e.g. a shared router went down. */
-export function isRoomEmpty(seats: readonly SeatState[], presence: readonly PresenceEntry[], now: number): boolean {
-  return !seats.some(s => !s.left && isFresh(s.seat, presence, now));
+const lastSeenOf = (seat: number, presence: readonly PresenceEntry[]): number =>
+  presence.find(p => p.seat === seat)?.lastSeen ?? Number.NEGATIVE_INFINITY;
+
+/** Latest check-in by a seat still in the match (other than `except`); -Infinity when there is none. */
+export function lastLife(seats: readonly SeatState[], presence: readonly PresenceEntry[], except?: number): number {
+  return Math.max(Number.NEGATIVE_INFINITY,
+    ...seats.filter(s => !s.left && s.seat !== except).map(s => lastSeenOf(s.seat, presence)));
+}
+
+/**
+ * Nobody still in the match has checked in for two heartbeats, e.g. a shared router went down.
+ * Two heartbeats, because players' heartbeat phases differ by up to one.
+ */
+export function isRoomQuiet(seats: readonly SeatState[], presence: readonly PresenceEntry[], now: number): boolean {
+  return now - lastLife(seats, presence) >= 2 * ONLINE.heartbeatSeconds * MS;
+}
+
+/**
+ * Evidence that `seat` went quiet on its own: someone else still in the match checked in at least two heartbeats
+ * after `seat` last did. In a shared outage everyone's last check-ins are within one heartbeat of each other.
+ */
+export function isOutlived(seats: readonly SeatState[], presence: readonly PresenceEntry[], seat: number): boolean {
+  return lastLife(seats, presence, seat) >= lastSeenOf(seat, presence) + 2 * ONLINE.heartbeatSeconds * MS;
 }
 
 export function validateFire(view: MatchView, callerSeat: number,
@@ -84,7 +104,12 @@ export type TurnDecision =
   | { kind: 'wait'; clockStart: number; at: number }
   | { kind: 'reschedule'; at: number };
 
-/** What the server does about turn `seq` right now (spec §4 checkTurn and "Empty room"). */
+/**
+ * What the server does about turn `seq` right now (spec §4 checkTurn and "Quiet room"). A skip needs evidence that
+ * someone was still connected: a seat that left is skipped at once; a stale seat only when another seat checked in
+ * well after it ({@link isOutlived}); the turn limit only when someone checked in after it ran out. While the whole
+ * room is quiet, the turn clock restarts instead.
+ */
 export function checkTurnDecision(view: MatchView, presence: readonly PresenceEntry[], now: number, seq: number): TurnDecision {
   if (view.room.status !== 'playing') return { kind: 'none' };
   const replay = serverReplay(view);
@@ -93,11 +118,15 @@ export function checkTurnDecision(view: MatchView, presence: readonly PresenceEn
   const player = replay.machine.players[seat]!;
   const skip: TurnDecision = { kind: 'skip', seat, angle: player.lastAngle, power: player.lastPower };
   if (view.seats.find(s => s.seat === seat)?.left ?? true) return skip;
-  if (isRoomEmpty(view.seats, presence, now)) return { kind: 'wait', clockStart: now, at: now + ONLINE.staleSeconds * MS };
+  const heartbeat = ONLINE.heartbeatSeconds * MS;
+  const lastSeen = lastSeenOf(seat, presence);
+  const stale = now - lastSeen >= ONLINE.staleSeconds * MS;
+  if (stale && isOutlived(view.seats, presence, seat)) return skip;
   const turnEnds = view.room.turnClockStart + ONLINE.turnLimitSeconds * MS;
-  if (now >= turnEnds) return skip;
-  const lastSeen = presence.find(p => p.seat === seat)?.lastSeen ?? Number.NEGATIVE_INFINITY;
-  if (now - lastSeen >= ONLINE.staleSeconds * MS) return skip;
+  if (now >= turnEnds && lastLife(view.seats, presence) >= turnEnds) return skip;
+  if (isRoomQuiet(view.seats, presence, now)) return { kind: 'wait', clockStart: now, at: now + 2 * heartbeat };
+  // Not proven yet: look again once the next heartbeats are due.
+  if (stale || now >= turnEnds) return { kind: 'reschedule', at: now + heartbeat };
   return { kind: 'reschedule', at: Math.min(turnEnds, lastSeen + ONLINE.staleSeconds * MS) };
 }
 
@@ -115,7 +144,7 @@ export interface TurnPlan {
 
 /**
  * "Starting a turn": evaluates the next turn at once and skips every seat that is already gone,
- * until it reaches one worth waiting for or the match ends. Never skips anyone for staleness in an empty room.
+ * until it reaches one worth waiting for or the match ends. A shared outage skips only seats that left.
  */
 export function planTurnStart(view: MatchView, presence: readonly PresenceEntry[], now: number, clockStart: number): TurnPlan {
   const shots: ShotRecord[] = [...view.shots];
@@ -148,7 +177,11 @@ export type InFlightDecision =
   | { kind: 'reschedule'; at: number }
   | { kind: 'resolve'; outcome: ClassifiedOutcome; resolution: 'witness' | 'timeout' };
 
-/** What the server does about an unreported shot (spec §4 checkInFlight). */
+/**
+ * What the server does about an unreported shot (spec §4 checkInFlight). After the deadline it falls back only once
+ * someone still in the match has checked in since the deadline (or nobody is left to wait for), so a shared outage
+ * leaves the shooter's own report a chance to arrive.
+ */
 export function checkInFlightDecision(view: MatchView, presence: readonly PresenceEntry[], now: number, seq: number): InFlightDecision {
   const shot = view.shots.find(s => s.seq === seq);
   if (!shot || shot.outcome !== null) return { kind: 'none' };
@@ -156,7 +189,8 @@ export function checkInFlightDecision(view: MatchView, presence: readonly Presen
   if (shooterLeft && shot.witnessOutcome !== null) return { kind: 'resolve', outcome: shot.witnessOutcome, resolution: 'witness' };
   const deadline = shot.firedAt + ONLINE.inFlightTimeoutSeconds * MS;
   if (now < deadline) return { kind: 'reschedule', at: deadline };
-  if (!shooterLeft && isRoomEmpty(view.seats, presence, now)) return { kind: 'reschedule', at: now + ONLINE.staleSeconds * MS };
+  const someoneIn = view.seats.some(s => !s.left);
+  if (someoneIn && lastLife(view.seats, presence) < deadline) return { kind: 'reschedule', at: now + ONLINE.heartbeatSeconds * MS };
   return shot.witnessOutcome !== null
     ? { kind: 'resolve', outcome: shot.witnessOutcome, resolution: 'witness' }
     : { kind: 'resolve', outcome: 'miss', resolution: 'timeout' };

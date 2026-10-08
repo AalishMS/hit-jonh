@@ -151,6 +151,14 @@ describe('OnlineMatchTracker: countdowns', () => {
     expect(t.countdowns(200_000).missing).toBeNull();
   });
 
+  it('does not warn during a shared outage with staggered heartbeats (nobody checked in well after the active player)', () => {
+    const t = new OnlineMatchTracker();
+    t.update(snap([], 1));
+    t.setPresence([{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 14_000 }]);
+    expect(t.countdowns(70_000).missing).toBeNull();
+    expect(t.countdowns(85_000).missing).toBeNull();
+  });
+
   it('counts down the rematch window', () => {
     const t = new OnlineMatchTracker();
     t.update(snap(['body'], 0, { status: 'finished', rematchDeadline: 30_000 }));

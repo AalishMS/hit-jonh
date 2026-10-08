@@ -19,7 +19,7 @@ export const checkTurn = internalMutation({
     const decision = checkTurnDecision(view, presence, now, seq);
     if (decision.kind === 'none') return;
     if (decision.kind === 'wait') {
-      // Empty room: restart the turn clock (not a game action, so updatedAt is untouched).
+      // Quiet room (shared outage): restart the turn clock (not a game action, so updatedAt is untouched).
       await ctx.db.patch(roomId, { turnClockStart: decision.clockStart });
       await ctx.scheduler.runAt(decision.at, internal.timers.checkTurn, { roomId, matchNumber, seq });
       return;

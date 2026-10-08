@@ -1,11 +1,11 @@
 // tests/onlineRules.test.ts
 import { describe, expect, it } from 'vitest';
-import { MULTIPLAYER } from '../src/config/tuning';
+import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
 import {
-  acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomEmpty, mapHasRicochet,
+  acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomQuiet, lastLife, mapHasRicochet,
   planTurnStart, validMaps, validateFire, validateReport,
 } from '../src/rules/onlineRules';
-import type { MatchView, ShotRecord } from '../src/rules/onlineTypes';
+import type { MatchView, PresenceEntry, ShotRecord } from '../src/rules/onlineTypes';
 import { freshPresence, makeSeats, makeView } from './onlineFixtures';
 
 /** Two players on backyard: seat 0 hit, seat 1 is up (seq 1). */
@@ -86,13 +86,153 @@ describe('acceptWitness', () => {
   });
 });
 
-describe('isRoomEmpty', () => {
-  const now = 1_000_000;
-  it('is empty only when no non-left seat is fresh', () => {
+const HEARTBEAT = ONLINE.heartbeatSeconds * 1000;
+const STALE = ONLINE.staleSeconds * 1000;
+const TURN = ONLINE.turnLimitSeconds * 1000;
+const IN_FLIGHT = ONLINE.inFlightTimeoutSeconds * 1000;
+
+/** Check-ins every `interval` ms from `first` until `until` (exclusive), as the presence row would show at `now`. */
+const beats = (first: number, interval: number, until = Number.POSITIVE_INFINITY) => (now: number): number | null => {
+  const last = Math.min(now, until - 1);
+  return last < first ? null : first + Math.floor((last - first) / interval) * interval;
+};
+type Beats = ReturnType<typeof beats>;
+const presenceAt = (now: number, bySeat: Record<number, Beats>): PresenceEntry[] =>
+  Object.entries(bySeat).flatMap(([seat, b]) => {
+    const lastSeen = b(now);
+    return lastSeen === null ? [] : [{ seat: Number(seat), lastSeen }];
+  });
+
+/**
+ * Runs the server's `checkTurn` timer chain for seq 1 of `view` from `firstAt` until it skips or passes `until`,
+ * applying clock restarts like `convex/timers.ts` does.
+ */
+function runTurnTimers(view: MatchView, bySeat: Record<number, Beats>, firstAt: number, until: number) {
+  let clock = view.room.turnClockStart;
+  let at = firstAt;
+  const restarts: number[] = [];
+  while (at <= until) {
+    const d = checkTurnDecision({ ...view, room: { ...view.room, turnClockStart: clock } }, presenceAt(at, bySeat), at, 1);
+    if (d.kind === 'skip') return { skippedAt: at, clock, restarts, nextAt: null };
+    if (d.kind === 'none') throw new Error('unexpected none');
+    if (d.kind === 'wait') { clock = d.clockStart; restarts.push(d.clockStart); }
+    if (d.at <= at) throw new Error(`timer did not advance at ${at}`);
+    at = d.at;
+  }
+  return { skippedAt: null, clock, restarts, nextAt: at };
+}
+
+describe('evidence of life', () => {
+  it('lastLife is the latest check-in of a seat still in the match', () => {
+    const seats = makeSeats(3, [{}, { left: true }]);
+    const presence = [{ seat: 0, lastSeen: 5_000 }, { seat: 1, lastSeen: 9_000 }, { seat: 2, lastSeen: 7_000 }];
+    expect(lastLife(seats, presence)).toBe(7_000);
+    expect(lastLife(seats, presence, 2)).toBe(5_000);
+    expect(lastLife(seats, [])).toBe(Number.NEGATIVE_INFINITY);
+  });
+  it('the room is quiet once nobody still in the match checked in for two heartbeats', () => {
     const seats = makeSeats(2);
-    expect(isRoomEmpty(seats, freshPresence([0], now), now)).toBe(false);
-    expect(isRoomEmpty(seats, [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 0 }], now)).toBe(true);
-    expect(isRoomEmpty(makeSeats(2, [{ left: true }]), freshPresence([0], now), now)).toBe(true);
+    expect(isRoomQuiet(seats, [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 1_000 }], 1_000 + 2 * HEARTBEAT)).toBe(true);
+    expect(isRoomQuiet(seats, [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 1_000 }], 1_000 + 2 * HEARTBEAT - 1)).toBe(false);
+    expect(isRoomQuiet(makeSeats(2, [{ left: true }]), freshPresence([0], 10_000), 10_000)).toBe(true);
+  });
+});
+
+describe('checkTurnDecision: shared outage needs evidence of life before skipping', () => {
+  it('never skips during a shared outage with staggered heartbeats (Alice last checked in 14 s before Bob)', () => {
+    // Alice is seat 1 (up at seq 1), Bob seat 0. Both drop at 30 s; Alice's last beat was 20 s, Bob's 34 s.
+    const outage = { 1: beats(20_000, HEARTBEAT, 30_000), 0: beats(34_000 - 2 * HEARTBEAT, HEARTBEAT, 35_000) };
+    for (let now = 35_000; now <= 900_000; now += 1_000) {
+      for (const clock of [0, now - TURN, now - 1_000]) {
+        const view = makeView(2, ['body'], { turnClockStart: clock });
+        expect(checkTurnDecision(view, presenceAt(now, outage), now, 1).kind, `now ${now} clock ${clock}`).not.toBe('skip');
+      }
+    }
+    expect(runTurnTimers(awaitingSeat1(), outage, 95_000, 900_000).skippedAt).toBeNull();
+  });
+
+  it('turn limit expiring 10 s into an outage: no skip, and the clock restarts once the room is quiet', () => {
+    const outageStart = TURN - 10_000;
+    const outage = { 1: beats(5_000, HEARTBEAT, outageStart), 0: beats(12_000, HEARTBEAT, outageStart) };
+    const lastBeat = Math.max(outage[1](outageStart)!, outage[0](outageStart)!);
+    const during = runTurnTimers(awaitingSeat1(), outage, 50_000, 400_000);
+    expect(during.skippedAt).toBeNull();
+    expect(during.restarts.length).toBeGreaterThan(0);
+    expect(during.restarts[0]).toBeGreaterThanOrEqual(lastBeat + 2 * HEARTBEAT);
+    expect(during.restarts[0]).toBeLessThan(lastBeat + 3 * HEARTBEAT);
+
+    // Back online at 400 s, heartbeating normally: the active player gets (about) a fresh turn limit.
+    const back = 400_000;
+    const online = { 1: beats(back, HEARTBEAT), 0: beats(back + 3_000, HEARTBEAT) };
+    const view = makeView(2, ['body'], { turnClockStart: during.clock });
+    const after = runTurnTimers(view, online, during.nextAt!, back + 10 * TURN);
+    expect(during.clock).toBeGreaterThanOrEqual(back - 2 * HEARTBEAT);
+    expect(after.skippedAt).not.toBeNull();
+    expect(after.skippedAt!).toBeGreaterThanOrEqual(during.clock + TURN);
+    expect(after.skippedAt!).toBeLessThanOrEqual(during.clock + TURN + HEARTBEAT);
+  });
+
+  it('skips a truly missing player at 90 s while a spectator is present', () => {
+    const view = makeView(2, ['body'], { turnClockStart: 5_000 });
+    const missing = beats(5_000, HEARTBEAT, 5_001); // Alice's last check-in: 5 s
+    expect(runTurnTimers(view, { 1: missing, 0: beats(7_000, HEARTBEAT) }, 5_001, 400_000).skippedAt).toBe(5_000 + STALE);
+  });
+
+  it('skips a truly missing player at 90 s even when the spectator only checks in once a minute (background tab)', () => {
+    const view = makeView(2, ['body'], { turnClockStart: 5_000 });
+    const missing = beats(5_000, HEARTBEAT, 5_001);
+    const throttled = 60_000;
+    for (let phase = 0; phase < throttled; phase += 1_000) {
+      const result = runTurnTimers(view, { 1: missing, 0: beats(5_000 + phase - throttled, throttled) }, 5_001, 400_000);
+      expect(result.skippedAt, `phase ${phase}`).toBe(5_000 + STALE);
+    }
+  });
+
+  it('skips at the turn limit only once someone checked in after it; otherwise rechecks a heartbeat later', () => {
+    const presence = [{ seat: 0, lastSeen: TURN - 1_000 }, { seat: 1, lastSeen: TURN - 1_000 }];
+    expect(checkTurnDecision(awaitingSeat1(), presence, TURN, 1)).toEqual({ kind: 'reschedule', at: TURN + HEARTBEAT });
+    expect(checkTurnDecision(awaitingSeat1(), [{ seat: 0, lastSeen: TURN }, { seat: 1, lastSeen: TURN - 1_000 }], TURN + HEARTBEAT, 1).kind)
+      .toBe('skip');
+  });
+
+  it('waits and restarts the clock, checking again two heartbeats later, while the room is quiet', () => {
+    const now = 500_000;
+    expect(checkTurnDecision(awaitingSeat1(), [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 0 }], now, 1))
+      .toEqual({ kind: 'wait', clockStart: now, at: now + 2 * HEARTBEAT });
+  });
+});
+
+describe('planTurnStart: all-quiet room', () => {
+  it('skips only seats that left and waits on the first one still in the match', () => {
+    const now = 60_000;
+    const view = makeView(3, ['body'], {}, [{}, { left: true }, {}]);
+    // Everyone went quiet 40 s ago: not stale yet, but quiet.
+    const quiet = [0, 1, 2].map(seat => ({ seat, lastSeen: now - 40_000 }));
+    const plan = planTurnStart(view, quiet, now, now);
+    expect(plan.skips.map(s => s.seat)).toEqual([1]);
+    expect(plan).toMatchObject({ finished: false, checkSeq: 2, checkAt: now + 2 * HEARTBEAT, clockStart: now });
+  });
+});
+
+describe('checkInFlightDecision: deadline during an outage', () => {
+  const deadline = 1_001 + IN_FLIGHT;
+  it('reschedules a heartbeat later until someone checks in after the deadline, then falls back', () => {
+    // Shooter (seat 1) fired at 1001 then dropped with Bob; Bob's last beat was 10 s.
+    const outage = [{ seat: 0, lastSeen: 10_000 }, { seat: 1, lastSeen: 1_001 }];
+    expect(checkInFlightDecision(inFlight(), outage, deadline, 1)).toEqual({ kind: 'reschedule', at: deadline + HEARTBEAT });
+    expect(checkInFlightDecision(inFlight(), outage, deadline + 300_000, 1)).toEqual({ kind: 'reschedule', at: deadline + 300_000 + HEARTBEAT });
+    const back = [{ seat: 0, lastSeen: deadline + 200_000 }, { seat: 1, lastSeen: 1_001 }];
+    expect(checkInFlightDecision(inFlight(), back, deadline + 210_000, 1)).toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
+    expect(checkInFlightDecision(withShot(inFlight(), 1, { witnessOutcome: 'body' }), back, deadline + 210_000, 1))
+      .toEqual({ kind: 'resolve', outcome: 'body', resolution: 'witness' });
+  });
+  it('a left shooter without a witness also waits for a check-in, unless nobody is left in the match', () => {
+    const shooterLeft = makeView(2, ['body', null], {}, [{}, { left: true }]);
+    expect(checkInFlightDecision(shooterLeft, [{ seat: 0, lastSeen: 10_000 }], deadline + 1, 1)).toEqual({ kind: 'reschedule', at: deadline + 1 + HEARTBEAT });
+    expect(checkInFlightDecision(shooterLeft, [{ seat: 0, lastSeen: deadline }], deadline + 1, 1))
+      .toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
+    const everyoneLeft = makeView(2, ['body', null], {}, [{ left: true }, { left: true }]);
+    expect(checkInFlightDecision(everyoneLeft, [], deadline, 1)).toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
   });
 });
 
@@ -103,7 +243,7 @@ describe('checkTurnDecision', () => {
     expect(checkTurnDecision(awaitingSeat1(), presence, now, 1)).toEqual({ kind: 'reschedule', at: 99_000 });
   });
   it('skips at the turn limit with the seat\'s last aim', () => {
-    const now = 120_000;
+    const now = TURN + HEARTBEAT;
     expect(checkTurnDecision(awaitingSeat1(), freshPresence([0, 1], now), now, 1)).toEqual({ kind: 'skip', seat: 1, angle: 45, power: 50 });
   });
   it('skips a stale or missing active seat while someone else is present', () => {
@@ -114,11 +254,6 @@ describe('checkTurnDecision', () => {
   it('skips a seat that left even when the room is empty', () => {
     const view = makeView(2, ['body'], {}, [{}, { left: true }]);
     expect(checkTurnDecision(view, [], 500_000, 1).kind).toBe('skip');
-  });
-  it('waits and restarts the clock when the whole room is gone (shared outage)', () => {
-    const now = 500_000;
-    expect(checkTurnDecision(awaitingSeat1(), [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 0 }], now, 1))
-      .toEqual({ kind: 'wait', clockStart: now, at: now + 90_000 });
   });
   it('does nothing once the turn has moved on, a shot is in flight, or the match is not playing', () => {
     const now = 500_000;
@@ -143,7 +278,7 @@ describe('planTurnStart', () => {
     const view = makeView(3, ['body'], {}, [{}, { left: true }, {}]);
     const plan = planTurnStart(view, [{ seat: 0, lastSeen: 0 }, { seat: 2, lastSeen: 0 }], now, now);
     expect(plan.skips.map(s => s.seat)).toEqual([1]);
-    expect(plan).toMatchObject({ finished: false, checkSeq: 2, checkAt: now + 90_000, clockStart: now });
+    expect(plan).toMatchObject({ finished: false, checkSeq: 2, checkAt: now + 2 * HEARTBEAT, clockStart: now });
   });
   it('finishes the match when the last turn is skipped', () => {
     const view = makeView(2, ['body', 'miss', 'body', 'miss', 'body'], {}, [{}, { left: true }]);
@@ -179,11 +314,11 @@ describe('checkInFlightDecision', () => {
     expect(checkInFlightDecision(view, [], 2_000, 1)).toEqual({ kind: 'resolve', outcome: 'hat_only', resolution: 'witness' });
     expect(checkInFlightDecision(makeView(2, ['body', null], {}, [{}, { left: true }]), [], 2_000, 1)).toEqual({ kind: 'reschedule', at: deadline });
   });
-  it('keeps waiting in an empty room unless the shooter left', () => {
+  it('keeps waiting in an empty room, checking again a heartbeat later', () => {
     const stale = [{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 0 }];
-    expect(checkInFlightDecision(inFlight(), stale, 200_000, 1)).toEqual({ kind: 'reschedule', at: 290_000 });
+    expect(checkInFlightDecision(inFlight(), stale, 200_000, 1)).toEqual({ kind: 'reschedule', at: 200_000 + HEARTBEAT });
     expect(checkInFlightDecision(makeView(2, ['body', null], {}, [{}, { left: true }]), stale, 200_000, 1))
-      .toEqual({ kind: 'resolve', outcome: 'miss', resolution: 'timeout' });
+      .toEqual({ kind: 'reschedule', at: 200_000 + HEARTBEAT });
   });
   it('does nothing for resolved or unknown shots', () => {
     expect(checkInFlightDecision(makeView(2, ['body', 'miss']), [], 99_000, 1)).toEqual({ kind: 'none' });
