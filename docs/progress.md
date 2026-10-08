@@ -280,7 +280,7 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Review/known issues:** Independent code review found no blocking correctness issues; the rooftop scenery finding was corrected and re-reviewed. Full three/four-player browser matches, hardware touch and sensory/performance testing were not repeated in this pass; N=3/4 rule behavior is covered by automated tests. Visual enjoyment and target-difficulty balance still require owner playtesting.
 
-**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
 
 
 
@@ -305,7 +305,7 @@ See `docs/game-audit.md` for suggested future work: an aiming tutorial, stronger
 
 **Known issues/verification limits:** Actual physical touch, hardware FPS/stress and long-session heap profiling were not verified. Perceived sound balance and visual enjoyment require owner playtesting. Browser screenshots confirmed contact cues and cleanup; the very brief muzzle flash/recoil were not reliably captured manually, so their timing/render commands are verified by renderer tests rather than claimed as visually verified. OS preference changes during play and the in-flight saved-setting toggle were not manually exercised; cancellation is covered by automated controller/renderer tests and existing preference wiring.
 
-**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
 
 ## Rubber Yard Map Addition � 2026-10-05
 
@@ -326,7 +326,7 @@ pm run check passed typecheck/lint, **26 test files / 176 tests**, duration **1.
 pm run build passed: **71 modules transformed / 1.34s**.
 - Brute-forced exclusive trick-shot solutions in headless tests, ensuring physical solvability despite the high 7.0m concrete wall blocking direct shots to Jonh.
 
-**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
 
 ## Polish pass — 2026-10-07/08 (branch `polish-pass`)
 
@@ -367,7 +367,7 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - **Ogg decoding on old Safari:** if it fails, the synthesized layers still play.
 - **The hat-locker screen** builds data URLs from textures on first open (a few ms).
 
-**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
 
 ## Online multiplayer — 2026-10-08 (branch `online-multiplayer`)
 
@@ -416,8 +416,8 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - `a617f40` (client): `onlineController.update()` re-reads the presentation before `isCutShort`, so a final-shot skip shows the result instead of "This match ended unexpectedly" and no longer marks the watcher `left`. Browser: PASS (watcher stayed on "WATCHER WINS!", `left: false` in Convex dev). Genuine cut-shorts still end unexpectedly (regression test).
 - `1d97b08` + `7c426d3` (bug A): `touchPresence` (`convex/model.ts`) records the new optional `rooms.lastQuiet = { start, end }` when a check-in ends a quiet period; staleness and the 2-heartbeat margin count from `end`, for `checkTurn`, `checkInFlight`, report-driven turn start and the client "Waiting for…" warning. Eight new tests (six watched failing). Pushed to dev only. Trade-off, written into the spec: with a once-a-minute background-tab spectator, a truly missing player can be skipped up to about a minute late.
 - Evidence now: `npm run check` 45 files, 386 tests pass; `npm run build` passes.
-- **Bug B (open, undecided): turn-limit skip lands up to 15 s late** (observed limit 1059383, skip 1074408). Options: B1 accept (a fire in that window is still accepted); B2 reject late fires and disable Fire at 0 s (banner honest, skip row still late); B3 recheck about 2 s after the limit plus a client heartbeat at 0 s (skip lands 2-3 s late).
-- **Bug C (open, undecided): abandoned rooms keep timers running** until the 24 h cleanup: about 2,880 runs/room/day (30 s quiet wait), about 5,760 with a shot in flight (15 s). Options: C1 back off to a 10 min recheck after about 10 min quiet (about 163/day; needs C2's clock reset); C2 stop the chain while quiet and re-arm from the check-in that records `lastQuiet`, resetting `turnClockStart` (0 runs while abandoned; most logic); C3 accept.
+- **Bug B (fixed with option B3, commits `50ac35b`, `92cc4b7`):** after the limit the server rechecks every 2 s (`ONLINE.turnLimitRecheckSeconds`) and each client sends one heartbeat when its countdown hits 0 (`OnlineMatchTracker.takeTurnExpiry`). Browser: the skip landed 2.014 s after the limit, twice (both pages connected; active player offline). A short single-player outage still did not skip. NOT VERIFIED in a browser: a shared outage across the limit (unit tests only). Caveats: if the client's server-clock estimate runs ahead, the 0 s check-in can miss the limit and the skip falls back to the old up-to-15 s worst case; if every tab is hidden the 0 s heartbeat doesn't fire (game loop stops) and the skip waits for a regular heartbeat. Evidence: `task-15-walkthrough-6.md`. `npm run check`: 45 files, 392 tests; build passes.
+- **Bug C (accepted, option C3, no change):** abandoned rooms keep their check timer running (about 2,880 runs/room/day, about 5,760 with a shot in flight) until the 24 h cleanup. Revisit with C2 (stop while quiet, re-arm from the `lastQuiet` check-in) if Convex usage becomes a concern.
 - Minor: "0 s left" showed for 0.5-5 s right after a reconnect.
 
 **Bugs / notes from the walkthrough (run 1).**
@@ -460,4 +460,4 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - Evidence after this wave: `npm run check` passes with `Test Files 45 passed (45)` and `Tests 364 passed (364)`. `npm run build` passes: `168 modules transformed`, `main` 288.17 kB (84.91 kB gzip).
 - Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
 
-**Next task:** decide bugs B and C (options above), then a real-browser background-tab test (item 13).
+**Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
