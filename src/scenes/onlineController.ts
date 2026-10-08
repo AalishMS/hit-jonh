@@ -55,6 +55,8 @@ interface Outbox {
   fired: boolean;
   outcome: ClassifiedOutcome | null;
   sending: boolean;
+  /** Retries ran out: nothing is sent until the player presses Retry on the blocking banner. */
+  blocked: boolean;
 }
 
 const JOIN_ERRORS: Partial<Record<string, string>> = {
@@ -125,7 +127,10 @@ export class OnlineController {
     });
   }
 
-  /** `?room=CODE`: rejoin silently if this tab already holds a seat, else show Join with the code filled in. */
+  /**
+   * `?room=CODE`: rejoin silently if this tab still holds a seat (a reload), else show Join with the code filled in.
+   * A seat this tab left on purpose counts as none, so it is never re-entered without an explicit Join.
+   */
   async openFromLink(raw: string): Promise<void> {
     const code = normalizeRoomCode(raw);
     if (!code) { this.open(); return; }
@@ -342,7 +347,7 @@ export class OnlineController {
     if (item.kind === 'recovered') {
       // My shot from before a reload: already on the server, so only the outcome is still to send.
       const matchNumber = this.tracker.snapshot?.room.matchNumber ?? 0;
-      this.outbox = { matchNumber, seq: shot.seq, angle: shot.angle, power: shot.power, fired: true, outcome: null, sending: false };
+      this.outbox = { matchNumber, seq: shot.seq, angle: shot.angle, power: shot.power, fired: true, outcome: null, sending: false, blocked: false };
     }
     this.hooks.playShot(shot.angle, shot.power);
   }
@@ -350,11 +355,12 @@ export class OnlineController {
   /** The local player pressed Fire on their own turn (the scene has already launched the ball). */
   onUserFire(angle: number, power: number): void {
     const snapshot = this.tracker.snapshot;
-    if (!this.session || !snapshot) return;
+    // Defence in depth: the scene already gates Fire, but a stray call must never send a shot out of turn.
+    if (!this.session || !snapshot || this.current || !this.tracker.isMyTurnToAim()) return;
     const seq = this.tracker.nextFireSeq();
     this.tracker.markFiredByMe(seq);
     this.current = { seq, kind: 'live', localOutcome: null };
-    const box: Outbox = { matchNumber: snapshot.room.matchNumber, seq, angle, power, fired: false, outcome: null, sending: false };
+    const box: Outbox = { matchNumber: snapshot.room.matchNumber, seq, angle, power, fired: false, outcome: null, sending: false, blocked: false };
     this.outbox = box;
     this.pump(box);
   }
@@ -394,7 +400,7 @@ export class OnlineController {
   /** Sends the next pending write of my shot: the fire first, the outcome only once the fire is on the server. */
   private pump(box: Outbox): void {
     const session = this.session;
-    if (!session || box !== this.outbox || box.sending) return;
+    if (!session || box !== this.outbox || box.sending || box.blocked) return;
     const { matchNumber, seq } = box;
     let send: () => Promise<void>;
     let notice: string;
@@ -424,8 +430,10 @@ export class OnlineController {
     const code = errorCode(error);
     if (code === null) {
       // Every retry failed: block until the player retries; the server's timers keep the others moving.
+      box.blocked = true;
       this.banner.setBlocking("Couldn't reach the room.", () => {
         this.banner.setBlocking(null);
+        box.blocked = false;
         this.pump(box);
       });
       return;

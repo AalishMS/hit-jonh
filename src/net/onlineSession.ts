@@ -39,9 +39,15 @@ export class OnlineSession {
   get serverNow(): number { return Date.now() + this.clockOffsetMs; }
   get connected(): boolean { return this.client.connectionState().isWebSocketConnected; }
 
+  /**
+   * The seat this token still holds in the room, or null. A seat marked `left` counts as none: the player left on
+   * purpose, so a room link must show Join (whose `joinRoom` clears `left`) rather than silently re-entering.
+   */
   async peekSeat(code: string): Promise<number | null> {
     const snapshot = await this.client.query(api.rooms.getRoom, { code: requireValidCode(code), token: this.token });
-    return snapshot?.you ?? null;
+    const you = snapshot?.you ?? null;
+    if (you === null || snapshot?.seats.find(s => s.seat === you)?.left) return null;
+    return you;
   }
 
   createRoom(profile: OnlineProfile, maps: string[]): Promise<string> {

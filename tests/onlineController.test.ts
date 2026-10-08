@@ -388,6 +388,34 @@ describe('OnlineController: my shots', () => {
     expect(session().reportOutcome).toHaveBeenCalledTimes(1);
   });
 
+  it('does not resend behind the blocking banner when the local shot resolves after the retries ran out', async () => {
+    const { ctl, scene } = await myTurn();
+    session().fireShot.mockRejectedValueOnce(new Error('offline'));
+    scene.machine!.fire(40, 70);
+    ctl.onUserFire(40, 70);
+    await flush();
+    expect(h.state.banner.blocking).toBe("Couldn't reach the room.");
+    ctl.onLocalResolution('miss');
+    await flush();
+    expect(session().fireShot).toHaveBeenCalledTimes(1);
+    expect(session().reportOutcome).not.toHaveBeenCalled();
+    expect(h.state.banner.blocking).toBe("Couldn't reach the room.");
+    h.state.banner.retry!();
+    await flush();
+    expect(h.state.banner.blocking).toBeNull();
+    expect(session().fireShot).toHaveBeenCalledTimes(2);
+    expect(session().reportOutcome).toHaveBeenCalledWith({ matchNumber: 0, seq: 0, outcome: 'miss' });
+  });
+
+  it('ignores Fire while a shot of mine is already in progress', async () => {
+    const { ctl, scene } = await myTurn();
+    scene.machine!.fire(40, 70);
+    ctl.onUserFire(40, 70);
+    ctl.onUserFire(41, 71);
+    await flush();
+    expect(session().fireShot).toHaveBeenCalledTimes(1);
+  });
+
   it('a rejected fire skips the report and resyncs with a notice once the local shot ends', async () => {
     const { ctl, scene } = await myTurn();
     session().fireShot.mockRejectedValueOnce(rejection('NOT_YOUR_TURN'));
@@ -506,6 +534,16 @@ describe('OnlineController: other players’ shots', () => {
     ctl.onLocalResolution('miss');
     expect(scene.applied).toEqual([['hat_only', false]]);
     expect(session().reportWitness).not.toHaveBeenCalled();
+  });
+
+  it("ignores Fire on someone else's turn", async () => {
+    const { ctl, scene } = await watching([]);
+    expect(ctl.isMyTurnToAim()).toBe(false);
+    ctl.onUserFire(40, 70);
+    ctl.onLocalResolution('body');
+    await flush();
+    expect(session().fireShot).not.toHaveBeenCalled();
+    expect(scene.applied).toEqual([]);
   });
 
   it('presents a skipped turn without firing', async () => {
