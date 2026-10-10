@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
-import { BACKYARD_LEVEL } from '../src/levels/backyard';
+import { CLASSIC_BACKYARD as BACKYARD_LEVEL } from './levelFixtures';
 import { MatterAdapter } from '../src/physics/matterAdapter';
 import { AIM, PHYSICS, PROJECTILE, WORLD } from '../src/config/tuning';
 import { launchVelocityToWorld, metresToPixels, simYToWorldY, powerToLaunchSpeed } from '../src/sim/units';

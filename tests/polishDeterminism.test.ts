@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
 import { MAPS } from '../src/levels';
+import { CLASSIC_BACKYARD } from './levelFixtures';
 import { AIM, FX, LOOK, PHYSICS, PROJECTILE, SHOT, WORLD } from '../src/config/tuning';
 import { levelPhysics } from '../src/levels/levelPhysics';
 import { MatterAdapter } from '../src/physics/matterAdapter';
@@ -78,8 +79,8 @@ describe('Polish-pass effects never change the simulation', () => {
 
   it('a hat pulse mid-flight does not change where the ball goes', () => {
     const aim = { angleDeg: 25, powerPercent: 62 };
-    const expected = play(MAPS[0]!, 60, 'plain', aim);
+    const expected = play(CLASSIC_BACKYARD, 60, 'plain', aim);
     expect(expected.outcome).toBe('hat_only');
-    for (const hz of [30, 144]) expect(play(MAPS[0]!, hz, 'effects', aim)).toEqual(expected);
+    for (const hz of [30, 144]) expect(play(CLASSIC_BACKYARD, hz, 'effects', aim)).toEqual(expected);
   });
 });

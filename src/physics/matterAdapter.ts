@@ -1,5 +1,5 @@
 import Matter, { type Body, type World } from '@matter-js';
-import { LOOK, MATERIALS, PHYSICS } from '../config/tuning';
+import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
 import type { LevelData } from '../levels/types';
 import type { Box2D } from '../sim/swept';
 import { sweepCircleVsBox } from '../sim/swept';
@@ -8,6 +8,7 @@ import {
   matterVelocityToSpeedMs,
   pixelsToMetres,
   simYToWorldY,
+  speedMsToMatterVelocity,
   vectorLength,
   worldYToSimY,
 } from '../sim/units';
@@ -310,16 +311,23 @@ export class MatterAdapter {
       const matterNormalX = earliestHit.hit.normal.x;
       const matterNormalY = -earliestHit.hit.normal.y; // sim +y is up, matter +y is down
 
-      const dot = matterVx * matterNormalX + matterVy * matterNormalY;
-      
-      // If moving into the surface, apply manual reflection to prevent tunnelling
-      if (dot < 0) {
+      const dotNow = matterVx * matterNormalX + matterVy * matterNormalY;
+      // Velocity entering this step: Matter may already have resolved (and damped) the impact.
+      const inVx = this.previousVelocity.x;
+      const inVy = this.previousVelocity.y;
+      const dotIn = inVx * matterNormalX + inVy * matterNormalY;
+      const minBounce = speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre);
+
+      // Still moving into the surface: reflect to prevent tunnelling. Already resolved by Matter
+      // after a real impact: redo the bounce from the incoming velocity with this material.
+      if (dotNow < 0 || dotIn < -minBounce) {
+        const [vx, vy, dot] = dotNow < 0 ? [matterVx, matterVy, dotNow] : [inVx, inVy, dotIn];
         const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[earliestHit.material] ?? { restitution: 0.2, friction: 0.5 };
         const projMat = MATERIALS.cannonball;
         const restitution = Math.max(mat.restitution, projMat.restitution);
-        
-        const vNewMatterX = matterVx - (1 + restitution) * dot * matterNormalX;
-        const vNewMatterY = matterVy - (1 + restitution) * dot * matterNormalY;
+
+        const vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
+        const vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
 
         // Reposition exactly at time of impact, plus tiny epsilon to avoid sticky re-collision
         const newSimX = earliestHit.hit.point.x + earliestHit.hit.normal.x * 1e-4;
@@ -338,9 +346,16 @@ export class MatterAdapter {
       }
     }
 
-    if (this.hasHitGround && currSim.y <= level.ground.maxY + radiusMetres + 1e-3) {
+    // Rolling resistance on whatever top surface the ball rests on (ground, roofs, decks), so a
+    // ball that lands on a flat top slows to a stop instead of sliding on indefinitely.
+    const support = this.hasHitGround && currSim.y <= level.ground.maxY + radiusMetres + 1e-3
+      ? level.ground.material
+      : level.obstacles.find(o => currSim.x >= o.box.minX && currSim.x <= o.box.maxX &&
+        Math.abs(currSim.y - radiusMetres - o.box.maxY) <= 2e-3)?.material;
+    if (support !== undefined) {
+      const mat = (MATERIALS as Record<string, MaterialProps>)[support];
       Matter.Body.setVelocity(this.projectileBody, {
-        x: this.projectileBody.velocity.x * PHYSICS.groundRollingDamping,
+        x: this.projectileBody.velocity.x * (mat?.rollingDamping ?? PHYSICS.groundRollingDamping),
         y: this.projectileBody.velocity.y,
       });
     }

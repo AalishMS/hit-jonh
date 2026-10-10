@@ -24,10 +24,16 @@ export const PHYSICS = {
   /** Matter's gravity.scale default; gravity.y is derived from this so units stay explicit. */
   matterGravityScale: 0.001,
   /**
-   * Linear rolling damping factor applied per fixed step once the projectile contacts the ground.
-   * Enables the cannonball to roll naturally to a stop on grass/turf.
+   * Linear rolling damping factor applied per fixed step while the projectile rests on a top
+   * surface (ground, roof, deck), unless that material sets its own `rollingDamping` [TUNE].
    */
-  groundRollingDamping: 0.985,
+  groundRollingDamping: 0.975,
+  /**
+   * Impacts faster than this (m/s into the surface) bounce with the material's restitution even
+   * when Matter's contact solver already resolved them (it damps every material alike). Slower
+   * contacts (resting, rolling) are left to Matter.
+   */
+  bounceMinNormalSpeedMs: 0.5,
 } as const;
 
 export const PROJECTILE = {
@@ -179,9 +185,22 @@ export const MULTIPLAYER = {
   },
 } as const;
 
+/** Map difficulty guard (tests/difficulty.test.ts) [TUNE]. */
+export const DIFFICULTY = {
+  /** Most of a coarse 5° × 5% aim grid that may score a body hit, per target position. */
+  maxCoarseHitFraction: 0.08,
+  /**
+   * Trick maps: the least share of hits that must bounce off a ricochet surface first.
+   * 1 = no direct line to Jonh at all.
+   */
+  minTrickShare: { bankshot: 1, trampoline: 0.9 } as Readonly<Record<string, number>>,
+} as const;
+
 export interface MaterialProps {
   restitution: number;
   friction: number;
+  /** Ground only: per-step horizontal speed kept while rolling; PHYSICS.groundRollingDamping when omitted. */
+  rollingDamping?: number;
 }
 
 export const MATERIALS = {
@@ -195,8 +214,12 @@ export const MATERIALS = {
   /** Soft canopy: catches the ball rather than bouncing it. */
   leaves: { restitution: 0.12, friction: 0.9 },
   rock: { restitution: 0.35, friction: 0.6 },
-  /** Moon dust: dead landings. */
-  regolith: { restitution: 0.15, friction: 0.8 },
+  /** Ball-stopping floors (driveway, roof gravel, sandpit, balcony rug): dead landings, short rolls. */
+  gravel: { restitution: 0.15, friction: 0.9, rollingDamping: 0.88 },
+  sand: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
+  rug: { restitution: 0.15, friction: 0.9, rollingDamping: 0.88 },
+  /** Moon dust: dead landings, and a rolling ball stops within a metre or two. */
+  regolith: { restitution: 0.15, friction: 0.8, rollingDamping: 0.95 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;

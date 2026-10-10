@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
 import { MAPS } from '../src/levels';
+import { CLASSIC_BACKYARD } from './levelFixtures';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../src/config/tuning';
 import { levelPhysics } from '../src/levels/levelPhysics';
 import { MatterAdapter } from '../src/physics/matterAdapter';
@@ -67,9 +68,9 @@ describe('Impact effects preserve real physics and scoring', () => {
 });
 
 it('hat-only contact preserves its score and never starts body impact effects', () => {
-  const expected = replay(MAPS[0]!, 60, true, { angleDeg: 25, powerPercent: 62 });
+  const expected = replay(CLASSIC_BACKYARD, 60, true, { angleDeg: 25, powerPercent: 62 });
   expect(expected.classification.outcome).toBe('hat_only');
   expect(expected.classification.points).toBe(20);
   expect(expected.effectsTriggered).toBe(false);
-  expect(replay(MAPS[0]!, 60, false, { angleDeg: 25, powerPercent: 62 })).toEqual(expected);
+  expect(replay(CLASSIC_BACKYARD, 60, false, { angleDeg: 25, powerPercent: 62 })).toEqual(expected);
 });
