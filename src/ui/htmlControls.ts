@@ -1,7 +1,7 @@
 import { AIM, PROJECTILE } from '../config/tuning';
-import { cssColor, playerDisplayColor } from '../art/palette';
 import { powerToLaunchSpeed } from '../sim/units';
-import type { MPPlayerView } from '../rules/multiplayerMatch';
+import { PlayerPanel, type OnlinePlayerPresence } from './playerPanel';
+import type { MPState, MPPlayerView } from '../rules/multiplayerMatch';
 
 export interface HTMLControlsCallbacks {
   onAngleChange: (angleDeg: number) => void;
@@ -44,6 +44,7 @@ export class HTMLControls {
   private attemptsEl!: HTMLElement;
   private streakEl!: HTMLElement;
   private readonly aimBar: HTMLElement;
+  private readonly playerPanel: PlayerPanel;
 
   private cleanupListeners: Array<() => void> = [];
 
@@ -55,6 +56,7 @@ export class HTMLControls {
     initialDebug = false,
     initialMuted = false,
   ) {
+    this.playerPanel = new PlayerPanel(parentElement.closest('.stage-wrap') ?? parentElement);
     this.container = document.createElement('section');
     this.container.className = 'controls-panel hud';
     this.container.setAttribute('aria-label', 'Cannon Controls');
@@ -212,27 +214,21 @@ export class HTMLControls {
     this.homeButton.hidden = !visible;
     this.aimBar.hidden = !visible;
     document.body.classList.toggle('in-game', visible);
+    this.playerPanel.setVisible(visible);
   }
 
-  setMatchStatus(mapName: string, players: readonly MPPlayerView[], activeIndex: number | null = null): void {
+  setMatchStatus(mapName: string, players: readonly MPPlayerView[], activeIndex: number | null = null, state: MPState = 'aiming'): void {
     this.matchStatus.replaceChildren();
     const label = document.createElement('strong');
     label.className = 'map-chip';
     label.textContent = mapName;
     this.matchStatus.appendChild(label);
-    for (const player of players) {
-      const score = document.createElement('span');
-      score.className = `player-score${player.id === activeIndex ? ' active' : ''}`;
-      score.style.setProperty('--player-color', cssColor(playerDisplayColor(player.color)));
-      const name = document.createElement('span');
-      name.className = 'player-name';
-      name.textContent = player.name;
-      const pts = document.createElement('b');
-      pts.textContent = String(player.totalScore);
-      score.append(name, pts);
-      this.matchStatus.appendChild(score);
-    }
+    this.playerPanel.update(players, activeIndex, state);
     if (players.length) { this.setAttempts(null); this.setStreak(0); }
+  }
+
+  setOnlinePresence(presence: OnlinePlayerPresence | null): void {
+    this.playerPanel.setOnlinePresence(presence);
   }
 
   /** Solo attempt pips (cannonballs); null hides them. */
@@ -287,6 +283,7 @@ export class HTMLControls {
   }
 
   destroy(): void {
+    this.playerPanel.destroy();
     this.homeButton.remove();
     this.aimBar.remove();
     for (const cleanup of this.cleanupListeners) cleanup();

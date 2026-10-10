@@ -188,6 +188,25 @@ afterEach(() => {
 });
 
 describe('OnlineController: setup screen', () => {
+  it('exposes live roster presence, stale seats, departures and connection uncertainty', async () => {
+    const { ctl } = setup();
+    expect(ctl.playerPresence).toBeNull();
+    const listener = await enterRoom(ctl);
+    const snap = snapshot([], 0);
+    listener.onRoom(snap);
+    listener.onPresence([{ seat: 0, lastSeen: 0 }, { seat: 1, lastSeen: 0 }]);
+    expect(ctl.playerPresence).toEqual({ code: 'ABCDE', mySeat: 0, connected: [0, 1], left: [], reconnecting: false });
+    session().serverNow = 90_000;
+    listener.onPresence([{ seat: 0, lastSeen: 90_000 }, { seat: 1, lastSeen: 0 }]);
+    expect(ctl.playerPresence?.connected).toEqual([0]);
+    listener.onRoom({ ...snap, seats: snap.seats.map(s => ({ ...s, left: s.seat === 1 })) });
+    expect(ctl.playerPresence?.left).toEqual([1]);
+    session().connected = false;
+    expect(ctl.playerPresence?.reconnecting).toBe(true);
+    ctl.leave();
+    expect(ctl.playerPresence).toBeNull();
+  });
+
   it('sanitizes the raw name (blank falls back, long is capped) before any server call', async () => {
     const { ctl } = setup();
     ctl.open();

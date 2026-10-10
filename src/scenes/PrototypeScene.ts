@@ -1393,7 +1393,9 @@ export class PrototypeScene extends Phaser.Scene {
     const match = this.multiMachine;
     if (match.state === 'handover') this.applyMultiplayerPosition();
     this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
-      match.players, match.state === 'result' ? match.lastShooterIndex : match.activePlayerIndex);
+      match.players, match.state === 'result' ? match.lastShooterIndex
+        : match.state === 'round_result' || match.state === 'match_result' ? null : match.activePlayerIndex, match.state);
+    this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null);
     if (match.state === 'handover') {
       const player = match.activePlayer;
       this.currentAngleDeg = player.lastAngle;
@@ -1528,6 +1530,7 @@ export class PrototypeScene extends Phaser.Scene {
       playShot: (angle, power) => this.playOnlineShot(angle, power),
       presentSkippedTurn: (seat, angle, power, text) => this.presentSkippedTurn(seat, angle, power, text),
       applyOfficialOutcome: (outcome, mine) => this.applyOfficialOutcome(outcome, mine),
+      refreshPlayerPresence: () => this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null),
       refreshMatchResult: () => {
         if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
       },

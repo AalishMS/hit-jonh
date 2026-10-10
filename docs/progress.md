@@ -511,3 +511,28 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 
 **Next task**
 - Owner playtest of the new difficulty; tune `DIFFICULTY` caps and map geometry from feedback.
+
+
+## Multiplayer player panel (2026-10-10)
+
+**Done / current**
+- Added a persistent vertical roster for local and online matches, outside the arena. Each player has their patterned cannon, name, total points and an explicit active-turn label (Up next, Aiming, Firing, Shot complete). Seat order stays stable. Round/match summaries clear the active-player marker; shot results keep the player who fired highlighted until handover.
+- Online shows the room code, a You label and Online / Away / Left presence. During a server connection outage it shows Connection unknown instead of claiming other players are online. Presence uses the existing tracker and refresh cadence; no backend changes.
+- Removed overlapping score chips. The panel moves below the arena/HUD on portrait phones. Short landscape screens use compact rows, and the HUD stays sized to the arena even when four player rows are taller. Solo and menus hide the panel.
+
+**Decisions**
+- Owner-requested player panel supersedes SPEC ?6's score strip. Matches retain their existing turn order, scoring and rules; the panel has no new gameplay controls.
+
+**Verified**
+- `npm run check`: typecheck and lint passed; actual Vitest summary: `Test Files 48 passed (48)`; `Tests 459 passed | 8 skipped (467)` (opt-in difficulty reports skipped).
+- `npm run build`: succeeded; `176 modules transformed`; main 311.36 kB (91.90 kB gzip).
+- Collaborative browser: local two-player aiming ? firing ? handover highlighted the right player; Home hid the roster. Portrait 390?844 had no horizontal overflow. Four-player local match at 844?390 kept Fire within the canvas and page height at 390 px. Desktop panel stayed beside the arena with the HUD over only the arena.
+- Online browser fixture (not a live room): four rows with 100/125/20/0 points, You, Online/Away/Left, long-name wrapping and Connection unknown during reconnection. Controller test checks live presence, the stale threshold, a departed player, connection outage and room exit.
+- Read-only second-agent review caught the tall-roster HUD positioning issue; fixed and checked in four-player landscape.
+
+**Known issues / not verified**
+- Live online two-device gameplay was not verified: Create room returned "Couldn't reach the server. Check your connection and try again." No deployment was changed.
+- Real-device touch and assistive-technology announcement testing not verified; browser viewport checks only.
+
+**Next task**
+- Verify the panel during a live online match once the configured server is reachable; owner playtest of roster sizing.

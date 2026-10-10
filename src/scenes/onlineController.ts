@@ -30,6 +30,7 @@ export interface OnlineSceneHooks {
   playShot(angle: number, power: number): void;
   presentSkippedTurn(seat: number, angle: number, power: number, text: string): void;
   applyOfficialOutcome(outcome: ClassifiedOutcome, mine: boolean): void;
+  refreshPlayerPresence?(): void;
   refreshMatchResult(): void;
   refreshAimingControls(): void;
   leaveToMenu(): void;
@@ -121,6 +122,18 @@ export class OnlineController {
   get inRoom(): boolean { return this.code !== null; }
   get inMatch(): boolean { return this.match; }
   get mySeat(): number | null { return this.tracker.mySeat; }
+  get playerPresence() {
+    const snapshot = this.tracker.snapshot;
+    const session = this.session;
+    if (!this.match || !snapshot || !session) return null;
+    return {
+      code: snapshot.room.code, mySeat: snapshot.you,
+      connected: [...this.tracker.connectedSeats(session.serverNow)],
+      left: snapshot.seats.filter(s => s.left).map(s => s.seat),
+      reconnecting: !session.connected,
+    };
+  }
+
   isMyTurnToAim(): boolean { return this.tracker.isMyTurnToAim(); }
 
   open(error: string | null = null, code = ''): void {
@@ -500,6 +513,7 @@ export class OnlineController {
     const session = this.session;
     if (!session) return;
     this.renderLobbyIfShown();
+    if (this.match) this.hooks.refreshPlayerPresence?.();
     if (!session.connected) { this.banner.setText('Reconnecting…'); return; }
     if (!this.match) { this.banner.setText(null); return; }
     const now = session.serverNow;
