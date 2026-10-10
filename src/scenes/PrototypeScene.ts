@@ -1427,7 +1427,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setCanFire(canAct);
       this.htmlControls.setResetEnabled(canAct);
       this.htmlControls.setResetLabel('Aim again ↵');
-      const movement = match.activeCycleIndex > 0 ? ' · Jonh has moved—adjust your aim' : '';
+      const movement = match.moveCount > 0 ? ' · Jonh has moved—adjust your aim' : '';
       const status = this.online?.inMatch && match.activePlayerIndex !== this.online.mySeat
         ? `${match.activePlayer.name} is aiming…`
         : `${match.activePlayer.name}'s turn · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}${movement}`;
@@ -1483,6 +1483,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
+    this.jonhRenderer.triggerArrival(this.reactionSelector.selectReaction('moved'));
   }
 
   private beginMultiplayerTurn(): void {

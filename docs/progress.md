@@ -561,6 +561,22 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 **Next task**
 - Owner playtest; verify online selection synchronization with two connected devices.
 
+## Jonh moves only when hit (2026-10-10)
+
+**Done / current**
+- Multiplayer Jonh no longer relocates every shot cycle. He stays put through misses and hat-only shots, and moves to the next position in the map's shuffled schedule only after a body or ricochet-body hit (`MultiplayerMatchMachine.moveCount`). The move is applied when the result is dismissed, so the result screen still shows the old spot. Three hits wrap back to the first position; every round and rematch starts at the first position.
+- When he moves he says a line from the new `moved` reaction pool (`rules/reactions.ts`), shown in his speech bubble like the map arrival line. The "Jonh has moved—adjust your aim" status now follows `moveCount`.
+- Online matches use the same machine through `replayMatch`, so the schedule stays deterministic from seed + recorded outcomes. No backend change.
+
+**Decisions**
+- Hat-only is not a hit for moving (it is not counted as a body hit in scoring ties either). Solo and daily modes are unchanged: Jonh never moves.
+
+**Verified**
+- `npm run check`: typecheck and lint passed; `Test Files 48 passed (48)`; `Tests 464 passed | 8 skipped (472)`. `tests/multiplayerCycles.test.ts` rewritten for hit-driven moves.
+
+**Known issues / not verified**
+- The new speech line and the move in the browser, and online two-device play, were not verified.
+
 
 ## Player presence dots (2026-10-10)
 

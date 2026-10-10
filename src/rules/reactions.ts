@@ -1,8 +1,16 @@
 import { SCORING } from '../config/tuning';
 
-export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss';
+export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss' | 'moved';
 
 export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
+  /** Said when Jonh relocates after being hit. */
+  moved: [
+    'Right. Somewhere else, then.',
+    'Time to find a safer spot.',
+    'Let us see you hit me over here.',
+    'I shall relocate, thank you.',
+    'This chair has been compromised.',
+  ],
   hit: [
     'That was my good deckchair.',
     "I hadn't finished that.",

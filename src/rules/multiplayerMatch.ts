@@ -58,6 +58,8 @@ export class MultiplayerMatchMachine {
   private _shotIndex = 0; // 0 to (shotsPerRound * players - 1)
   private _shooterIndex: number | null = null;
   private positionSchedules: string[][] = [];
+  private _moveCount = 0;
+  private _movePending = false; // the last shot hit Jonh; he moves when the result is dismissed
 
   constructor(setups: readonly MPPlayerSetup[], private readonly maps: readonly string[] = MP_MAPS,
     private readonly random: () => number = Math.random) {
@@ -100,16 +102,21 @@ export class MultiplayerMatchMachine {
   get currentMapId(): string { return this.maps[this._roundIndex] ?? this.maps[0]!; }
   get roundCount(): number { return this.maps.length; }
 
-  /** Resolution advances the turn counter; keep the finished position until handover. */
+  /** Resolution advances the turn counter; keep the finished cycle until handover. */
   get activeCycleIndex(): number {
     const shotIndex = this._state === 'result' ? this._shotIndex - 1 : this._shotIndex;
     return Math.min(MULTIPLAYER.shotsPerRound - 1, Math.floor(shotIndex / this._players.length));
   }
 
+  /** Jonh stays put until he is hit; the move is applied on leaving the result, so results keep the old spot. */
   get activePositionId(): string {
     const round = Math.min(this._roundIndex, this.maps.length - 1);
-    return this.positionSchedules[round]![this.activeCycleIndex]!;
+    const schedule = this.positionSchedules[round]!;
+    return schedule[this._moveCount % schedule.length]!;
   }
+
+  /** How many times Jonh has moved this round (0 = still at his starting spot). */
+  get moveCount(): number { return this._moveCount; }
 
   private shufflePositions(): void {
     this.positionSchedules = this.maps.map(mapId => {
@@ -187,6 +194,7 @@ export class MultiplayerMatchMachine {
     player.totalScore += points;
     if (outcome === 'ricochet_body' || outcome === 'body') {
       player.bodyHits += 1;
+      this._movePending = true;
     }
 
     this._shotIndex++;
@@ -197,6 +205,10 @@ export class MultiplayerMatchMachine {
   /** Result -> Handover (shots remain) or Result -> RoundResult (round complete). */
   continueFromResult(): void {
     if (this._state === 'result') {
+      if (this._movePending) {
+        this._movePending = false;
+        this._moveCount++;
+      }
       this._state = this.isRoundComplete ? 'round_result' : 'handover';
     }
   }
@@ -205,6 +217,7 @@ export class MultiplayerMatchMachine {
     if (this._state === 'round_result') {
       this._roundIndex++;
       this._shotIndex = 0;
+      this._moveCount = 0;
       if (this.isMatchComplete) {
         this._state = 'match_result';
       } else {
@@ -238,6 +251,8 @@ export class MultiplayerMatchMachine {
     this._roundIndex = 0;
     this._shotIndex = 0;
     this._shooterIndex = null;
+    this._moveCount = 0;
+    this._movePending = false;
     this.shufflePositions();
     for (const p of this._players) {
       p.totalScore = 0;
