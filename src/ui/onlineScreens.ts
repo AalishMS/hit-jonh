@@ -209,9 +209,15 @@ export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
     }
     content.appendChild(list);
 
+    let selectedMaps = [...o.maps];
+    let start: HTMLButtonElement | undefined;
     // Guests see the host's pick read-only; the host's ticks go straight to the room.
     content.appendChild(host
-      ? mapSetPicker({ idPrefix: 'online', selected: o.maps, onChange: maps => o.onMaps(maps), signal })
+      ? mapSetPicker({ idPrefix: 'online', selected: selectedMaps, onChange: maps => {
+        selectedMaps = maps;
+        if (start) start.disabled = maps.length === 0 || o.seats.length < MULTIPLAYER.minPlayers;
+        o.onMaps(maps);
+      }, signal })
       : mapSetCard(o.maps));
 
     const error = el('p', 'online-error', o.error ?? '');
@@ -221,9 +227,11 @@ export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
     const actions = el('div', 'menu-actions');
     content.appendChild(actions);
     if (host) {
-      const start = button(actions, 'Start match', 'btn-primary', () => o.onStart(), signal);
+      start = button(actions, 'Start match', 'btn-primary', () => {
+        if (selectedMaps.length > 0) o.onStart();
+      }, signal);
       start.id = 'online-start';
-      start.disabled = o.seats.length < MULTIPLAYER.minPlayers;
+      start.disabled = selectedMaps.length === 0 || o.seats.length < MULTIPLAYER.minPlayers;
     } else {
       actions.appendChild(el('p', 'auto-note', 'Waiting for host…'));
     }

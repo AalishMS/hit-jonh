@@ -536,3 +536,27 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 
 **Next task**
 - Verify the panel during a live online match once the configured server is reachable; owner playtest of roster sizing.
+
+## Empty multiplayer map selection (2026-10-10)
+
+**Done / current**
+- Local setup and the online host can untick every arena. Start match becomes disabled and gray immediately; selecting a map or a preset enables it again (online still requires at least two players).
+- Empty selection shows "Choose at least one arena to start." Online guests see "The host is choosing arenas."
+- Online lobby map updates accept an empty list; the server rejects starting with no maps. Match rules still require at least one map.
+
+**Decisions**
+- Owner request supersedes the previous picker rule that prevented unticking the last arena. Updated SPEC section 6.
+
+**Verified**
+- `npm run check`: typecheck and lint passed; `Test Files 48 passed (48)`; `Tests 459 passed | 8 skipped (467)`.
+- `npm run build`: succeeded; `176 modules transformed`.
+- `npx tsc --noEmit -p convex/tsconfig.json`: passed.
+- `npx convex dev --once`: Convex functions ready on dev `proper-lapwing-569`; no schema change.
+- Collaborative browser: zero checked local maps, Start disabled with `grayscale(1)`, disabled click stayed in setup; selecting Rubber Yard restored Start and began a one-round match.
+- Online browser fixture: unticking the last map emitted an empty selection and disabled Start; disabled click did not call Start; refresh with no maps kept Start disabled; selecting Lunar Picnic enabled Start; guests received the empty-selection message.
+
+**Known issues / not verified**
+- Live online two-device selection synchronization was not verified; online UI verified using a fixture, backend compiled and synced to dev.
+
+**Next task**
+- Owner playtest; verify online selection synchronization with two connected devices.

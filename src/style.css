@@ -191,6 +191,7 @@ input:disabled { opacity: .5; cursor: default; }
 .btn:active:not(:disabled) { transform: translateY(4px); box-shadow: none; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn-primary, .btn-retry { background: var(--pow); color: var(--paper); text-shadow: 0 2px 0 #2A1B2E55; }
+.btn-primary:disabled { filter: grayscale(1); }
 .btn-quiet { background: transparent; border-color: transparent; box-shadow: none; text-decoration: underline; text-underline-offset: 4px; }
 :focus-visible { outline: 4px solid var(--grape); outline-offset: 3px; }
 

@@ -308,11 +308,15 @@ export class MenuOverlay {
     countPlus.onclick = () => { if (playerCount < MULTIPLAYER.maxPlayers) { playerCount++; renderList(); } };
 
     let selectedMaps: string[] = [...DEFAULT_MAP_SET];
-    this.content.appendChild(mapSetPicker({ idPrefix: 'mp', selected: selectedMaps, onChange: maps => { selectedMaps = maps; }, signal }));
+    this.content.appendChild(mapSetPicker({ idPrefix: 'mp', selected: selectedMaps, onChange: maps => {
+      selectedMaps = maps;
+      startBtn.disabled = maps.length === 0;
+    }, signal }));
 
     const actions = el('div', 'menu-actions');
     this.content.appendChild(actions);
     const startBtn = this.button('Start match', 'btn-primary', () => {
+      if (selectedMaps.length === 0) return;
       const finalSetups = playerSetups.slice(0, playerCount).map((s, i) => ({ ...s, name: sanitizePlayerName(s.name, i) }));
       saveMultiplayerSetup(finalSetups);
       this.hide();

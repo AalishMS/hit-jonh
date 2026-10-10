@@ -16,14 +16,14 @@ export interface MapSetPickerOptions {
   /** Prefix for element ids, unique per screen (keeps focus across re-renders). */
   idPrefix: string;
   selected: readonly string[];
-  /** Always called with at least one map, in tour order. */
+  /** Called with the selected maps in tour order, including an empty selection. */
   onChange(maps: string[]): void;
   signal: AbortSignal;
 }
 
 /**
  * Multiplayer arena picker shared by hot-seat and the online host: preset chips plus a checklist
- * of every map, played in tour order. The last ticked map cannot be unticked.
+ * of every map, played in tour order. An empty selection disables starting the match.
  */
 export function mapSetPicker(o: MapSetPickerOptions): HTMLFieldSetElement {
   let selected = inTourOrder(o.selected);
@@ -51,7 +51,6 @@ export function mapSetPicker(o: MapSetPickerOptions): HTMLFieldSetElement {
     input.value = map.id;
     input.addEventListener('change', () => {
       const next = input.checked ? [...selected, map.id] : selected.filter(id => id !== map.id);
-      if (next.length === 0) { input.checked = true; return; }
       update(next);
     }, { signal: o.signal });
     const artwork = el('span');
@@ -68,11 +67,10 @@ export function mapSetPicker(o: MapSetPickerOptions): HTMLFieldSetElement {
   const sync = () => {
     for (const { input, id } of boxes) input.checked = selected.includes(id);
     for (const { b, preset } of presetButtons) b.setAttribute('aria-pressed', String(sameSet(selected, preset.maps)));
-    summary.textContent = roundsLabel(selected.length);
+    summary.textContent = selected.length === 0 ? 'Choose at least one arena to start.' : roundsLabel(selected.length);
   };
   function update(maps: readonly string[]): void {
     const next = inTourOrder(maps);
-    if (next.length === 0) return;
     selected = next;
     sync();
     o.onChange([...selected]);
@@ -88,6 +86,10 @@ export function mapSetCard(maps: readonly string[]): HTMLFieldSetElement {
   const ordered = inTourOrder(maps);
   const set = el('fieldset', 'mp-map-picker is-readonly');
   set.appendChild(el('legend', '', ordered.length === 1 ? 'Arena' : 'Arenas'));
+  if (ordered.length === 0) {
+    set.appendChild(el('p', 'map-set-summary', 'The host is choosing arenas.'));
+    return set;
+  }
   const card = el('div', 'arena-option is-picked');
   const artwork = el('span');
   artwork.innerHTML = ordered.length === 1 ? mapPreview(ordered[0]!) : tourPreview(ordered);

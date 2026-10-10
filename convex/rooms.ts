@@ -99,12 +99,13 @@ export const joinRoom = mutation({
 
 export const setMaps = mutation({
   args: { code: v.string(), token: v.string(), maps: v.array(v.string()) },
+  returns: v.null(),
   handler: async (ctx, { code, token, maps }) => {
     const room = await requireRoom(ctx, code);
     const me = await requireMember(ctx, room._id, token);
     if (room.status !== 'lobby') fail('ALREADY_STARTED');
     if (me.seat !== 0) fail('NOT_HOST');
-    if (!validMaps(maps)) fail('INVALID_MAPS');
+    if (maps.length > 0 && !validMaps(maps)) fail('INVALID_MAPS');
     await ctx.db.patch(room._id, { maps, updatedAt: Date.now() });
     return null;
   },
@@ -112,11 +113,13 @@ export const setMaps = mutation({
 
 export const startMatch = mutation({
   args: { code: v.string(), token: v.string() },
+  returns: v.null(),
   handler: async (ctx, { code, token }) => {
     const room = await requireRoom(ctx, code);
     const me = await requireMember(ctx, room._id, token);
     if (room.status !== 'lobby') fail('ALREADY_STARTED');
     if (me.seat !== 0) fail('NOT_HOST');
+    if (!validMaps(room.maps)) fail('INVALID_MAPS');
     const now = Date.now();
     await touchPresence(ctx, room._id, me._id, now);
     await pruneLobby(ctx, room._id, now);
