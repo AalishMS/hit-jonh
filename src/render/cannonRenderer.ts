@@ -32,6 +32,8 @@ export class CannonRenderer {
   private readonly meter: Phaser.GameObjects.Graphics;
   private readonly meterText: Phaser.GameObjects.Text;
   private lastMeterKey = '';
+  /** Size multiplier for the power meter so it stays readable on zoomed-out maps. */
+  private uiScale = 1;
 
   constructor(
     scene: Phaser.Scene,
@@ -55,6 +57,12 @@ export class CannonRenderer {
   }
 
   get pivot(): { x: number; y: number } { return { x: this.pivotXPx, y: this.pivotYPx }; }
+
+  /** On zoomed-out maps (1 / resting zoom) the power meter keeps its on-screen size. */
+  setUiScale(k: number): void {
+    this.uiScale = k;
+    this.lastMeterKey = '';
+  }
 
   setPosition(cannonSpawn: Point2D): void {
     this.pivotXPx = metresToPixels(cannonSpawn.x, this.ppm);
@@ -144,8 +152,14 @@ export class CannonRenderer {
     g.clear();
     this.meterText.setVisible(this.showAimAids);
     if (!this.showAimAids) return;
-    const x = this.pivotXPx - METER.width / 2;
-    const y = this.pivotYPx + METER.offsetY + 6;
+    // Drawn around the pivot so the whole meter scales with uiScale.
+    const k = this.uiScale;
+    // A scaled-up meter near the map edge is nudged inward so it stays fully on screen.
+    const cx = Math.max(this.pivotXPx, (METER.width / 2 + 8) * k);
+    g.setPosition(cx, this.pivotYPx).setScale(k);
+    this.meterText.setPosition(cx, this.pivotYPx + (METER.offsetY + 28) * k).setScale(k);
+    const x = -METER.width / 2;
+    const y = METER.offsetY + 6;
     g.fillStyle(hex(PAL.ink), 1);
     g.fillRoundedRect(x + 3, y + 3, METER.width, METER.height, 8);
     g.fillStyle(hex(PAL.paper), 1);

@@ -13,11 +13,15 @@ export interface Theme {
   midDark: string;
   sunY: number;
   sun: string;
-  skyline: 'village' | 'town' | 'park';
+  skyline: 'village' | 'town' | 'park' | 'mesas' | 'craters';
   /** Ground surface and soil; grass on earth when omitted. */
   groundTop?: string;
   groundDark?: string;
   groundEarth?: string;
+  /** Outer space: stars and the Earth instead of sun, clouds, birds, garden fence and flowers. */
+  space?: boolean;
+  /** No garden fence along the back (open country). */
+  noFence?: boolean;
 }
 
 export const THEMES: Record<string, Theme> = {
@@ -25,6 +29,16 @@ export const THEMES: Record<string, Theme> = {
   fence: { id: 'fence', skyTop: '#6AB4E8', skyLow: '#FFD9A0', far: '#B4D7B0', farDetail: '#97C29A', mid: '#8CC46E', midDark: '#629F50', sunY: 130, sun: '#FFC94A', skyline: 'village' },
   rooftop: { id: 'rooftop', skyTop: '#7A9FE0', skyLow: '#FFC48A', far: '#B9A9D6', farDetail: '#9F8EC4', mid: '#C9A0B8', midDark: '#A27C95', sunY: 190, sun: '#FFB44A', skyline: 'town' },
   rubber: { id: 'rubber', skyTop: '#8AB2F0', skyLow: '#FFC9C4', far: '#BFD6C8', farDetail: '#A3C2B3', mid: '#9CCB86', midDark: '#72A660', sunY: 150, sun: '#FFD06A', skyline: 'park' },
+  bankshot: { id: 'bankshot', skyTop: '#6B8FD6', skyLow: '#FFB98A', far: '#B3A6CF', farDetail: '#9A8CBE', mid: '#B49BB0', midDark: '#8F778C', sunY: 175, sun: '#FF9F4A', skyline: 'town' },
+  trampoline: { id: 'trampoline', skyTop: '#54C6F0', skyLow: '#FFF0B8', far: '#A6DCC0', farDetail: '#88C9AA', mid: '#7CCB6A', midDark: '#56A64E', sunY: 80, sun: PAL.sun, skyline: 'park' },
+  moon: {
+    id: 'moon', skyTop: '#0E1030', skyLow: '#2A2D5C', far: '#4A4A6A', farDetail: '#3A3A58', mid: '#77748F', midDark: '#5A5773', sunY: 95, sun: '#5FB4F0',
+    skyline: 'craters', groundTop: '#B9B6C9', groundDark: '#8E8AA6', groundEarth: '#7D7895', space: true, noFence: true,
+  },
+  valley: {
+    id: 'valley', skyTop: '#62B6E8', skyLow: '#FFD9A0', far: '#E0A87A', farDetail: '#C98C62', mid: '#D19A6A', midDark: '#A8714A', sunY: 110, sun: PAL.sun,
+    skyline: 'mesas', groundTop: '#C9A06A', groundDark: '#A37A48', groundEarth: '#B98A55', noFence: true,
+  },
 };
 
 export function themeFor(levelId: string): Theme {
@@ -59,11 +73,17 @@ function themeArt(t: Theme): ArtDef[] {
     : t.skyline === 'village'
       ? [90, 160, 420, 470, 730].map((x, i) => `<path d="M${x} 150 V${128 - i % 2 * 6} L${x + 14} ${116 - i % 2 * 6} L${x + 28} ${128 - i % 2 * 6} V150 Z" fill="${t.farDetail}"/>`).join('') +
         `<path d="M600 150 V112 L606 72 L612 112 V150 Z M596 114 H616 V150 H596 Z" fill="${t.farDetail}"/>`
+      : t.skyline === 'mesas'
+        ? [[60, 70, 150], [300, 46, 110], [560, 84, 170], [760, 40, 90]].map(([x, h, w]) =>
+          `<path d="M${x} 150 L${x! + 14} ${150 - h!} H${x! + w! - 14} L${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
+        : t.skyline === 'craters'
+          ? [[120, 60], [430, 90], [700, 50]].map(([x, w]) =>
+            `<path d="M${x! - w!} 150 Q${x! - w! * 0.6} ${150 - w! * 0.4} ${x! - w! * 0.4} ${150 - w! * 0.18} Q${x} ${150 - w! * 0.05} ${x! + w! * 0.4} ${150 - w! * 0.18} Q${x! + w! * 0.6} ${150 - w! * 0.4} ${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
       : `<circle cx="210" cy="118" r="26" fill="${t.farDetail}"/><path d="M206 150 V125 H214 V150 Z" fill="${t.farDetail}"/>` +
         `<path d="M520 150 L560 96 L600 150 Z" fill="${t.farDetail}"/><path d="M640 150 Q700 70 760 150 Z" fill="none" stroke="${t.farDetail}" stroke-width="7"/>`;
   const farHills = hillsPath(900, 190, 150, [[180, 34], [220, 22], [160, 40], [190, 18], [150, 30]]);
   const midHills = hillsPath(900, 160, 110, [[260, 60], [200, 38], [240, 70], [200, 44]]);
-  const trees = [70, 330, 610, 820].map((x, i) => {
+  const trees = t.space || t.skyline === 'mesas' ? '' : [70, 330, 610, 820].map((x, i) => {
     const r = 26 + (i % 2) * 8;
     const y = 72 - (i % 3) * 10;
     return `<path d="M${x - 3} ${y + r - 4} L${x - 4} ${y + r + 34} L${x + 4} ${y + r + 34} L${x + 3} ${y + r - 4} Z" fill="${PAL.woodDark}" stroke="${t.midDark}" stroke-width="2"/>` +
@@ -79,9 +99,46 @@ function themeArt(t: Theme): ArtDef[] {
     bg(`mid-${t.id}`, 900, 160, `${trees}<path d="${midHills}" fill="${t.mid}"/><path d="${midHills}" fill="none" stroke="${t.midDark}" stroke-width="2"/>`, 0, 160, 1.5),
     {
       key: `sun-${t.id}`, w: 120, h: 120, ax: 60, ay: 60, scale: 1,
-      svg: svgDoc(120, 120, `<circle cx="60" cy="60" r="58" fill="${PAL.sunGlow}" opacity="0.45"/><circle cx="60" cy="60" r="34" fill="${t.sun}"/>`),
+      // In space the "sun" slot shows the Earth.
+      svg: svgDoc(120, 120, t.space
+        ? `<circle cx="60" cy="60" r="40" fill="${t.sun}" opacity="0.25"/><circle cx="60" cy="60" r="32" fill="${t.sun}" ${ink(2)}/>` +
+          `<path d="M40 44 Q50 36 58 44 Q62 54 52 58 Q44 60 40 52 Z M66 64 Q78 60 84 70 Q80 82 70 80 Q62 74 66 64 Z" fill="${PAL.leaf}"/>` +
+          `<path d="M34 66 Q50 74 70 50" stroke="${PAL.paper}" stroke-width="4" fill="none" opacity="0.7"/>`
+        : `<circle cx="60" cy="60" r="58" fill="${PAL.sunGlow}" opacity="0.45"/><circle cx="60" cy="60" r="34" fill="${t.sun}"/>`),
     },
+    ...(t.groundTop ? groundArt(t) : []),
+    ...(t.space ? [starsArt(t)] : []),
   ];
+}
+
+/** Theme-coloured versions of the garden ground strip (`ground-top-<id>`, `earth-<id>`). */
+function groundArt(t: Theme): ArtDef[] {
+  const top = t.groundTop!;
+  const dark = t.groundDark ?? top;
+  const soil = t.groundEarth ?? PAL.earth;
+  return [
+    bg(`ground-top-${t.id}`, 128, 40, `
+      <rect x="0" y="0" width="128" height="40" fill="${soil}"/>
+      <path d="M0 0 H128 V14 Q112 18 96 14 Q80 19 64 14 Q48 18 32 14 Q16 19 0 14 Z" fill="${top}"/>
+      <path d="M0 10 Q16 14 32 10 Q48 14 64 10 Q80 14 96 10 Q112 14 128 10 V14 Q112 18 96 14 Q80 19 64 14 Q48 18 32 14 Q16 19 0 14 Z" fill="${dark}"/>
+      <circle cx="20" cy="6" r="2.5" fill="${dark}"/><circle cx="74" cy="5" r="3" fill="${dark}"/><circle cx="108" cy="7" r="2" fill="${dark}"/>
+      <path d="M0 1.5 H128" stroke="${PAL.ink}" stroke-width="3"/>`, 0, 40, 2),
+    bg(`earth-${t.id}`, 128, 128, `
+      <rect width="128" height="128" fill="${soil}"/>
+      ${[[14, 20], [70, 12], [104, 46], [40, 60], [88, 84], [16, 100], [60, 112], [118, 118]].map(([x, y], i) =>
+    `<ellipse cx="${x}" cy="${y}" rx="${3 + (i % 3)}" ry="${2 + (i % 2)}" fill="${dark}" opacity="0.6"/>`).join('')}`, 0, 128, 2),
+  ];
+}
+
+/** A tile of stars for space skies. */
+function starsArt(t: Theme): ArtDef {
+  const stars = Array.from({ length: 70 }, (_, i) => {
+    const x = (i * 97.3) % 512;
+    const y = (i * 53.7 + (i % 7) * 31) % 256;
+    const r = i % 9 === 0 ? 2.2 : i % 3 === 0 ? 1.4 : 0.9;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="${PAL.paper}" opacity="${i % 4 === 0 ? 1 : 0.6}"/>`;
+  }).join('');
+  return bg(`stars-${t.id}`, 512, 256, stars, 0, 0);
 }
 
 const clouds: ArtDef[] = [
@@ -263,8 +320,56 @@ function rockFace(w: number, h: number, light: string, dark: string): string {
     <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="4" fill="none" ${INK}/>`;
 }
 
+/** A tree trunk with bark lines (supports a canopy). */
+function trunk(w: number, h: number): string {
+  const bark = Array.from({ length: Math.floor(h / 22) }, (_, i) => `<path d="M${w * 0.3} ${12 + i * 22} q${w * 0.2} 6 0 12" stroke="${PAL.woodDark}" stroke-width="1.8" fill="none"/>`).join('');
+  return `<rect x="1.5" y="0" width="${w - 3}" height="${h - 1.5}" rx="${w / 3}" fill="#9A6236"/>${bark}
+    <path d="M${w * 0.7} 2 V${h - 2}" stroke="${PAL.woodDark}" stroke-width="${Math.max(2, w * 0.25)}" opacity="0.35"/>
+    <rect x="1.5" y="0" width="${w - 3}" height="${h - 1.5}" rx="${w / 3}" fill="none" ${INK}/>`;
+}
+
+/** Wooden flower planter: box with blooms sitting inside the top edge. */
+function planter(w: number, h: number): string {
+  const blooms = [0.25, 0.5, 0.75].map((f, i) => `<circle cx="${w * f}" cy="${Math.min(9, h * 0.3)}" r="${Math.min(5, w * 0.16)}" fill="${[PAL.rubber, PAL.zap, PAL.paper][i]}" ${ink(1.2)}/>`).join('');
+  return `<rect x="1.5" y="${h * 0.3}" width="${w - 3}" height="${h * 0.7 - 1.5}" rx="2" fill="${PAL.wood}" ${INK}/>
+    <path d="M3 ${h * 0.55} H${w - 3}" stroke="${PAL.woodDark}" stroke-width="2"/>
+    <rect x="3" y="${h * 0.22}" width="${w - 6}" height="${h * 0.12}" rx="2" fill="${PAL.grassDark}"/>${blooms}`;
+}
+
+/** Striped canvas awning (the collider is the whole slab). */
+function awning(w: number, h: number): string {
+  const stripes = Array.from({ length: Math.ceil(w / 24) }, (_, i) => i % 2 === 0
+    ? `<rect x="${i * 24}" y="1.5" width="24" height="${h - 3}" fill="${PAL.pow}"/>` : '').join('');
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="${PAL.paper}"/>${stripes}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="none" ${INK}/>`;
+}
+
+/** A thin floor slab (gravel, sand, rug) with a speckle or pattern that reads as "soft, dead". */
+function floorSlab(w: number, h: number, fill: string, fleck: string, pattern: 'speckle' | 'stripes'): string {
+  const marks = pattern === 'speckle'
+    ? Array.from({ length: Math.floor(w / 9) }, (_, i) => `<circle cx="${4 + i * 9 + (i % 3)}" cy="${h * (0.3 + (i % 3) * 0.2)}" r="${1.2 + (i % 2)}" fill="${fleck}"/>`).join('')
+    : Array.from({ length: Math.floor(w / 16) }, (_, i) => `<rect x="${6 + i * 16}" y="2" width="6" height="${h - 4}" fill="${fleck}"/>`).join('');
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="${fill}"/>${marks}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="none" ${ink(2.4)}/>`;
+}
+
+/** A tall clipped hedge. */
+function hedge(w: number, h: number): string {
+  const n = Math.max(3, Math.round(h / 30));
+  const bumps = Array.from({ length: n }, (_, i) => `<circle cx="${w * (i % 2 ? 0.35 : 0.65)}" cy="${(h * (i + 0.5)) / n}" r="${w * 0.42}" fill="${PAL.leaf}" opacity="0.9"/>`).join('');
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="${w * 0.35}" fill="${PAL.grassDark}"/>${bumps}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="${w * 0.35}" fill="none" ${INK}/>`;
+}
+
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
   if (obs.id === 'garden-shed') return shed(w, h);
+  if (obs.id.includes('trunk')) return trunk(w, h);
+  if (obs.id.includes('planter')) return planter(w, h);
+  if (obs.id === 'awning') return awning(w, h);
+  if (obs.material === 'leaves' && h > w) return hedge(w, h);
+  if (obs.material === 'gravel') return floorSlab(w, h, '#A9A3B8', '#6F6984', 'speckle');
+  if (obs.material === 'sand') return floorSlab(w, h, '#F2D59B', '#D2AE6A', 'speckle');
+  if (obs.material === 'rug') return floorSlab(w, h, PAL.pow, PAL.zap, 'stripes');
   if (obs.material === 'rubber') return rubber(w, h);
   if (obs.material === 'trampoline') return trampoline(w, h);
   if (obs.material === 'steel') return steelPanel(w, h);

@@ -38,6 +38,10 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'steel': return rect(PAL.ironLight);
     case 'rock': return rect('#A48B78', ' rx="2"');
     case 'leaves': return rect(PAL.leaf, ` rx="${Math.min(6, h / 2)}"`);
+    case 'regolith': return rect('#B9B6C9', ' rx="2"');
+    case 'gravel': return rect('#A9A3B8');
+    case 'sand': return rect('#F2D59B');
+    case 'rug': return rect(PAL.pow);
     default: return rect(PAL.stone);
   }
 }
@@ -124,6 +128,10 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   fence: 'Clear the fence. Settle the neighbourhood dispute.',
   rooftop: 'A higher target. A very inconvenient lunch break.',
   rubber: 'A wall in the way and a bouncy ceiling above. Bank it.',
+  bankshot: 'Walled in under a carport. Bank it off the billboard behind him.',
+  trampoline: 'A hedge, a balcony and a trampoline. Drop it in and let it spring.',
+  moon: 'Low gravity. Everything floats. Feather that power.',
+  valley: 'He is a dot on a far mesa. Hope you brought the big cannon.',
 };
 
 export function mapDescription(id: string): string {

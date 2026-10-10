@@ -100,6 +100,10 @@ class SpeechBubble {
   private readonly text: Phaser.GameObjects.Text;
   private age = 0;
   private shown = false;
+  /** Where the bubble wants to be; clamping never moves this, only the drawn position. */
+  private anchor = { x: 0, y: 0 };
+  /** Size multiplier so the bubble stays readable on zoomed-out maps. */
+  scale = 1;
 
   constructor(scene: Phaser.Scene) {
     this.graphics = scene.make.graphics({}, false);
@@ -128,7 +132,8 @@ class SpeechBubble {
     g.fillStyle(hex(PAL.paper), 1);
     g.fillRect(-15, -5, 22, 4);
     this.text.setPosition(0, -h / 2);
-    this.container.setPosition(x, y).setVisible(true).setScale(0.2);
+    this.anchor = { x, y };
+    this.container.setPosition(x, y).setVisible(true).setScale(0.2 * this.scale);
     this.age = 0;
     this.shown = true;
   }
@@ -139,17 +144,17 @@ class SpeechBubble {
   update(dt: number, reduced: boolean): void {
     if (!this.shown) return;
     this.age += dt;
-    this.container.setScale(reduced ? 1 : 0.2 + 0.8 * easeOutBack(clamp01(this.age / 0.22), 2.2));
+    this.container.setScale(this.scale * (reduced ? 1 : 0.2 + 0.8 * easeOutBack(clamp01(this.age / 0.22), 2.2)));
   }
 
   /** Keeps the bubble inside the given world rectangle. */
   clampTo(view: Phaser.Geom.Rectangle): void {
     const b = this.container;
-    const halfW = (this.text.width + 30) / 2;
-    const h = this.text.height + 22;
+    const halfW = ((this.text.width + 30) / 2) * this.scale;
+    const h = (this.text.height + 22) * this.scale;
     b.setPosition(
-      Phaser.Math.Clamp(b.x, view.x + halfW + 8, view.right - halfW - 8),
-      Phaser.Math.Clamp(b.y, view.y + h + 8, view.bottom - 30),
+      Phaser.Math.Clamp(this.anchor.x, view.x + halfW + 8, view.right - halfW - 8),
+      Phaser.Math.Clamp(this.anchor.y, view.y + h + 8, view.bottom - 30),
     );
   }
 
@@ -379,6 +384,9 @@ export class JonhRenderer {
   }
 
   hideBubble(): void { this.bubble.hide(); }
+
+  /** On zoomed-out maps (1 / resting zoom) the speech bubble keeps its on-screen size. */
+  setUiScale(k: number): void { this.bubble.scale = k; }
 
   /** Legacy entry point: draw(false) resets to idle, draw(true) shows the hit pose. */
   draw(overrideHit?: boolean): void {

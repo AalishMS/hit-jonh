@@ -55,9 +55,15 @@ export class SceneryRenderer {
     // 1. Sky (fixed), sun and turning rays.
     add(s.add.image(LEFT - 600 * k, groundTop - 768 * k, `sky-${theme.id}`).setOrigin(0, 0)
       .setDisplaySize(SPAN + 1200 * k, 800 * k + (k - 1) * 600).setScrollFactor(0).setDepth(DEPTH.sky));
-    this.rays = add(s.add.image(1040, theme.sunY, 'sun-rays').setScrollFactor(0.05).setDepth(DEPTH.sun));
+    if (theme.space) {
+      // Stars instead of rays, clouds and birds; the "sun" slot shows the Earth.
+      add(s.add.tileSprite(LEFT - 600 * k, groundTop - 768 * k, SPAN + 1200 * k, 700 * k, `stars-${theme.id}`).setOrigin(0, 0)
+        .setScrollFactor(0.02).setDepth(DEPTH.sky + 1));
+    } else {
+      this.rays = add(s.add.image(1040, theme.sunY, 'sun-rays').setScrollFactor(0.05).setDepth(DEPTH.sun));
+    }
     add(s.add.image(1040, theme.sunY, `sun-${theme.id}`).setScrollFactor(0.05).setDepth(DEPTH.sun));
-    for (let i = 0; i < Math.round(6 * k); i++) {
+    for (let i = 0; i < (theme.space ? 0 : Math.round(6 * k)); i++) {
       const key = ['cloud-a', 'cloud-b', 'cloud-c'][i % 3]!;
       const x = LEFT + 250 + i * 420 + hash01(i + level.id.length) * 160;
       const y = 50 + hash01(i * 7.3) * 170;
@@ -75,18 +81,22 @@ export class SceneryRenderer {
     add(s.add.tileSprite(LEFT, groundTop - 10, SPAN, mid.h, `mid-${theme.id}`).setOrigin(0, 1)
       .setTileScale(1 / mid.scale).setTilePosition(hash01(level.id.length * 2) * 600, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
     add(s.add.rectangle(LEFT, groundTop - 14, SPAN, 400, hex(theme.mid)).setOrigin(0, 0).setScrollFactor(0.5, 0.8).setDepth(DEPTH.mid));
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (theme.space ? 0 : 3); i++) {
       const obj = add(s.add.image(-200 - i * 500, 120 + i * 40, 'bird').setScale(artScale('bird')).setScrollFactor(0.3).setDepth(DEPTH.bird));
       this.birds.push({ obj, speed: 38 + i * 9, baseY: 120 + i * 40, phase: i * 1.7 });
     }
 
     // 4. The garden boundary just behind the playfield.
-    add(s.add.tileSprite(LEFT, groundTop + 2, SPAN, 50, 'fence-back').setOrigin(0, 1).setTileScale(0.5).setAlpha(0.85)
-      .setScrollFactor(0.85, 1).setDepth(DEPTH.fence));
+    if (!theme.noFence) {
+      add(s.add.tileSprite(LEFT, groundTop + 2, SPAN, 50, 'fence-back').setOrigin(0, 1).setTileScale(0.5).setAlpha(0.85)
+        .setScrollFactor(0.85, 1).setDepth(DEPTH.fence));
+    }
 
     // Playfield ground: ink edge sits exactly on the collider top.
-    add(s.add.tileSprite(LEFT, groundTop - 1.5, SPAN, 40, 'ground-top').setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
-    add(s.add.tileSprite(LEFT, groundTop + 38, SPAN, 400, 'earth').setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
+    const groundKey = theme.groundTop ? `ground-top-${theme.id}` : 'ground-top';
+    const earthKey = theme.groundTop ? `earth-${theme.id}` : 'earth';
+    add(s.add.tileSprite(LEFT, groundTop - 1.5, SPAN, 40, groundKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
+    add(s.add.tileSprite(LEFT, groundTop + 38, SPAN, 400, earthKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
 
     // Obstacles: textures generated at their collider size.
     for (const obs of level.obstacles) {
@@ -114,7 +124,7 @@ export class SceneryRenderer {
     // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
     const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
       level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6);
-    for (let i = 0; i < Math.ceil(26 * k); i++) {
+    for (let i = 0; i < (theme.space ? 0 : Math.ceil(26 * k)); i++) {
       const x = 20 + i * 50 + hash01(i * 2.7 + level.id.length) * 30;
       if (blocked(x) || x > this.worldWidthPx - 10) continue;
       const key = i % 3 === 0 ? 'flower-a' : i % 3 === 1 ? 'tuft' : (i % 2 ? 'flower-b' : 'tuft');

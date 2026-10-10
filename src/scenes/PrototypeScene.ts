@@ -515,7 +515,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
+    this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
+    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
@@ -1353,8 +1355,10 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
+    this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.slotsRenderer = new CannonSlotsRenderer(this);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
+    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
@@ -1474,6 +1478,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
       WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat });
+    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
   }
