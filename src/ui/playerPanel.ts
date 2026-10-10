@@ -90,10 +90,19 @@ export class PlayerPanel {
       }
       const status = document.createElement('span');
       status.className = 'player-tab-status';
-      const presence = !this.online ? 'Here' : this.online.left.includes(player.id) ? 'Left'
+      const presence = !this.online ? '' : this.online.left.includes(player.id) ? 'Left'
         : this.online.reconnecting ? 'Connection unknown'
         : this.online.connected.includes(player.id) ? 'Online' : 'Away';
-      status.textContent = isActive ? `${phase} · ${presence}` : presence;
+      if (this.online) {
+        const dot = document.createElement('span');
+        dot.className = `player-tab-presence${presence === 'Online' ? ' is-online' : ''}`;
+        dot.setAttribute('role', 'img');
+        dot.setAttribute('aria-label', presence);
+        dot.title = presence;
+        name.prepend(dot);
+      }
+      status.textContent = isActive ? phase : '';
+      status.hidden = !status.textContent;
       details.append(name, status);
       const score = document.createElement('span');
       score.className = 'player-tab-score';
