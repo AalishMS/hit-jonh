@@ -1,6 +1,6 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-08_
+_Last updated: 2026-10-10_
 
 ## Current milestone
 
@@ -470,3 +470,44 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - Map previews get unique gradient ids for each render. "Three-garden tour" uses a new triptych `tourPreview()` (local Pass-the-cannon too) instead of repeating the backyard art.
 - Online banner and rematch ready-chips now use the shared ink/paper tokens.
 - Browser: PASS. Setup preview changed live (purple + checks + name). Room created, guest joined in a second tab, and the host switched maps 4×: 0 `animationstart` events fired on the host or the guest card, and the guest's arena card updated live. Checked the phone layout (390 px). `npm run check`: 392 tests pass.
+
+## Shared maps, harder maps and four mechanic maps (2026-10-10)
+
+Owner request: every mode uses the same maps; the existing maps were too easy; add creative maps (ricochet/bank, trampoline, very zoomed out, plus low gravity). Owner decisions: multiplayer uses a "pick any set" checklist with presets; existing maps retuned harder; low gravity is the only extra mechanic.
+
+**Done**
+- **One map list.** `MAPS` (8 maps) drives solo, Daily Bonk, hot-seat and online; `MULTIPLAYER.maps` is gone. Hot-seat and the online host pick any distinct set from a checklist (`src/ui/mapSetPicker.ts`) with presets Classic tour / Trick shots / Every map (`MAP_PRESETS`, default Classic); guests see a read-only card. The server's `validMaps` accepts any distinct subset of `MAP_IDS` (no Convex schema change). Fixes the crash when Rubber Yard was picked in hot-seat. Map previews are drawn from level data; maps carry a difficulty rating shown as pips.
+- **Per-level physics.** `levelPhysics(level)` (gravity, launch-speed scale) feeds the scene, headless runner, aim guide, debug readout and thickness rule.
+- **Zoomed-out maps.** `levelView` zooms maps wider than 25.6 m out (bottom-anchored, same aspect); camera frames, scenery extents, landing label, cannon slots, grab distances, power meter and speech bubble follow it. Ordinary maps are unchanged (tested).
+- **Bounce fix (physics behaviour change).** Matter's contact solver resolved most impacts before the swept guard and damped every material to ~0.15 restitution, so materials barely mattered. Impacts faster than `PHYSICS.bounceMinNormalSpeedMs` are now re-bounced from the incoming velocity with the material's restitution (drop test from 7 m: trampoline rebounds to 6.9 m, rubber 6.0 m, concrete 3.0 m). Rolling damping now applies on any flat top (roofs, decks), default 0.975/step, with per-material overrides (regolith, gravel, sand, rug: 0.88–0.95).
+- **New materials + art:** trampoline, steel, leaves (canopy/hedge), rock, regolith, gravel, sand, rug; carport, billboard, planters, awning, tree trunk, hedge, floor slabs; moon theme (stars, Earth, grey ground, no fence/flora), desert valley theme.
+- **Difficulty tooling.** `src/dev/difficulty.ts` + `tests/difficulty.test.ts`: the default run caps the hit share of a 5°×5% grid per target position (`DIFFICULTY.maxCoarseHitFraction` 8%) and checks trick-shot shares (Bank Shot 100%, Bounce House ≥ 90%). `DIFFICULTY_REPORT=1 npx vitest run tests/difficulty.test.ts` prints the 1°×1% table and suggests reference aims that do not also hit the other positions.
+
+**Measured difficulty** (share of the 1°×1% grid that scores a body hit, near / middle / far). Baseline = previous maps with the previous physics.
+
+| Map | Before | After |
+| --- | --- | --- |
+| Jonh's Backyard | 9.5 / 11.5 / 11.9% | 3.3 / 5.8 / 3.8% |
+| The Fence Dispute | 8.7 / 14.1 / 15.4% | 1.6 / 5.2 / 6.1% |
+| Rooftop Lunch | 8.9 / 10.9 / 12.5% | 4.9 / 7.1 / 5.6% |
+| Rubber Yard | 0.9 / 3.6 / 8.4% | 0.3 / 2.4 / 4.5% |
+| Billboard Bank Shot (new) | — | 4.1 / 6.9 / 6.2% (all bank shots) |
+| Bounce House (new) | — | 1.2 / 1.2 / 0.6% (95–100% trick) |
+| Lunar Picnic (new) | — | 1.6 / 3.3 / 2.9% |
+| Across the Valley (new) | — | 2.0 / 2.5 / 2.8% |
+
+**Verified**
+- `npm run check`: typecheck + lint clean; 458 tests passed, 8 skipped (the opt-in difficulty report).
+- `npm run build`: succeeded.
+- Browser (dev server, Playwright): all 8 maps listed with previews in Solo; Lunar Picnic flight and curved aim guide; Across the Valley resting view at 0.4×, flight follow, readable meter and speech bubble, reference shot 30°/53% scored a direct hit with replay; Bounce House reference 80°/74% scored a trick shot; Billboard bank shot rebounds into the carport; hot-seat "Trick shots" preset starts a 4-round match on Billboard Bank Shot; hot-seat Rubber Yard-only match starts (previously threw); `?debug` collider outlines on the Valley; no console errors.
+- **Not verified:** online play against a Convex deployment (no local deployment used); covered by `onlineRules`/`onlineController` tests only. Real-device touch aiming on the zoomed-out map.
+
+**Known issues / consequences**
+- Crown hat ("three stars on every garden") now needs all 8 maps; players who had it lose it until they earn the new maps.
+- Daily Bonk draws from all 8 maps, so the date → map mapping changed.
+- Saved solo best results on the 4 retuned maps were earned on the easier layouts.
+- `?debug` HUD text stays at world size on the zoomed-out Valley (tiny, overlaps the meter); dev only.
+- Bounce House allows a rare direct flat lob (≤ 10% of hits).
+
+**Next task**
+- Owner playtest of the new difficulty; tune `DIFFICULTY` caps and map geometry from feedback.

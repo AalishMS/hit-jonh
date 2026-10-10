@@ -30,12 +30,13 @@ Hit Jonh is a 2D cannon-physics browser game (Phaser 4 + Matter.js, TypeScript s
 `ShotAttemptMachine` runs one shot (`aiming → simulating → resolved`: hit, out-of-bounds, settled, 15 s timeout). `SoloChallengeMachine`/`SoloCoordinator` and `MultiplayerMatchMachine`/`MultiCoordinator` layer solo and 2–4 player hot-seat modes on top; `SessionCoordinator` owns pause/resume/quit; `AutoAdvance` is the cancellable presentation timer driving automatic reaction → handover → round-summary flow; `reactions.ts` picks Jonh's reactions.
 
 ### Levels
-Maps (`backyard`, `fence`, `rooftop`, `rubber`) are plain `LevelData` in SI metres registered in `levels/index.ts` (`MAPS`). `levels/validation.ts` proves collider thickness and that reference solutions (angle/power) still hit — adding or changing an obstacle must keep those tests green. Multiplayer cannon slots are derived from `multiplayerPositions.ts`.
+Maps (`backyard`, `fence`, `rooftop`, `rubber`, `bankshot`, `trampoline`, `moon`, `valley`) are plain `LevelData` in SI metres registered in `levels/index.ts` (`MAPS`); every mode (solo, daily, hot-seat, online) uses that one list, and `MAP_PRESETS` are the multiplayer shortcuts. A level may override gravity and the cannon's speed range (`levels/levelPhysics.ts`); a level wider than 25.6 m is shown zoomed out (`levelView` in `fx/cameraDirector.ts`). `levels/validation.ts` checks structure and collider thickness; the tests (`levels`, `multiplayerPositions`, `headlessShot`) fire every reference solution through real Matter and prove it hits, and `tests/difficulty.test.ts` caps how much of an aim grid hits (run it with `DIFFICULTY_REPORT=1` for the tuning table). Adding or changing an obstacle must keep those tests green. Target positions per map come from `multiplayerPositions.ts`.
 
 ## Invariants that are easy to break
 
 - Matter runs with `autoUpdate: false` and is stepped **only** by `FixedStepper` at the fixed dt (1/120 s); never pass the frame delta to `world.step`. Pause/resume must reset the stepper accumulator.
 - Matter has no CCD: fast shots rely on the swept guard (`sim/swept.ts`) plus minimum collider thickness `max(0.2 m, v_max·dt)` (SPEC §9.2).
+- Bounces are owned by the swept guard in `matterAdapter.stepProjectile`: impacts faster than `PHYSICS.bounceMinNormalSpeedMs` are re-bounced from the incoming velocity with the material's restitution (Matter's own solver damps every material alike). Changing a material, the guard or rolling damping shifts every map's solution space — rerun the difficulty report and re-derive reference shots.
 - Tuning numbers belong in `src/config/tuning.ts` or level data, not scenes.
 - TypeScript is pinned to 6.0.x (typescript-eslint 8.x doesn't support TS 7); deps are exact-pinned.
 - Commit small after checks pass; never force-push. Don't claim something was tested if it wasn't.

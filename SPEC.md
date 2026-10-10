@@ -68,6 +68,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 - One cannonball type.
 - Three maps: Jonh's Backyard (flat), The Fence Dispute (obstacle), Rooftop Lunch (elevated target).
+- **[DECIDED by owner 2026-10-10]** Eight maps, the same in every mode (solo, Daily Bonk, hot-seat, online): the original three plus Rubber Yard, retuned to be clearly harder, and four mechanic maps — a ricochet-only bank shot, a trampoline-only map, a low-gravity Moon map and a very zoomed-out map. See §11.
 - Solo challenges: three attempts per map.
 - Local multiplayer, 2–4 players, one device, turn-based.
 - Saved aiming settings, previous-shot trails, scoring, quick rematch.
@@ -92,7 +93,7 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
 
 - 2–4 players; each has a name (default "Player N", typing never required), a cannon colour **and** pattern (not colour alone), personal angle/power. **[DECIDED]**
 - All players fire from the **same launch position**; inactive cannons are drawn as decorative slots outside the playfield. **[DECIDED]**
-- **Map selection [DECIDED]:** Available in multiplayer setup. **Format [PROPOSED]:** Choose a single-map match (one round) or the default three-map tour, Backyard → Fence → Rooftop. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
+- **Map selection [DECIDED]:** Available in multiplayer setup. **Format [DECIDED by owner 2026-10-10]:** tick any set of maps (at least one); they are played one per round in the shared map order. Preset chips **[PROPOSED]**: Classic tour (Backyard, Fence, Rooftop, Rubber Yard — the default), Trick shots (the four mechanic maps), Every map. The online host uses the same picker; guests see the chosen set read-only. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
 - Starting player rotates between rounds: round *r* (0-based) starts with player index `r mod N`. **[DECIDED principle, PROPOSED formula]**
 - A round always completes every player's shots, even after an early hit. **[DECIDED]**
 - **Target cycles (owner-approved 4 October 2026) [DECIDED]:** Each round has three shot cycles, one shot per player per cycle. Jonh stays at the same position for every player in that cycle and throughout each shot's result/reaction. At handover into the next cycle he relocates to a different authored position. Each map's three positions are shuffled independently without replacement at match creation and rematch; the schedule is held in match memory, never in save data. Resetting aim and pausing do not change it. Solo remains unchanged.
@@ -184,7 +185,9 @@ x(t)   = x0 + vx·t ;  y(t) = y0 + vy·t − ½·g·t²
 
 ### 8.4 Materials [TUNE]
 
-Per-surface `restitution` and `friction` come from a material table in tuning config, referenced by name in level data. First release uses **grass** (low bounce), **wood** (fence; solid, static), **concrete** (roof/wall; some bounce). A surface that looks the same must behave the same every attempt. Rubber and glass are deferred.
+Per-surface `restitution` and `friction` come from a material table in tuning config, referenced by name in level data. First release uses **grass** (low bounce), **wood** (fence; solid, static), **concrete** (roof/wall; some bounce). A surface that looks the same must behave the same every attempt. Glass is deferred.
+
+**[DECIDED 2026-10-10, values TUNE]** Added for the new maps: **rubber**, **trampoline** (gives back almost all speed), **steel** (billboard, silo), **leaves** (soft canopy/hedge), **rock** and **regolith** (moon dust; also stops a rolling ball quickly via a per-material `rollingDamping`). Bounces now honour these values: an impact faster than `PHYSICS.bounceMinNormalSpeedMs` is re-bounced from its incoming velocity with the material's restitution even when Matter's contact solver already resolved it (Matter damped every material alike, so materials barely mattered before). A ball resting on any flat top (ground, roof, deck) gets rolling damping, not just on the ground.
 
 ### 8.5 Shot end conditions [PROPOSED][TUNE]
 
@@ -267,7 +270,9 @@ The owner asked for the game to look and feel polished and shareable, with art, 
 
 ## 11. Maps [PROPOSED geometry, TUNE]
 
-World 25.6 m × 14.4 m. Ground top at y = 1.6 m. Cannon pivot at (2.5 m, ground + 0.6 m) on every map. All maps: fixed camera, simple background, readable obstacles, no invisible barriers, no solid-looking decoration without collision.
+World 25.6 m × 14.4 m. Ground top at y = 1.6 m. Cannon pivot at (2.5 m, ground + 0.6 m) on every map — except where a map says otherwise (Across the Valley). All maps: fixed camera, simple background, readable obstacles, no invisible barriers, no solid-looking decoration without collision.
+
+**Per-level overrides [DECIDED 2026-10-10, values TUNE]:** `gravityMs2` (default 9.81) and `launchSpeedScale` (multiplies the whole 6–20 m/s range; collider thickness rule uses the scaled top speed). A level wider than 25.6 m is shown zoomed out at its resting view (`levelView`: same aspect, bottom-anchored, zoom = 25.6 m / width); labels near the cannon and Jonh keep their on-screen size.
 
 Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bounds, ground, cannon spawn, Jonh spawn (body + hat colliders), obstacle colliders with materials and ricochet flags, scenery, Jonh's arrival line, and **`referenceSolutions`**: at least one `{ angleDeg, powerPercent }` that an automated test proves hits Jonh's body.
 
@@ -276,6 +281,19 @@ Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bo
 | 1 | **Jonh's Backyard** | Flat grass. A solid garden shed at x = 10–12.6 m, top y = 4.3 m, blocks low shots. Jonh reads at x ≈ 18 m. | Arc over the shed without overshooting. |
 | 2 | **The Fence Dispute** | Wooden fence at x ≈ 12 m, 1.8 m tall, 0.2 m thick. Jonh in his garden at x ≈ 17 m. Low shots hit the fence. | Clear an obstacle without overshooting. |
 | 3 | **Rooftop Lunch** | Concrete building spanning x ≈ 15–22 m, roof at 5 m above ground. Jonh eats lunch on the roof at x ≈ 18 m. Low shots hit the wall. | Hit a target at a different height. |
+
+**Revision 2026-10-10 [DECIDED by owner: harder maps; geometry TUNE].** The table above is the original layout. Current maps (measured with `tests/difficulty.test.ts`: share of a 1° × 1% aim grid that scores a body hit, per target position — the original three scored 9–15%):
+
+| # | Map | Layout | Twist |
+| --- | --- | --- | --- |
+| 1 | **Jonh's Backyard** | Shed x 11–13.4 m, 3.4 m tall; apple-tree canopy x 14.4–23.2 m at 5.6–6.4 m on a trunk. | Thread between shed roof and canopy. |
+| 2 | **The Fence Dispute** | Fence x 12.4 m, 4.4 m tall; two low planters stop short shots rolling in. | Drop steeply behind the fence. |
+| 3 | **Rooftop Lunch** | Building x 15–22 m; 1.3 m parapet at the roof edge; gravel roof; striped awning 3.5 m above the roof on a post. | No skidding in, no dropping straight down. |
+| 4 | **Rubber Yard** | Wall 5.7 m tall under a rubber ceiling x 8–21 m; Jonh in a sandpit. | Narrow direct gap; bank off the ceiling. |
+| 5 | **Billboard Bank Shot** | Jonh in a carport walled off on the cannon side, gravel driveway; steel billboard behind. | Ricochet only (every hit must bank off the billboard — tested). |
+| 6 | **Bounce House** | Tall hedge; trampoline; Jonh on a covered balcony (rug floor) whose roof reaches toward the hedge. | Trampoline shots (≥ 90% of hits bounce first — tested). |
+| 7 | **Lunar Picnic** | Gravity 2.0 m/s², cannon ×0.6; boulder and overhanging rock shelf; moon-dust ground. | Floaty, power-sensitive shots. |
+| 8 | **Across the Valley** | 64 m × 28 m (camera 0.4×); cannon on a 10.4 m cliff, cannon ×1.6; grain silo; Jonh on one of three 1 m rock pillars ~45 m away. | Tiny far target; ~1 m per power step. |
 
 Each map introduces exactly one new complication.
 
