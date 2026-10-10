@@ -560,3 +560,12 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 
 **Next task**
 - Owner playtest; verify online selection synchronization with two connected devices.
+
+
+## Player presence dots (2026-10-10)
+
+- Removed redundant Here labels from local player cards. Only the active player's shot phase is shown.
+- Online player names now have a green circle when connected and a red circle when away, departed, or the client is disconnected. Tooltips and accessible labels retain Online / Away / Left / Connection unknown details; status text below the name shows only the active shot phase.
+- Browser fixture verified local cards contain no Here labels and online dots compute green for Online and red for Away. Live online connection changes not verified: the configured server was previously unreachable.
+- `npm run check`: typecheck and lint passed; `Test Files 48 passed (48)`; `Tests 464 passed | 8 skipped (472)`. `npm run build`: succeeded, 176 modules transformed.
+- Current: requested presence presentation complete. Next: verify live online disconnect/reconnect once the server is reachable.
