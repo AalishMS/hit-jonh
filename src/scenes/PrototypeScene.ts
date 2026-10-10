@@ -4,7 +4,7 @@ import { AIM, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } fr
 import { CameraRig } from '../render/cameraRig';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
-import { aimFrame, flightFrame, impactFrame, replayFrame, type Frame } from '../fx/cameraDirector';
+import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame, type Viewport } from '../fx/cameraDirector';
 import { clamp01 } from '../fx/easing';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
 import type { SurfaceSound } from '../audio/audioManager';
@@ -119,6 +119,8 @@ export class PrototypeScene extends Phaser.Scene {
   private cannonRenderer!: CannonRenderer;
   private slotsRenderer: CannonSlotsRenderer | null = null;
   private levelPhys: LevelPhysics = levelPhysics({});
+  /** Resting camera view of the current map (wider maps are zoomed out). */
+  private view: Viewport = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
   private jonhRenderer!: JonhRenderer;
   private ballRenderer!: BallRenderer;
   private trailRenderer!: TrailRenderer;
@@ -294,6 +296,7 @@ export class PrototypeScene extends Phaser.Scene {
         return { x: p.x, y: p.y };
       },
       pivot: () => this.cannonRenderer?.pivot ?? { x: 0, y: 0 },
+      worldPerPx: () => 1 / (this.view.zoom ?? 1),
     });
 
     // Gesture unlock
@@ -435,7 +438,8 @@ export class PrototypeScene extends Phaser.Scene {
     const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h);
     cannon.setAimAids(false, 50);
     cannon.draw(38, null);
-    this.cameraRig?.reset();
+    this.view = { width: w, height: h };
+    this.cameraRig?.setView(this.view);
     this.attract = { scenery, jonh, cannon };
   }
 
@@ -517,6 +521,7 @@ export class PrototypeScene extends Phaser.Scene {
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
+    this.trailRenderer.setView(this.view);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -712,8 +717,10 @@ export class PrototypeScene extends Phaser.Scene {
         const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
         if (state) {
           // Sound follows the visible canvas; top exits still keep their valid flight path.
-          if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > WORLD.designWidthPx ||
-            state.yPx < 0 || state.yPx > WORLD.designHeightPx)) {
+          const v = this.view;
+          const bottom = v.bottom ?? v.height;
+          if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > v.width ||
+            state.yPx < bottom - v.height || state.yPx > bottom)) {
             this.outOfCanvasSoundPlayed = true;
             this.audioManager.playOutOfBounds();
           }
@@ -1201,7 +1208,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private updateCamera(realDt: number, reduced: boolean, frame: ReplayFrame | null): void {
-    const view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
+    const view = this.view;
     const jonh = this.jonhRenderer.position;
     const p = this.lastProjectileState;
     let target: Frame = aimFrame(view);
@@ -1356,6 +1363,7 @@ export class PrototypeScene extends Phaser.Scene {
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
+    this.trailRenderer.setView(this.view);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -1388,7 +1396,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.currentPowerPercent = player.lastPower;
       
       this.drawCannon();
-      this.slotsRenderer?.draw(match.players, match.activePlayerIndex);
+      this.slotsRenderer?.draw(match.players, match.activePlayerIndex, this.view.zoom ?? 1);
       // Only this player's own previous trail, in their colour.
       this.trailRenderer.setPlayerColor(player.color);
       const history = this.trailHistory.get(match.activePlayerIndex);
@@ -1440,6 +1448,12 @@ export class PrototypeScene extends Phaser.Scene {
     this.levelPhys = levelPhysics(this.currentLevel);
     this.matter.world.setGravity(0, matterGravityY(this.levelPhys.gravity, WORLD.pixelsPerMetre, PHYSICS.matterGravityScale), PHYSICS.matterGravityScale);
     this.htmlControls.setLaunchSpeed(this.levelPhys.launchSpeed);
+    const view = levelView(this.currentLevel.bounds.maxX * WORLD.pixelsPerMetre, { width: WORLD.designWidthPx, height: WORLD.designHeightPx });
+    if (view.width !== this.view.width) {
+      this.view = view;
+      this.cameraRig.setView(view);
+    }
+    this.trailRenderer?.setView(this.view);
   }
 
   /** Called only at handover; results and live shots retain their original colliders. */

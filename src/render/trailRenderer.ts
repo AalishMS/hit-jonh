@@ -1,4 +1,5 @@
 import type Phaser from 'phaser';
+import type { Viewport } from '../fx/cameraDirector';
 import { PAL, hex, playerDisplayColor } from '../art/palette';
 import { LOOK, WORLD } from '../config/tuning';
 
@@ -36,6 +37,14 @@ export class TrailRenderer {
 
   /** Player colour for both trails; null keeps the default solo look. */
   private playerColor: number | null = null;
+
+  private view: Viewport = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
+
+  /** The map's resting camera view (see levelView). */
+  setView(view: Viewport): void {
+    this.view = view;
+    this.redraw();
+  }
 
   constructor(scene: Phaser.Scene) {
     this.graphics = scene.add.graphics();
@@ -129,9 +138,11 @@ export class TrailRenderer {
     this.landingText.setVisible(Boolean(marker?.label));
     if (marker) {
       this.landingText.setText(`${this.activeLandingMarker ? '' : 'Last: '}${marker.label}`);
-      this.landingText.setPosition(
-        Math.max(10, Math.min(WORLD.designWidthPx - this.landingText.width - 10, marker.x + 12)),
-        WORLD.designHeightPx - 56,
+      // Sized and placed in screen terms, so zoomed-out maps keep it readable.
+      const k = 1 / (this.view.zoom ?? 1);
+      this.landingText.setScale(k).setPosition(
+        Math.max(10 * k, Math.min(this.view.width - this.landingText.width * k - 10 * k, marker.x + 12 * k)),
+        (this.view.bottom ?? this.view.height) - 56 * k,
       );
     }
 

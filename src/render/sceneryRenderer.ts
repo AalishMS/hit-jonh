@@ -8,9 +8,8 @@ import { artImage, artMeta, artScale } from './artTextures';
 
 /** Layer depths: background < playfield < actors. */
 const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
-/** Horizontal extent drawn beyond the 1280 px world so camera zoom-outs never show an edge. */
-const LEFT = -700;
-const SPAN = 2700;
+/** Horizontal extent drawn beyond the visible world (screen px) so camera zoom-outs never show an edge. */
+const OVERDRAW = 700;
 
 interface Drifter { obj: Phaser.GameObjects.Image; speed: number; baseY: number; phase: number }
 
@@ -26,6 +25,9 @@ export class SceneryRenderer {
   private flora: Array<{ obj: Phaser.GameObjects.Image; phase: number }> = [];
   private rays: Phaser.GameObjects.Image | null = null;
   private time = 0;
+  /** World-x extent of the drawn layers for the current map. */
+  private left = -OVERDRAW;
+  private span = 2 * OVERDRAW + 1280;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -39,15 +41,23 @@ export class SceneryRenderer {
     const s = this.scene;
     const theme = themeFor(level.id);
     const groundTop = simYToWorldY(level.ground.maxY, this.worldHeightPx, this.ppm);
+    // Maps wider than the canvas are shown zoomed out (see levelView): draw everything wider and
+    // scale the screen-locked layers so they still fill the view.
+    const viewWidth = Math.max(this.worldWidthPx, metresToPixels(level.bounds.maxX, this.ppm));
+    const k = viewWidth / this.worldWidthPx;
+    const LEFT = -OVERDRAW * k;
+    const SPAN = viewWidth + 2 * OVERDRAW * k;
+    this.left = LEFT;
+    this.span = SPAN;
     s.cameras.main.setBackgroundColor(theme.skyTop);
     const add = <T extends Phaser.GameObjects.GameObject>(o: T): T => { this.objects.push(o); return o; };
 
     // 1. Sky (fixed), sun and turning rays.
-    add(s.add.image(LEFT - 600, groundTop - 768, `sky-${theme.id}`).setOrigin(0, 0)
-      .setDisplaySize(SPAN + 1200, 800).setScrollFactor(0).setDepth(DEPTH.sky));
+    add(s.add.image(LEFT - 600 * k, groundTop - 768 * k, `sky-${theme.id}`).setOrigin(0, 0)
+      .setDisplaySize(SPAN + 1200 * k, 800 * k + (k - 1) * 600).setScrollFactor(0).setDepth(DEPTH.sky));
     this.rays = add(s.add.image(1040, theme.sunY, 'sun-rays').setScrollFactor(0.05).setDepth(DEPTH.sun));
     add(s.add.image(1040, theme.sunY, `sun-${theme.id}`).setScrollFactor(0.05).setDepth(DEPTH.sun));
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < Math.round(6 * k); i++) {
       const key = ['cloud-a', 'cloud-b', 'cloud-c'][i % 3]!;
       const x = LEFT + 250 + i * 420 + hash01(i + level.id.length) * 160;
       const y = 50 + hash01(i * 7.3) * 170;
@@ -104,7 +114,7 @@ export class SceneryRenderer {
     // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
     const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
       level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6);
-    for (let i = 0; i < 26; i++) {
+    for (let i = 0; i < Math.ceil(26 * k); i++) {
       const x = 20 + i * 50 + hash01(i * 2.7 + level.id.length) * 30;
       if (blocked(x) || x > this.worldWidthPx - 10) continue;
       const key = i % 3 === 0 ? 'flower-a' : i % 3 === 1 ? 'tuft' : (i % 2 ? 'flower-b' : 'tuft');
@@ -121,7 +131,7 @@ export class SceneryRenderer {
     this.rays?.setRotation(this.time * 0.05);
     for (const c of this.clouds) {
       c.obj.x += c.speed * dt;
-      if (c.obj.x > LEFT + SPAN) c.obj.x = LEFT - 100;
+      if (c.obj.x > this.left + this.span) c.obj.x = this.left - 100;
     }
     for (const b of this.birds) {
       const cycle = 26;

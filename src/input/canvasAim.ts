@@ -5,12 +5,15 @@ export function angleFromDrag(startAngle: number, verticalFraction: number): num
     Math.round(startAngle - verticalFraction * AIM.dragDegreesPerCanvasHeight)));
 }
 
-/** Grabbing the cannon itself: the barrel points at the pointer, distance sets power. */
-export function aimFromCannonPoint(pivot: { x: number; y: number }, point: { x: number; y: number }): { angle: number; power: number } {
+/**
+ * Grabbing the cannon itself: the barrel points at the pointer, distance sets power.
+ * `worldPerPx` converts the grab distances (canvas px) to world px on zoomed-out maps.
+ */
+export function aimFromCannonPoint(pivot: { x: number; y: number }, point: { x: number; y: number }, worldPerPx = 1): { angle: number; power: number } {
   const dx = point.x - pivot.x;
   const dy = pivot.y - point.y;
   const angle = Math.max(AIM.minAngleDeg, Math.min(AIM.maxAngleDeg, Math.round((Math.atan2(dy, Math.max(dx, 0.001)) * 180) / Math.PI)));
-  const distance = Math.hypot(dx, dy);
+  const distance = Math.hypot(dx, dy) / worldPerPx;
   const power = Math.max(0, Math.min(100, Math.round(((distance - AIM.grabMinPx) / (AIM.grabMaxPx - AIM.grabMinPx)) * 100)));
   return { angle, power };
 }
@@ -25,6 +28,8 @@ export interface CanvasAimHooks {
   toWorld: (clientX: number, clientY: number) => { x: number; y: number };
   /** Cannon pivot in world coordinates. */
   pivot: () => { x: number; y: number };
+  /** World px per canvas px at the map's resting zoom (above 1 on zoomed-out maps). */
+  worldPerPx?: () => number;
 }
 
 /**
@@ -43,7 +48,7 @@ export class CanvasAim {
       const rect = canvas.getBoundingClientRect();
       const world = hooks.toWorld(event.clientX, event.clientY);
       const pivot = hooks.pivot();
-      const onCannon = Math.hypot(world.x - pivot.x, world.y - pivot.y) <= AIM.grabRadiusPx;
+      const onCannon = Math.hypot(world.x - pivot.x, world.y - pivot.y) <= AIM.grabRadiusPx * (hooks.worldPerPx?.() ?? 1);
       const aim = hooks.getAim();
       this.drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, angle: aim.angle, power: aim.power,
         width: Math.max(1, rect.width), height: Math.max(1, rect.height), mode: onCannon ? 'grab' : 'angle' };
@@ -55,7 +60,7 @@ export class CanvasAim {
       if (!d || d.pointerId !== event.pointerId) return;
       if (!hooks.canAim()) { this.cancel(); return; }
       if (d.mode === 'grab') {
-        const aim = aimFromCannonPoint(hooks.pivot(), hooks.toWorld(event.clientX, event.clientY));
+        const aim = aimFromCannonPoint(hooks.pivot(), hooks.toWorld(event.clientX, event.clientY), hooks.worldPerPx?.() ?? 1);
         hooks.onAim(aim.angle, aim.power);
         return;
       }

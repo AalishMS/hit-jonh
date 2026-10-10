@@ -1,40 +1,47 @@
 import type Phaser from 'phaser';
 import { WORLD } from '../config/tuning';
-import { aimFrame, clampFrame, type Frame } from '../fx/cameraDirector';
+import { aimFrame, clampFrame, type Frame, type Viewport } from '../fx/cameraDirector';
 import { approach, dampedWave } from '../fx/easing';
 import { shakeOffset } from '../fx/impactProfile';
 
-const VIEW = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
+const DESIGN_VIEW: Viewport = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
 
 /**
  * Applies smoothed framing plus impact shake and zoom punch to the main camera.
  * Driven by real (unscaled) presentation time, so the punch-in happens during the hit-stop.
  */
 export class CameraRig {
-  private frame: Frame = aimFrame(VIEW);
+  private view: Viewport = DESIGN_VIEW;
+  private frame: Frame = aimFrame(DESIGN_VIEW);
   private shake: { age: number; amp: number; dur: number; hz: number; dx: number; dy: number } | null = null;
   private punch: { age: number; amount: number; dur: number } | null = null;
 
   constructor(private readonly camera: Phaser.Cameras.Scene2D.Camera) {
-    this.snap(aimFrame(VIEW));
+    this.snap(aimFrame(DESIGN_VIEW));
   }
 
   get current(): Frame { return this.frame; }
+
+  /** The current map's resting view (zoomed-out maps show more world); snaps to it. */
+  setView(view: Viewport): void {
+    this.view = view;
+    this.reset();
+  }
 
   impact(shakePx: number, shakeSeconds: number, hz: number, dirX: number, dirY: number, punch: number, punchSeconds: number): void {
     this.shake = shakePx > 0 ? { age: 0, amp: shakePx, dur: shakeSeconds, hz, dx: dirX, dy: dirY } : null;
     this.punch = punch > 0 ? { age: 0, amount: punch, dur: punchSeconds } : null;
   }
 
-  /** Moves toward `target` at `rate` (1/s); reduced motion pins the original full view. */
+  /** Moves toward `target` at `rate` (1/s); reduced motion pins the map's full view. */
   update(realDt: number, target: Frame, rate: number, reduced: boolean): void {
     if (reduced) {
       this.shake = null;
       this.punch = null;
-      this.snap(aimFrame(VIEW));
+      this.snap(aimFrame(this.view));
       return;
     }
-    const goal = clampFrame(target, VIEW, 220);
+    const goal = clampFrame(target, this.view, 220);
     this.frame = {
       cx: approach(this.frame.cx, goal.cx, rate, realDt),
       cy: approach(this.frame.cy, goal.cy, rate, realDt),
@@ -64,11 +71,11 @@ export class CameraRig {
     this.apply(frame.cx, frame.cy, frame.zoom);
   }
 
-  /** Restores the exact original camera (zoom 1, scroll 0,0) and clears effects. */
+  /** Restores the map's resting camera (zoom 1, scroll 0,0 on ordinary maps) and clears effects. */
   reset(): void {
     this.shake = null;
     this.punch = null;
-    this.snap(aimFrame(VIEW));
+    this.snap(aimFrame(this.view));
   }
 
   private apply(cx: number, cy: number, zoom: number): void {
