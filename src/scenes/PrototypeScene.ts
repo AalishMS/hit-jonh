@@ -37,9 +37,10 @@ import {
   launchVelocityToWorld,
   metresToPixels,
   MS_PER_SECOND,
-  powerToLaunchSpeed,
+  matterGravityY,
   simYToWorldY,
 } from '../sim/units';
+import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
 import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
@@ -53,6 +54,9 @@ import { OnlineController, type OnlineSceneHooks } from './onlineController';
 const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
   ricochet_body: 'Ricochet hit', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
 };
+
+/** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground' };
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
@@ -114,6 +118,7 @@ export class PrototypeScene extends Phaser.Scene {
   private sceneryRenderer!: SceneryRenderer;
   private cannonRenderer!: CannonRenderer;
   private slotsRenderer: CannonSlotsRenderer | null = null;
+  private levelPhys: LevelPhysics = levelPhysics({});
   private jonhRenderer!: JonhRenderer;
   private ballRenderer!: BallRenderer;
   private trailRenderer!: TrailRenderer;
@@ -465,7 +470,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     // Reset physics
     this.physicsAdapter.clear();
-    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.loadPhysics();
 
     // Initialize state machines
     this.attemptMachine = new ShotAttemptMachine(
@@ -483,7 +488,7 @@ export class PrototypeScene extends Phaser.Scene {
         if (!this.daily) saveSoloAim(this.soloMachine.mapId, angle, power);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
-        const speed = powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
+        const speed = this.levelPhys.launchSpeed(power);
         const vWorld = launchVelocityToWorld(speed, angle, WORLD.pixelsPerMetre);
         const radiusPx = metresToPixels(PROJECTILE.radiusMetres, WORLD.pixelsPerMetre);
 
@@ -505,7 +510,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
 
-    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
+    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
     this.jonhRenderer.draw(false);
 
@@ -623,7 +628,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.audioManager.unlock();
     this.physicsAdapter.clear();
-    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.loadPhysics();
     this.stepper.reset();
     this.classifier.reset();
     
@@ -757,8 +762,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
-      const speed = powerToLaunchSpeed(this.currentPowerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
-      const impulse = AIM.minImpulseNs + (this.currentPowerPercent / 100) * (AIM.maxImpulseNs - AIM.minImpulseNs);
+      const speed = this.levelPhys.launchSpeed(this.currentPowerPercent);
+      const impulse = this.levelPhys.launchImpulse(this.currentPowerPercent);
       const muzzle = this.cannonRenderer.getMuzzlePosition(this.currentAngleDeg, PROJECTILE.radiusMetres);
       this.debugRenderer.draw(this.currentLevel, {
         angleDeg: this.currentAngleDeg,
@@ -1102,7 +1107,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   private drawBall(dt: number, reduced: boolean, frame: ReplayFrame | null): void {
     const ppm = WORLD.pixelsPerMetre;
-    const maxSpeed = powerToLaunchSpeed(100, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * ppm;
+    const maxSpeed = this.levelPhys.maxSpeedMs * ppm;
     if (frame?.phase === 'pre') {
       const s = this.replayBuffer.sampleAt(frame.simT);
       if (s) this.ballRenderer.draw(s.x, s.y, s.vx, s.vy, dt, reduced, maxSpeed);
@@ -1111,7 +1116,7 @@ export class PrototypeScene extends Phaser.Scene {
     const b = this.cosmeticBall;
     if (b && this.attemptMachine.state === 'resolved') {
       const r = PROJECTILE.radiusMetres * ppm;
-      b.vy += PHYSICS.gravity * ppm * dt;
+      b.vy += this.levelPhys.gravity * ppm * dt;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       const floor = this.floorAt(b.x, b.y - b.vy * dt) - r;
@@ -1155,7 +1160,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     if (!prev || state.hitJonh) return;
     const dvx = state.vxSim - prev.vx;
-    const dvy = state.vySim - prev.vy + PHYSICS.gravity * PHYSICS.fixedStepSeconds;
+    const dvy = state.vySim - prev.vy + this.levelPhys.gravity * PHYSICS.fixedStepSeconds;
     const dv = Math.hypot(dvx, dvy);
     if (dv < 1.2) return;
     const surface = this.surfaceAt(state.xSim, state.ySim);
@@ -1170,7 +1175,7 @@ export class PrototypeScene extends Phaser.Scene {
     for (const o of this.currentLevel.obstacles) {
       const b = o.box;
       if (x >= b.minX - r && x <= b.maxX + r && y >= b.minY - r && y <= b.maxY + r) {
-        return o.material === 'wood' ? 'wood' : o.material === 'rubber' ? 'rubber' : 'concrete';
+        return SURFACE_SOUNDS[o.material] ?? 'concrete';
       }
     }
     return 'ground';
@@ -1308,7 +1313,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     // Reset physics
     this.physicsAdapter.clear();
-    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.loadPhysics();
 
     // Initialize state machines
     this.attemptMachine = new ShotAttemptMachine(
@@ -1327,7 +1332,7 @@ export class PrototypeScene extends Phaser.Scene {
         if (!this.online?.inMatch) saveMultiplayerSetup(this.multiMachine.setups);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
-        const speed = powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
+        const speed = this.levelPhys.launchSpeed(power);
         const vWorld = launchVelocityToWorld(speed, angle, WORLD.pixelsPerMetre);
         const radiusPx = metresToPixels(PROJECTILE.radiusMetres, WORLD.pixelsPerMetre);
 
@@ -1340,7 +1345,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
 
-    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h);
+    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.slotsRenderer = new CannonSlotsRenderer(this);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
     this.jonhRenderer.draw(false);
@@ -1429,6 +1434,14 @@ export class PrototypeScene extends Phaser.Scene {
     }
   }
 
+  /** Colliders, gravity and cannon speed range for `currentLevel`. */
+  private loadPhysics(): void {
+    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.levelPhys = levelPhysics(this.currentLevel);
+    this.matter.world.setGravity(0, matterGravityY(this.levelPhys.gravity, WORLD.pixelsPerMetre, PHYSICS.matterGravityScale), PHYSICS.matterGravityScale);
+    this.htmlControls.setLaunchSpeed(this.levelPhys.launchSpeed);
+  }
+
   /** Called only at handover; results and live shots retain their original colliders. */
   private applyMultiplayerPosition(): void {
     const match = this.multiMachine;
@@ -1438,7 +1451,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.currentLevel = levelAtMultiplayerPosition(base, match.activePositionId);
     this.multiplayerPositionKey = key;
     this.physicsAdapter.clear();
-    this.physicsAdapter.setupLevel(this.currentLevel);
+    this.loadPhysics();
     this.stepper.reset();
     this.classifier.reset();
     this.lastProjectileState = null;

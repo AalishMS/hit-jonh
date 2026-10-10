@@ -157,8 +157,16 @@ export class HTMLControls {
     this.on(this.debugToggle, 'change', () => this.callbacks.onToggleDebug(this.debugToggle.checked));
   }
 
+  private launchSpeed = (power: number): number => powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg);
+
   private calcSpeed(power: number): string {
-    return powerToLaunchSpeed(power, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg).toFixed(1);
+    return this.launchSpeed(power).toFixed(1);
+  }
+
+  /** The current map's power → speed mapping (some maps scale the cannon). */
+  setLaunchSpeed(fn: (power: number) => number): void {
+    this.launchSpeed = fn;
+    this.speedLabel.textContent = `Launch Speed: ${this.calcSpeed(Number(this.powerSlider.value))} m/s`;
   }
 
   private previousCanFire = false;

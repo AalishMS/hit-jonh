@@ -1,10 +1,11 @@
 import type Phaser from 'phaser';
 import { barrelKey } from '../art/cannonArt';
 import { PAL, hex } from '../art/palette';
-import { AIM, PHYSICS, PROJECTILE } from '../config/tuning';
+import { AIM, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
-import { metresToPixels, powerToLaunchSpeed, simYToWorldY } from '../sim/units';
+import { metresToPixels, simYToWorldY } from '../sim/units';
+import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { artImage, artScale } from './artTextures';
 
 const METER = { width: 170, height: 16, offsetY: 30 } as const;
@@ -37,6 +38,7 @@ export class CannonRenderer {
     cannonSpawn: Point2D,
     private readonly ppm: number,
     private readonly worldHeightPx: number,
+    private readonly physics: LevelPhysics = levelPhysics({}),
   ) {
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
@@ -118,8 +120,8 @@ export class CannonRenderer {
     g.clear();
     if (!this.showAimAids) return;
     const muzzle = this.getMuzzlePosition(this.angleDeg, PROJECTILE.radiusMetres);
-    const speedPx = powerToLaunchSpeed(this.powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * this.ppm;
-    const gPx = PHYSICS.gravity * this.ppm;
+    const speedPx = this.physics.launchSpeed(this.powerPercent) * this.ppm;
+    const gPx = this.physics.gravity * this.ppm;
     const count = 9;
     for (let i = 1; i <= count; i++) {
       const t = (AIM.previewSeconds * i) / count;

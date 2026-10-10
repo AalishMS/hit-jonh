@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
 import { MAPS } from '../src/levels';
 import { validateLevel } from '../src/levels/validation';
-import { powerToLaunchSpeed, launchVelocityToWorld, metresToPixels, simYToWorldY } from '../src/sim/units';
+import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../src/sim/units';
+import { levelPhysics } from '../src/levels/levelPhysics';
 import { AIM, PHYSICS, PROJECTILE } from '../src/config/tuning';
 import { MatterAdapter } from '../src/physics/matterAdapter';
 
@@ -21,7 +22,7 @@ describe('Level data validation', () => {
 
       it('has a real obstacle that blocks a low maximum-power shot', () => {
         expect(level.obstacles.length).toBeGreaterThan(0);
-        const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });
+        const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(levelPhysics(level).gravity, 50, 0.001), scale: 0.001 } });
         const adapter = new MatterAdapter(engine.world, 50, 720);
         adapter.setupLevel(level);
         const angle = 10;
@@ -31,7 +32,7 @@ describe('Level data validation', () => {
           metresToPixels(level.cannonSpawn.x + offset * Math.cos(rad), 50),
           simYToWorldY(level.cannonSpawn.y + offset * Math.sin(rad), 720, 50),
           PROJECTILE.radiusMetres * 50,
-          launchVelocityToWorld(AIM.maxImpulseNs / PROJECTILE.massKg, angle, 50),
+          launchVelocityToWorld(levelPhysics(level).maxSpeedMs, angle, 50),
         );
         let blocked = false;
         for (let step = 0; step < 720; step++) {
@@ -45,16 +46,11 @@ describe('Level data validation', () => {
 
       it('proves reference solution hits Jonh in actual Matter adapter flight', () => {
         for (const sol of level.referenceSolutions) {
-          const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.4905, scale: 0.001 } });
+          const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(levelPhysics(level).gravity, 50, 0.001), scale: 0.001 } });
           const adapter = new MatterAdapter(engine.world, 50, 720);
           adapter.setupLevel(level);
 
-          const speed = powerToLaunchSpeed(
-            sol.powerPercent,
-            AIM.minImpulseNs,
-            AIM.maxImpulseNs,
-            PROJECTILE.massKg,
-          );
+          const speed = levelPhysics(level).launchSpeed(sol.powerPercent);
           const rad = (sol.angleDeg * Math.PI) / 180;
           const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
           const startX = level.cannonSpawn.x + offset * Math.cos(rad);

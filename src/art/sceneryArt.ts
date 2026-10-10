@@ -214,9 +214,63 @@ function rubber(w: number, h: number): string {
     <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="${Math.min(10, h / 2 - 1)}" fill="none" ${INK}/>`;
 }
 
+/** Steel legs, blue sprung mat along the top edge (the collider is the whole box). */
+function trampoline(w: number, h: number): string {
+  const matH = Math.max(8, h * 0.4);
+  const legs = [0.12, 0.88].map(f => `<path d="M${w * f} ${matH} L${w * f + (f < 0.5 ? -4 : 4)} ${h - 2}" stroke="${PAL.iron}" stroke-width="5" stroke-linecap="round"/>`).join('');
+  const springCount = Math.max(2, Math.floor(w / 18));
+  const springs = Array.from({ length: springCount }, (_, i) => {
+    const x = 8 + (i * (w - 16)) / (springCount - 1);
+    return `<path d="M${x} ${matH - 2} l-3 3 l6 3 l-6 3 l3 3" stroke="${PAL.stoneDark}" stroke-width="1.6" fill="none"/>`;
+  }).join('');
+  return `${legs}${springs}
+    <path d="M2 4 Q${w / 2} ${matH * 0.9} ${w - 2} 4 V${matH} H2 Z" fill="#3FA7E8"/>
+    <path d="M6 7 Q${w / 2} ${matH * 0.7} ${w - 6} 7" stroke="#9FD7F7" stroke-width="2.5" fill="none" opacity="0.8"/>
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${Math.min(8, matH / 2)}" rx="3" fill="${PAL.iron}" ${ink(2)}/>
+    <path d="M2 4 Q${w / 2} ${matH * 0.9} ${w - 2} 4 V${matH} H2 Z" fill="none" ${ink(2)}/>`;
+}
+
+/** Riveted steel billboard panel. */
+function steelPanel(w: number, h: number): string {
+  const rivets = Array.from({ length: Math.floor(h / 26) }, (_, r) =>
+    [6, w - 6].map(x => `<circle cx="${x}" cy="${14 + r * 26}" r="2" fill="${PAL.ironDark}"/>`).join('')).join('');
+  const seams = Array.from({ length: Math.floor(h / 60) }, (_, r) => `<path d="M2 ${60 + r * 60} H${w - 2}" stroke="${PAL.ironDark}" stroke-width="2"/>`).join('');
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="2" fill="${PAL.ironLight}"/>
+    <path d="M${w * 0.2} 2 V${h - 2}" stroke="#8C93C2" stroke-width="${Math.max(2, w * 0.2)}" opacity="0.5"/>
+    ${seams}${rivets}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="2" fill="none" ${INK}/>`;
+}
+
+/** A leafy canopy: soft, bumpy, catches the ball. */
+function canopy(w: number, h: number): string {
+  const n = Math.max(3, Math.round(w / 34));
+  const bumps = Array.from({ length: n }, (_, i) => {
+    const cx = (w * (i + 0.5)) / n;
+    const r = Math.min(h * 0.6, (w / n) * 0.62);
+    return `<circle cx="${cx}" cy="${h * 0.42}" r="${r}" fill="${PAL.leaf}" ${ink(2)}/>`;
+  }).join('');
+  return `<rect x="2" y="${h * 0.3}" width="${w - 4}" height="${h * 0.66}" rx="${h * 0.3}" fill="${PAL.grassDark}" ${ink(2.4)}/>${bumps}
+    ${Array.from({ length: n }, (_, i) => `<circle cx="${(w * (i + 0.5)) / n - 4}" cy="${h * 0.32}" r="${Math.min(5, h * 0.12)}" fill="#8EDB7F" opacity="0.7"/>`).join('')}`;
+}
+
+/** Layered rock face (cliffs, mesas, crater rims). */
+function rockFace(w: number, h: number, light: string, dark: string): string {
+  const strata = Array.from({ length: Math.floor(h / 40) }, (_, r) =>
+    `<path d="M2 ${30 + r * 40} q${w * 0.25} ${r % 2 ? 6 : -6} ${w * 0.5} 0 t${w * 0.5 - 4} 0" stroke="${dark}" stroke-width="2.4" fill="none" opacity="0.6"/>`).join('');
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="4" fill="${light}"/>
+    <path d="M${w * 0.7} 2 V${h - 2}" stroke="${dark}" stroke-width="${Math.max(2, w * 0.25)}" opacity="0.25"/>
+    ${strata}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="4" fill="none" ${INK}/>`;
+}
+
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.material === 'rubber') return rubber(w, h);
+  if (obs.material === 'trampoline') return trampoline(w, h);
+  if (obs.material === 'steel') return steelPanel(w, h);
+  if (obs.material === 'leaves') return canopy(w, h);
+  if (obs.material === 'rock') return rockFace(w, h, '#B89A80', '#7E634F');
+  if (obs.material === 'regolith') return rockFace(w, h, '#B9B6C9', '#7D7895');
   if (obs.material === 'wood') return post(w, h, PAL.wood, PAL.woodDark);
   if (obs.material === 'concrete') return w > 80 ? building(w, h) : stoneWall(w, h);
   return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="${PAL.stone}" ${INK}/>`;

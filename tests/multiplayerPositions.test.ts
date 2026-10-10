@@ -5,13 +5,14 @@ import { levelAtMultiplayerPosition } from '../src/levels/multiplayerPositions';
 import type { LevelData, ReferenceSolution } from '../src/levels/types';
 import { validateLevel } from '../src/levels/validation';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../src/config/tuning';
+import { levelPhysics } from '../src/levels/levelPhysics';
 import { MatterAdapter } from '../src/physics/matterAdapter';
 import { ShotAttemptMachine } from '../src/rules/shotAttempt';
-import { matterGravityY, launchVelocityToWorld, metresToPixels, powerToLaunchSpeed, simYToWorldY } from '../src/sim/units';
+import { matterGravityY, launchVelocityToWorld, metresToPixels, simYToWorldY } from '../src/sim/units';
 
 function hitsBody(level: LevelData, shot: ReferenceSolution): boolean {
   const ppm = WORLD.pixelsPerMetre;
-  const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(PHYSICS.gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale } });
+  const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(levelPhysics(level).gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale } });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
   const angle = shot.angleDeg * Math.PI / 180;
@@ -20,7 +21,7 @@ function hitsBody(level: LevelData, shot: ReferenceSolution): boolean {
     metresToPixels(level.cannonSpawn.x + offset * Math.cos(angle), ppm),
     simYToWorldY(level.cannonSpawn.y + offset * Math.sin(angle), WORLD.designHeightPx, ppm),
     PROJECTILE.radiusMetres * ppm,
-    launchVelocityToWorld(powerToLaunchSpeed(shot.powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg), shot.angleDeg, ppm),
+    launchVelocityToWorld(levelPhysics(level).launchSpeed(shot.powerPercent), shot.angleDeg, ppm),
   );
   const attempt = new ShotAttemptMachine(level.bounds.maxX, SHOT.settledSpeedMs,
     SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres);

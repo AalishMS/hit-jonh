@@ -189,6 +189,14 @@ export const MATERIALS = {
   wood: { restitution: 0.3, friction: 0.6 },
   concrete: { restitution: 0.4, friction: 0.5 },
   rubber: { restitution: 0.9, friction: 0.2 },
+  /** Bounce maps [TUNE]: a trampoline gives back almost everything; steel rings off hard. */
+  trampoline: { restitution: 1.0, friction: 0.3 },
+  steel: { restitution: 0.75, friction: 0.3 },
+  /** Soft canopy: catches the ball rather than bouncing it. */
+  leaves: { restitution: 0.12, friction: 0.9 },
+  rock: { restitution: 0.35, friction: 0.6 },
+  /** Moon dust: dead landings. */
+  regolith: { restitution: 0.15, friction: 0.8 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;

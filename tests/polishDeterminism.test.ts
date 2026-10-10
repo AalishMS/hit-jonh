@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import Matter from '@matter-js';
 import { MAPS } from '../src/levels';
 import { AIM, FX, LOOK, PHYSICS, PROJECTILE, SHOT, WORLD } from '../src/config/tuning';
+import { levelPhysics } from '../src/levels/levelPhysics';
 import { MatterAdapter } from '../src/physics/matterAdapter';
 import { ImpactTimeline } from '../src/render/impactTimeline';
 import { FixedStepper } from '../src/sim/fixedStep';
 import { ShotClassifier } from '../src/sim/classification';
 import { ShotAttemptMachine } from '../src/rules/shotAttempt';
 import { hitQuality, impactProfile } from '../src/fx/impactProfile';
-import { launchVelocityToWorld, matterGravityY, powerToLaunchSpeed, simYToWorldY } from '../src/sim/units';
+import { launchVelocityToWorld, matterGravityY, simYToWorldY } from '../src/sim/units';
 import type { LevelData } from '../src/levels/types';
 
 /**
@@ -18,14 +19,14 @@ import type { LevelData } from '../src/levels/types';
  */
 function play(level: LevelData, hz: number, mode: 'plain' | 'effects' | 'reduced', aim = level.referenceSolutions[0]!) {
   const ppm = WORLD.pixelsPerMetre;
-  const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(PHYSICS.gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale } });
+  const engine = Matter.Engine.create({ gravity: { x: 0, y: matterGravityY(levelPhysics(level).gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale } });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
   const rad = aim.angleDeg * Math.PI / 180;
   const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
   adapter.spawnProjectile((level.cannonSpawn.x + offset * Math.cos(rad)) * ppm,
     simYToWorldY(level.cannonSpawn.y + offset * Math.sin(rad), WORLD.designHeightPx, ppm), PROJECTILE.radiusMetres * ppm,
-    launchVelocityToWorld(powerToLaunchSpeed(aim.powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg), aim.angleDeg, ppm));
+    launchVelocityToWorld(levelPhysics(level).launchSpeed(aim.powerPercent), aim.angleDeg, ppm));
   const clock = new ImpactTimeline();
   const reduced = mode === 'reduced';
   if (mode === 'effects') clock.hold(FX.windupSeconds);

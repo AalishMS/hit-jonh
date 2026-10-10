@@ -1,4 +1,5 @@
 import type { Box2D } from '../sim/swept';
+import { levelPhysics } from './levelPhysics';
 import type { LevelData } from './types';
 
 export interface ValidationConfig {
@@ -24,9 +25,11 @@ function boxThickness(box: Box2D): { width: number; height: number; minThickness
 
 export function validateLevel(level: LevelData, config: ValidationConfig): ValidationResult {
   const errors: string[] = [];
+  // A map that scales the cannon up needs thicker colliders than the global top speed implies.
+  const maxSpeed = Math.max(config.maxSpeedMs, levelPhysics(level).maxSpeedMs);
   const requiredThickness = Math.max(
     config.minThicknessMetres,
-    config.maxSpeedMs * config.dtSeconds,
+    maxSpeed * config.dtSeconds,
   );
 
   // 1. Bounds check

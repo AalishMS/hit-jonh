@@ -1,9 +1,10 @@
 import Matter from '@matter-js';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
-import { launchVelocityToWorld, matterGravityY, metresToPixels, powerToLaunchSpeed, simYToWorldY } from '../sim/units';
+import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
 import { MatterAdapter } from './matterAdapter';
 
 export interface HeadlessShotResult {
@@ -16,8 +17,9 @@ export interface HeadlessShotResult {
 /** Runs one shot with real Matter and no rendering, classified exactly as the scene does. */
 export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent: number): HeadlessShotResult {
   const ppm = WORLD.pixelsPerMetre;
+  const physics = levelPhysics(level);
   const engine = Matter.Engine.create({
-    gravity: { x: 0, y: matterGravityY(PHYSICS.gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale },
+    gravity: { x: 0, y: matterGravityY(physics.gravity, ppm, PHYSICS.matterGravityScale), scale: PHYSICS.matterGravityScale },
   });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
@@ -27,7 +29,7 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     metresToPixels(level.cannonSpawn.x + offset * Math.cos(angle), ppm),
     simYToWorldY(level.cannonSpawn.y + offset * Math.sin(angle), WORLD.designHeightPx, ppm),
     PROJECTILE.radiusMetres * ppm,
-    launchVelocityToWorld(powerToLaunchSpeed(powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg), angleDeg, ppm),
+    launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm),
   );
   const attempt = new ShotAttemptMachine(level.bounds.maxX, SHOT.settledSpeedMs,
     SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres);
