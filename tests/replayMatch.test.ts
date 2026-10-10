@@ -1,6 +1,8 @@
 // tests/replayMatch.test.ts
 import { describe, expect, it } from 'vitest';
 import { MULTIPLAYER } from '../src/config/tuning';
+
+const THREE_MAPS = ['backyard', 'fence', 'rooftop'];
 import { MultiplayerMatchMachine, OUTCOME_POINTS } from '../src/rules/multiplayerMatch';
 import { replayMatch } from '../src/rules/replayMatch';
 import { seededRandom } from '../src/rules/seededRandom';
@@ -11,7 +13,7 @@ const CYCLE: ClassifiedOutcome[] = ['body', 'miss', 'hat_only', 'ricochet_body',
 
 describe('replayMatch', () => {
   for (const n of [2, 3, 4]) {
-    for (const maps of [['fence'], [...MULTIPLAYER.maps]]) {
+    for (const maps of [['fence'], THREE_MAPS]) {
       it(`replays a full ${n}-player match on ${maps.join('+')} with hand-driven scores`, () => {
         const seats = makeSeats(n);
         const room = makeRoom({ maps, seed: 99 });
@@ -32,7 +34,7 @@ describe('replayMatch', () => {
 
   it('reproduces the hand-driven position schedule for the same seed', () => {
     const seats = makeSeats(3);
-    const maps = [...MULTIPLAYER.maps];
+    const maps = [...THREE_MAPS];
     const room = makeRoom({ maps, seed: 4242 });
     const outcomes = Array.from({ length: 27 }, () => 'miss' as const);
     const shots = playShots(seats, room, outcomes);

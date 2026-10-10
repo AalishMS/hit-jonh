@@ -3,6 +3,7 @@ import type { LevelData } from './types';
 export const FENCE_LEVEL: LevelData = {
   id: 'fence',
   name: "The Fence Dispute",
+  difficulty: 1,
   bounds: {
     minX: 0,
     maxX: 25.6,

@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { MULTIPLAYER } from '../src/config/tuning';
 import { MAPS } from '../src/levels';
 import { levelAtMultiplayerPosition } from '../src/levels/multiplayerPositions';
 import { runHeadlessShot } from '../src/physics/headlessShot';
 import { buildCrossCheckShots, fnv1a, runCrossCheck } from '../src/dev/crossCheck';
 
 describe('headless shot runner', () => {
-  for (const mapId of MULTIPLAYER.maps) {
-    const base = MAPS.find(m => m.id === mapId)!;
-    for (const position of base.multiplayerPositions!) {
+  for (const base of MAPS) {
+    const mapId = base.id;
+    for (const position of base.multiplayerPositions) {
       it(`${mapId}/${position.id} reference solutions hit Jonh`, () => {
         const level = levelAtMultiplayerPosition(base, position.id);
         for (const ref of position.referenceSolutions) {
@@ -32,9 +31,8 @@ describe('cross-check report', () => {
   });
 
   it('covers every MP position with references plus a 10 x 7 grid', () => {
-    const expected = MULTIPLAYER.maps.reduce((sum, id) => {
-      const base = MAPS.find(m => m.id === id)!;
-      return sum + base.multiplayerPositions!.reduce((s, p) => s + p.referenceSolutions.length + 70, 0);
+    const expected = MAPS.reduce((sum, base) => {
+      return sum + base.multiplayerPositions.reduce((s, p) => s + p.referenceSolutions.length + 70, 0);
     }, 0);
     expect(buildCrossCheckShots()).toHaveLength(expected);
   });

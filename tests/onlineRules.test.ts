@@ -1,12 +1,13 @@
 // tests/onlineRules.test.ts
 import { describe, expect, it } from 'vitest';
-import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
+import { ONLINE } from '../src/config/tuning';
 import {
   acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomQuiet, lastLife, mapHasRicochet,
   planTurnStart, quietEnded, validMaps, validateFire, validateReport,
 } from '../src/rules/onlineRules';
 import type { MatchView, PresenceEntry, QuietPeriod, ShotRecord } from '../src/rules/onlineTypes';
 import { replayMatch } from '../src/rules/replayMatch';
+import { MAP_IDS } from '../src/levels';
 import { freshPresence, makeSeats, makeView } from './onlineFixtures';
 
 /** Two players on backyard: seat 0 hit, seat 1 is up (seq 1). */
@@ -17,17 +18,17 @@ const withShot = (view: MatchView, seq: number, patch: Partial<ShotRecord>): Mat
   ({ ...view, shots: view.shots.map(s => (s.seq === seq ? { ...s, ...patch } : s)) });
 
 describe('validMaps / mapHasRicochet', () => {
-  it('accepts distinct supported multiplayer maps only', () => {
+  it('accepts any distinct subset of the shared map list', () => {
     expect(validMaps(['backyard'])).toBe(true);
-    expect(validMaps([...MULTIPLAYER.maps])).toBe(true);
+    expect(validMaps([...MAP_IDS])).toBe(true);
+    expect(validMaps(['rubber'])).toBe(true);
     expect(validMaps([])).toBe(false);
     expect(validMaps(['backyard', 'backyard'])).toBe(false);
-    expect(validMaps(['rubber'])).toBe(false);
-    expect(validMaps(['moon'])).toBe(false);
+    expect(validMaps(['nowhere'])).toBe(false);
   });
   it('reads ricochet surfaces from level data', () => {
     expect(mapHasRicochet('backyard')).toBe(true);
-    expect(mapHasRicochet('moon')).toBe(false);
+    expect(mapHasRicochet('nowhere')).toBe(false);
   });
 });
 

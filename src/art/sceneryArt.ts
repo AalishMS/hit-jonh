@@ -14,6 +14,10 @@ export interface Theme {
   sunY: number;
   sun: string;
   skyline: 'village' | 'town' | 'park';
+  /** Ground surface and soil; grass on earth when omitted. */
+  groundTop?: string;
+  groundDark?: string;
+  groundEarth?: string;
 }
 
 export const THEMES: Record<string, Theme> = {

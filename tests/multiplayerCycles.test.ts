@@ -13,7 +13,7 @@ const setups = (count: number) => Array.from({ length: count }, (_, i) => ({
 describe('Multiplayer position cycles', () => {
   it.each([2, 3, 4])('shares each position for a full cycle with %i players', count => {
     const random = vi.fn(() => 0);
-    const match = new MultiplayerMatchMachine(setups(count), undefined, random);
+    const match = new MultiplayerMatchMachine(setups(count), MAPS.slice(0, 3).map(m => m.id), random);
     expect(random).toHaveBeenCalledTimes(6);
     for (let round = 0; round < 3; round++) {
       const positions: string[] = [];
@@ -37,7 +37,7 @@ describe('Multiplayer position cycles', () => {
         }
       }
       expect(new Set(positions).size).toBe(3);
-      expect([...positions].sort()).toEqual(MAPS[round]!.multiplayerPositions!.map(p => p.id).sort());
+      expect([...positions].sort()).toEqual(MAPS[round]!.multiplayerPositions.map(p => p.id).sort());
       expect(match.players.every(p => p.roundScores[round] === 300)).toBe(true);
       match.nextRound();
     }

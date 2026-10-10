@@ -1,4 +1,3 @@
-import { MULTIPLAYER } from '../config/tuning';
 import { MAPS } from '../levels';
 import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import type { LevelData } from '../levels/types';
@@ -20,9 +19,9 @@ export interface CrossCheckReport {
 /** Reference shots plus an angle/power grid on every multiplayer target position. */
 export function buildCrossCheckShots(): CrossCheckShot[] {
   const shots: CrossCheckShot[] = [];
-  for (const mapId of MULTIPLAYER.maps) {
-    const base = MAPS.find(m => m.id === mapId)!;
-    for (const position of base.multiplayerPositions ?? []) {
+  for (const base of MAPS) {
+    const mapId = base.id;
+    for (const position of base.multiplayerPositions) {
       const level = levelAtMultiplayerPosition(base, position.id);
       const add = (angle: number, power: number) => shots.push({ id: `${mapId}/${position.id} ${angle}/${power}`, level, angle, power });
       for (const ref of position.referenceSolutions) add(ref.angleDeg, ref.powerPercent);

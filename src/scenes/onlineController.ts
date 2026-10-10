@@ -1,5 +1,5 @@
 // src/scenes/onlineController.ts
-import { MULTIPLAYER } from '../config/tuning';
+import { DEFAULT_MAP_SET } from '../levels';
 import { getConvexClient } from '../net/convexClient';
 import { OnlineSession } from '../net/onlineSession';
 import { errorCode } from '../net/retry';
@@ -180,7 +180,7 @@ export class OnlineController {
     try {
       let code: string;
       try {
-        code = await this.ensureSession().createRoom(profile, [...MULTIPLAYER.maps]);
+        code = await this.ensureSession().createRoom(profile, [...DEFAULT_MAP_SET]);
       } catch (e) {
         if (this.stillOnSetup(screen)) this.open(JOIN_ERRORS[errorCode(e) ?? ''] ?? OFFLINE);
         return;

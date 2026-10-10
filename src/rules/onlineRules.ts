@@ -1,6 +1,6 @@
 // src/rules/onlineRules.ts
 import { AIM, MULTIPLAYER, ONLINE } from '../config/tuning';
-import { MAPS } from '../levels';
+import { MAP_IDS, MAPS } from '../levels';
 import type { ClassifiedOutcome } from '../sim/classification';
 import type { MatchView, OnlineErrorCode, PresenceEntry, QuietPeriod, SeatState, ShotRecord } from './onlineTypes';
 import { replayMatch, type ReplayResult } from './replayMatch';
@@ -15,7 +15,7 @@ function serverReplay(view: MatchView): ReplayResult {
 }
 
 export function validMaps(maps: readonly string[]): boolean {
-  const allowed = MULTIPLAYER.maps as readonly string[];
+  const allowed = MAP_IDS;
   return maps.length > 0 && maps.length <= allowed.length && new Set(maps).size === maps.length && maps.every(m => allowed.includes(m));
 }
 
@@ -181,7 +181,7 @@ export function planTurnStart(view: MatchView, presence: readonly PresenceEntry[
   const shots: ShotRecord[] = [...view.shots];
   const skips: ShotRecord[] = [];
   let clock = clockStart;
-  for (let guard = 0; guard <= MULTIPLAYER.maxPlayers * MULTIPLAYER.shotsPerRound * MULTIPLAYER.maps.length; guard++) {
+  for (let guard = 0; guard <= MULTIPLAYER.maxPlayers * MULTIPLAYER.shotsPerRound * MAP_IDS.length; guard++) {
     const current: MatchView = { room: { ...view.room, turnClockStart: clock }, seats: view.seats, shots };
     const replay = serverReplay(current);
     if (replay.isMatchComplete) return { skips, clockStart: clock, finished: true, checkAt: null, checkSeq: null };

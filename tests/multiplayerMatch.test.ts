@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { MultiplayerMatchMachine, MP_MAPS, type MPPlayerSetup } from '../src/rules/multiplayerMatch';
+import { MultiplayerMatchMachine, type MPPlayerSetup } from '../src/rules/multiplayerMatch';
+
+/** A three-map tour; the machine plays whichever maps it is given, in order. */
+const MP_MAPS = ['backyard', 'fence', 'rooftop'];
 import { MULTIPLAYER } from '../src/config/tuning';
 import type { ClassifiedOutcome } from '../src/sim/classification';
 
@@ -59,7 +62,7 @@ describe('MultiplayerMatchMachine', () => {
   describe.each(playerCounts)('with N = %d players', (N) => {
     it('executes EXACT 3 shots each across all 3 maps, starts each round with r % N, and early hits do not truncate the round', () => {
       const setups = makeSetups(N);
-      const machine = new MultiplayerMatchMachine(setups);
+      const machine = new MultiplayerMatchMachine(setups, MP_MAPS);
 
       expect(machine.state).toBe('handover');
       expect(machine.roundIndex).toBe(0);
@@ -167,7 +170,7 @@ describe('MultiplayerMatchMachine', () => {
 
   it('determines winner ties using valid outcomes through full match (4 ricochet vs 5 body)', () => {
     // 2 players across 3 rounds (6 shots each)
-    const machine = new MultiplayerMatchMachine(makeSetups(2));
+    const machine = new MultiplayerMatchMachine(makeSetups(2), MP_MAPS);
 
     // Player 0 will achieve 4 ricochet_body (4 * 125 = 500 pts, 4 bodyHits) + 5 misses = 500 pts
     // Player 1 will achieve 5 body hits (5 * 100 = 500 pts, 5 bodyHits) + 4 misses = 500 pts
@@ -212,7 +215,7 @@ describe('MultiplayerMatchMachine', () => {
   });
 
   it('handles shared win when both score and body hits are equal', () => {
-    const machine = new MultiplayerMatchMachine(makeSetups(2));
+    const machine = new MultiplayerMatchMachine(makeSetups(2), MP_MAPS);
 
     // Both players achieve 4 ricochet hits = 500 pts each, 4 body hits each
     let p0HitsLeft = 4;
@@ -246,7 +249,7 @@ describe('MultiplayerMatchMachine', () => {
   });
 
   it('prevents external mutation of internal player score arrays', () => {
-    const machine = new MultiplayerMatchMachine(makeSetups(2));
+    const machine = new MultiplayerMatchMachine(makeSetups(2), MP_MAPS);
     const players = machine.players;
     // Attempting to mutate returned roundScores copy
     (players[0]!.roundScores as number[])[0] = 999;

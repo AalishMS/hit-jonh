@@ -1,7 +1,8 @@
-import { MAPS } from '../levels';
+import { DEFAULT_MAP_SET, MAPS } from '../levels';
 import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor } from '../art/palette';
-import { MAP_DESCRIPTIONS, mapPreview, tourPreview } from './mapPreview';
+import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
+import { mapSetPicker } from './mapSetPicker';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
@@ -231,8 +232,12 @@ export class MenuOverlay {
       btn.type = 'button';
       btn.dataset.map = map.id;
       btn.innerHTML = mapPreview(map.id);
-      btn.appendChild(el('div', 'map-name', map.name));
-      btn.appendChild(el('small', '', MAP_DESCRIPTIONS[map.id] ?? ''));
+      const name = el('div', 'map-name', map.name);
+      const pips = el('small', 'difficulty-pips', difficultyPips(map));
+      pips.setAttribute('aria-label', `difficulty ${map.difficulty} of 3`);
+      name.appendChild(pips);
+      btn.appendChild(name);
+      btn.appendChild(el('small', '', mapDescription(map.id)));
       const scoreDiv = el('div', 'map-score');
       if (score && score.bestShots !== null) {
         const stars = 4 - score.bestShots;
@@ -302,25 +307,8 @@ export class MenuOverlay {
     countMinus.onclick = () => { if (playerCount > MULTIPLAYER.minPlayers) { playerCount--; renderList(); } };
     countPlus.onclick = () => { if (playerCount < MULTIPLAYER.maxPlayers) { playerCount++; renderList(); } };
 
-    let selectedMaps: string[] = [...MULTIPLAYER.maps];
-    const maps = el('fieldset', 'mp-map-picker');
-    maps.appendChild(el('legend', '', 'Choose your arena'));
-    for (const choice of [{ id: 'all', name: 'Three-garden tour' }, ...MAPS]) {
-      const label = el('label', 'arena-option');
-      const input = el('input');
-      input.type = 'radio';
-      input.name = 'mp-map';
-      input.value = choice.id;
-      input.checked = choice.id === 'all';
-      input.addEventListener('change', () => {
-        selectedMaps = choice.id === 'all' ? [...MULTIPLAYER.maps] : [choice.id];
-      }, { signal });
-      const artwork = el('span');
-      artwork.innerHTML = choice.id === 'all' ? tourPreview(MULTIPLAYER.maps) : mapPreview(choice.id);
-      label.append(input, artwork, el('strong', '', choice.name));
-      maps.appendChild(label);
-    }
-    this.content.appendChild(maps);
+    let selectedMaps: string[] = [...DEFAULT_MAP_SET];
+    this.content.appendChild(mapSetPicker({ idPrefix: 'mp', selected: selectedMaps, onChange: maps => { selectedMaps = maps; }, signal }));
 
     const actions = el('div', 'menu-actions');
     this.content.appendChild(actions);
@@ -364,7 +352,7 @@ export class MenuOverlay {
     return list;
   }
 
-  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number = MULTIPLAYER.maps.length): void {
+  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number): void {
     const signal = this.open('round_result');
     this.content.appendChild(el('h2', '', `Round ${roundIndex + 1} done`));
     const sorted = [...players].sort((a, b) => b.totalScore - a.totalScore);

@@ -3,6 +3,7 @@ import type { LevelData } from './types';
 export const BACKYARD_LEVEL: LevelData = {
   id: 'backyard',
   name: "Jonh's Backyard",
+  difficulty: 1,
   bounds: {
     minX: 0,
     maxX: 25.6,

@@ -3,6 +3,7 @@ import type { LevelData } from './types';
 export const ROOFTOP_LEVEL: LevelData = {
   id: 'rooftop',
   name: "Rooftop Lunch",
+  difficulty: 2,
   bounds: {
     minX: 0,
     maxX: 25.6,

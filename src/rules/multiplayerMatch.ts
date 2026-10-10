@@ -1,6 +1,6 @@
 import { AIM, MULTIPLAYER, SCORING } from '../config/tuning';
 import type { ClassifiedOutcome } from '../sim/classification';
-import { MAPS } from '../levels';
+import { MAP_IDS, MAPS } from '../levels';
 
 export type MPState = 'handover' | 'aiming' | 'simulating' | 'result' | 'round_result' | 'match_result';
 
@@ -35,7 +35,8 @@ export const OUTCOME_POINTS: Record<ClassifiedOutcome, number> = {
   miss: SCORING.missPoints,
 };
 
-export const MP_MAPS: readonly string[] = MULTIPLAYER.maps;
+/** Every map can be played in multiplayer; a match plays any distinct subset, one map per round. */
+export const MP_MAPS: readonly string[] = MAP_IDS;
 
 /** Clamps aim to the supported integer range. */
 export function normalizeAim(angle: number, power: number): { angle: number; power: number } {
@@ -112,7 +113,7 @@ export class MultiplayerMatchMachine {
 
   private shufflePositions(): void {
     this.positionSchedules = this.maps.map(mapId => {
-      const ids = MAPS.find(level => level.id === mapId)?.multiplayerPositions?.map(p => p.id);
+      const ids = MAPS.find(level => level.id === mapId)?.multiplayerPositions.map(p => p.id);
       if (!ids || ids.length !== MULTIPLAYER.shotsPerRound || new Set(ids).size !== ids.length) {
         throw new RangeError(`Map ${mapId} needs one distinct position per shot cycle`);
       }

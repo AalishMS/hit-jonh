@@ -3,6 +3,7 @@ import type { LevelData } from './types';
 export const RUBBER_LEVEL: LevelData = {
   id: 'rubber',
   name: "Rubber Yard",
+  difficulty: 2,
   bounds: {
     minX: 0,
     maxX: 25.6,

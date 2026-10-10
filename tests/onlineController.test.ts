@@ -3,6 +3,7 @@
 // and the pure tracker, replayMatch and match machine run for real.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
+import { DEFAULT_MAP_SET } from '../src/levels';
 import type { MultiplayerMatchMachine } from '../src/rules/multiplayerMatch';
 import type { PresenceEntry, RoomSnapshot, RoomState, ShotRecord } from '../src/rules/onlineTypes';
 import { OnlineController, type OnlineSceneHooks } from '../src/scenes/onlineController';
@@ -192,7 +193,7 @@ describe('OnlineController: setup screen', () => {
     ctl.open();
     lastSetup().onCreate({ name: '   ', color: 1, pattern: 'dots' });
     await flush();
-    expect(session().createRoom).toHaveBeenCalledWith({ name: 'Player 1', color: 1, pattern: 'dots' }, [...MULTIPLAYER.maps]);
+    expect(session().createRoom).toHaveBeenCalledWith({ name: 'Player 1', color: 1, pattern: 'dots' }, [...DEFAULT_MAP_SET]);
     expect(ctl.inRoom).toBe(true);
     expect(h.state.url).toContain('room=ABCDE');
 

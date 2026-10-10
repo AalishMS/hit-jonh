@@ -1,12 +1,11 @@
 import { cannonFigureSvg } from '../art/cannonArt';
 import { cssColor, playerDisplayColor } from '../art/palette';
 import { MULTIPLAYER } from '../config/tuning';
-import { MAPS } from '../levels';
 import { normalizeRoomCode } from '../rules/roomCode';
 import type { SeatState } from '../rules/onlineTypes';
 import type { OnlineProfile } from '../storage/storage';
 import { copyText } from './copyText';
-import { mapPreview, tourPreview } from './mapPreview';
+import { mapSetCard, mapSetPicker } from './mapSetPicker';
 import type { MenuOverlay } from './menuOverlay';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -45,9 +44,6 @@ function radioGroup<T>(legend: string, name: string, values: readonly T[], selec
   set.appendChild(options);
   return set;
 }
-
-const MP_MAP_IDS = MULTIPLAYER.maps as readonly string[];
-const TOUR_NAME = 'Three-garden tour';
 
 export interface OnlineSetupOptions {
   profile: OnlineProfile;
@@ -155,8 +151,6 @@ export interface LobbyOptions {
 /** The room link last shown as text because copying failed; it stays visible across lobby re-renders. */
 let revealedLink: string | null = null;
 
-const arenaPreview = (id: string): string => id === 'all' ? tourPreview(MP_MAP_IDS) : mapPreview(id);
-
 export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
   // Re-rendered on every roster/presence change; keep keyboard focus where it was.
   const focusedId = document.activeElement instanceof HTMLElement ? document.activeElement.id : '';
@@ -215,36 +209,10 @@ export function showOnlineLobby(menu: MenuOverlay, o: LobbyOptions): void {
     }
     content.appendChild(list);
 
-    const isTour = o.maps.length === MP_MAP_IDS.length;
-    const maps = el('fieldset', 'mp-map-picker');
-    if (host) {
-      maps.appendChild(el('legend', '', 'Choose your arena'));
-      const choices = [{ id: 'all', name: TOUR_NAME }, ...MAPS.filter(m => MP_MAP_IDS.includes(m.id))];
-      for (const choice of choices) {
-        const label = el('label', 'arena-option');
-        const input = el('input');
-        input.type = 'radio';
-        input.name = 'online-map';
-        input.id = `online-map-${choice.id}`;
-        input.checked = choice.id === 'all' ? isTour : !isTour && o.maps[0] === choice.id;
-        input.addEventListener('change', () => o.onMaps(choice.id === 'all' ? [...MP_MAP_IDS] : [choice.id]), { signal });
-        const artwork = el('span');
-        artwork.innerHTML = arenaPreview(choice.id);
-        label.append(input, artwork, el('strong', '', choice.name));
-        maps.appendChild(label);
-      }
-    } else {
-      // Guests see the host's pick as the same card, read-only.
-      maps.classList.add('is-readonly');
-      maps.appendChild(el('legend', '', 'Arena'));
-      const id = isTour ? 'all' : o.maps[0] ?? '';
-      const card = el('div', 'arena-option is-picked');
-      const artwork = el('span');
-      artwork.innerHTML = arenaPreview(id);
-      card.append(artwork, el('strong', '', isTour ? TOUR_NAME : MAPS.find(m => m.id === id)?.name ?? id));
-      maps.appendChild(card);
-    }
-    content.appendChild(maps);
+    // Guests see the host's pick read-only; the host's ticks go straight to the room.
+    content.appendChild(host
+      ? mapSetPicker({ idPrefix: 'online', selected: o.maps, onChange: maps => o.onMaps(maps), signal })
+      : mapSetCard(o.maps));
 
     const error = el('p', 'online-error', o.error ?? '');
     error.setAttribute('role', 'alert');
