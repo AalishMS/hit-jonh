@@ -1,7 +1,7 @@
 import { MAPS } from '../levels';
 import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor } from '../art/palette';
-import { MAP_DESCRIPTIONS, mapPreview } from './mapPreview';
+import { MAP_DESCRIPTIONS, mapPreview, tourPreview } from './mapPreview';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
@@ -56,6 +56,8 @@ export class MenuOverlay {
   private content: HTMLElement;
   private clickAbortController: AbortController | null = null;
   private currentView: MenuOverlayView = 'none';
+  /** Scroll offset to restore once a refreshed view has been rebuilt. */
+  private refreshScroll = 0;
 
   constructor(private parentElement: HTMLElement, private callbacks: MenuCallbacks) {
     this.container = document.createElement('div');
@@ -81,18 +83,26 @@ export class MenuOverlay {
     parentElement.appendChild(this.container);
   }
 
-  /** Starts a fresh view: clears listeners and replays the card entrance. */
+  /**
+   * Starts a fresh view: clears listeners and replays the card entrance.
+   * Re-rendering the view already on show (live lobby/result updates) keeps the card still: no entrance replay,
+   * and `is-refresh` mutes the content's own entrance animations, so updates don't flicker.
+   */
   private open(view: MenuOverlayView): AbortSignal {
     if (this.clickAbortController) this.clickAbortController.abort();
     this.clickAbortController = new AbortController();
+    const refresh = this.currentView === view && this.isVisible();
     this.currentView = view;
     this.container.style.display = 'flex';
     this.container.className = `menu-overlay view-is-${view}`;
+    this.refreshScroll = refresh ? this.content.scrollTop : 0;
     this.content.innerHTML = '';
-    this.content.className = `menu-content view-${view}`;
-    this.content.style.animation = 'none';
-    void this.content.offsetWidth;
-    this.content.style.animation = '';
+    this.content.className = `menu-content view-${view}${refresh ? ' is-refresh' : ''}`;
+    if (!refresh) {
+      this.content.style.animation = 'none';
+      void this.content.offsetWidth;
+      this.content.style.animation = '';
+    }
     return this.clickAbortController.signal;
   }
 
@@ -306,7 +316,7 @@ export class MenuOverlay {
         selectedMaps = choice.id === 'all' ? [...MULTIPLAYER.maps] : [choice.id];
       }, { signal });
       const artwork = el('span');
-      artwork.innerHTML = mapPreview(choice.id === 'all' ? 'backyard' : choice.id);
+      artwork.innerHTML = choice.id === 'all' ? tourPreview(MULTIPLAYER.maps) : mapPreview(choice.id);
       label.append(input, artwork, el('strong', '', choice.name));
       maps.appendChild(label);
     }
@@ -405,6 +415,7 @@ export class MenuOverlay {
     const again = focusedId === rematch.id ? rematch : focusedId === leave.id ? leave : null;
     if (again && !again.disabled) again.focus();
     else if (firstRender || again) (rematch.disabled ? leave : rematch).focus();
+    this.content.scrollTop = this.refreshScroll;
   }
 
   showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean, extras: SoloResultExtras = {}): void {
@@ -452,6 +463,7 @@ export class MenuOverlay {
   showCustom(view: MenuOverlayView, build: (content: HTMLElement, signal: AbortSignal) => void): void {
     const signal = this.open(view);
     build(this.content, signal);
+    this.content.scrollTop = this.refreshScroll;
   }
 
   hide(): void {

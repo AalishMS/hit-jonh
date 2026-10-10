@@ -10,14 +10,18 @@ const OBSTACLE: Record<string, string> = {
   rubber: `<rect x="96" y="30" width="122" height="9" rx="4.5" fill="${PAL.rubber}" ${INK}/><path d="M110 0 V30 M204 0 V30" stroke="${PAL.ink}" stroke-width="1.5" opacity=".5"/><rect x="146" y="60" width="6" height="56" fill="${PAL.stone}" stroke="${PAL.ink}" stroke-width="2.5"/>`,
 };
 
+let previewCount = 0;
+
 /** Small scene illustrations in the game's own palette, mirroring each map's layout. */
 export function mapPreview(id: string): string {
   const t = THEMES[id] ?? THEMES.backyard!;
+  // Unique per call: several previews (or re-renders of the same one) can be on the page at once.
+  const sky = `sky-${id}-${++previewCount}`;
   const jonhX = id === 'rooftop' ? 222 : id === 'fence' ? 210 : 226;
   const jonhY = id === 'rooftop' ? 52 : 116;
   return `<svg viewBox="0 0 300 140" aria-hidden="true" class="map-preview">
-    <defs><linearGradient id="sky-${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0.3" stop-color="${t.skyTop}"/><stop offset="1" stop-color="${t.skyLow}"/></linearGradient></defs>
-    <rect width="300" height="140" fill="url(#sky-${id})"/>
+    <defs><linearGradient id="${sky}" x1="0" y1="0" x2="0" y2="1"><stop offset="0.3" stop-color="${t.skyTop}"/><stop offset="1" stop-color="${t.skyLow}"/></linearGradient></defs>
+    <rect width="300" height="140" fill="url(#${sky})"/>
     <circle cx="250" cy="26" r="13" fill="${t.sun}"/>
     <path d="M0 96 Q40 74 80 94 T160 92 T240 90 T300 92 V140 H0 Z" fill="${t.far}"/>
     <path d="M0 104 Q50 88 100 104 T200 102 T300 104 V140 H0 Z" fill="${t.mid}" stroke="${t.midDark}" stroke-width="1.5"/>
@@ -34,6 +38,20 @@ export function mapPreview(id: string): string {
       <rect x="-12" y="-28" width="14" height="11" fill="${PAL.paper}" stroke="${PAL.ink}" stroke-width="2"/>
     </g>
   </svg>`;
+}
+
+const TOUR_CROP_X: Record<string, number> = { backyard: 137, fence: 132, rooftop: 172, rubber: 100 };
+
+/** The multi-map tour: one slice of each map's preview side by side. */
+export function tourPreview(ids: readonly string[]): string {
+  const w = 300 / ids.length;
+  const slices = ids.map((id, i) => {
+    const inner = mapPreview(id).replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+    // Each slice keeps the obstacle and Jonh of its map.
+    return `<svg x="${i * w}" y="0" width="${w}" height="140" viewBox="${TOUR_CROP_X[id] ?? 130} 0 ${w} 140">${inner}</svg>`;
+  }).join('');
+  const seams = ids.slice(1).map((_, i) => `<path d="M${(i + 1) * w} 0 V140" stroke="${PAL.ink}" stroke-width="3"/>`).join('');
+  return `<svg viewBox="0 0 300 140" aria-hidden="true" class="map-preview">${slices}${seams}</svg>`;
 }
 
 export const MAP_DESCRIPTIONS: Record<string, string> = {

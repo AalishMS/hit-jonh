@@ -461,3 +461,12 @@ Owner request: make the game look and feel polished and shareable. Audit: `docs/
 - Scope note: `main` does not contain `polish-pass`, so merging this branch also lands the 18 polish-pass commits (`eae4f6b..b13980b`).
 
 **Next task:** a real-browser background-tab test (item 13), and the not-yet-observed browser cases (shared outage across the turn limit, never-returning player, background-tab spectator).
+
+## Online screens UI pass (2026-10-10)
+
+- Play online setup now matches the other menus: a white profile card with a live cannon preview (it updates as you change the colour, pattern or name), chip-style colour and pattern pickers (the native radios are still inside them), styled name and room-code inputs, "Create room · or · Join" on one row, and a normal `Back` button. The cannon preview comes from `cannonFigureSvg()` in `art/cannonArt.ts`, which reuses the in-game barrel, carriage and wheel art.
+- Lobby: the room code uses the display font on a dashed ticket next to Copy link. Each player row shows that player's cannon, and empty seats collapse into one "N open seats" row. Guests now see the arena as the same card the host picks from, not as plain text. A note explains why Start is disabled.
+- Flicker fix: `MenuOverlay.open()` no longer replays the card entrance when it re-renders the view already on show, and `.is-refresh` turns off child entrance animations (score rows). It also keeps the scroll position. Lobby map switches, presence changes and the result countdown now update in place.
+- Map previews get unique gradient ids for each render. "Three-garden tour" uses a new triptych `tourPreview()` (local Pass-the-cannon too) instead of repeating the backyard art.
+- Online banner and rematch ready-chips now use the shared ink/paper tokens.
+- Browser: PASS. Setup preview changed live (purple + checks + name). Room created, guest joined in a second tab, and the host switched maps 4×: 0 `animationstart` events fired on the host or the guest card, and the guest's arena card updated live. Checked the phone layout (390 px). `npm run check`: 392 tests pass.
