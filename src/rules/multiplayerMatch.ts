@@ -146,6 +146,9 @@ export class MultiplayerMatchMachine {
   /** Who fired the latest shot (set at Fire; stays valid after the turn advances). */
   get lastShooterIndex(): number | null { return this._shooterIndex; }
 
+  /** Shots already taken this round, by all players (0 .. shotsPerRound × players). */
+  get shotIndexInRound(): number { return this._shotIndex; }
+
   // Which shot attempt is the current player taking in this round? (0, 1, 2)
   get activePlayerShotNumber(): number {
     return Math.floor(this._shotIndex / this._players.length);

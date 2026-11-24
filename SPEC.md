@@ -106,6 +106,12 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
 - Multiplayer target centres are Backyard **15, 18, 21 m**, Fence **14, 17, 20 m**, Rooftop **16, 18.5, 21 m**. Horizontal body/hat offsets and tested reference shots live in level data. Height, dimensions, obstacles, scoring and physics stay unchanged. Saved aim and personal trails persist as adjustment aids; cycle status explains that Jonh has moved. **[DECIDED]**
 - A brief handover screen names the next player, then automatically opens aiming; Ready now skips the wait. Their saved settings and last trail load automatically. **[DECIDED by owner 2026-10-10]** A persistent vertical player panel beside the arena shows the roster, cannon colours/patterns, total points and the current turn/shot phase in both local and online matches. Online also identifies your seat and shows presence (Online, Away, Left, or Connection unknown during reconnection). On narrow portrait screens the panel sits below the arena and HUD. It replaces the score chips over the playfield.
 - Players **can** learn from each other's shots; this is intended. **[DECIDED]**
+- **Party callouts [PROPOSED 2026-11-24; presentation only, scoring and the winner rule unchanged]** (`rules/matchStakes.ts`):
+  - Each handover shows what the shot means ("Trailing Bo by 75", "Leading by 25", "All square"), and the same line appears in the HUD while aiming.
+  - Banners mark "Final round" (first shot of the last round, multi-round matches), "Your last shot", and "Last shot of the match".
+  - The match's final shot spells out exactly what wins or ties under the §7.1 winner rule ("Only a trick shot wins it! A hit ties."). It plays a drumroll and gets a longer card.
+  - Whoever just scored taunts the next player on the handover card (hot-seat and online).
+  - The round summary before the final round says so.
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
 
 ## 6.1 Online multiplayer [DECIDED by owner 2026-10-08]

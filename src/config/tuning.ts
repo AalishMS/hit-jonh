@@ -130,6 +130,9 @@ export const FLOW = {
   /** Body hits hold longer so Jonh's knock-back (and the replay) can land. Polish pass [TUNE]. */
   bodyHitResultSeconds: 2.6,
   handoverSeconds: 1.2,
+  /** Party handovers [TUNE]: extra time to read a stakes banner or taunt, and more for a deciding shot. */
+  partyHandoverExtraSeconds: 0.6,
+  decisiveHandoverExtraSeconds: 1.2,
   roundResultSeconds: 2.4,
   /** Ignore background-tab catch-up for presentation timers. */
   maxFrameSeconds: 0.1,

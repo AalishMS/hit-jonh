@@ -418,6 +418,22 @@ export class AudioManager {
     lfo.stop(start + duration + 0.02);
   }
 
+  /** Snare drumroll that speeds up and swells: the match's deciding shot is coming. */
+  playDrumroll(seconds = 1.1): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    let t = 0;
+    let gap = 0.075;
+    while (t < seconds) {
+      this.noise(now + t, 0.045, 'bandpass', 1700 + this.rng() * 500, 0.9, 0.07 + 0.17 * (t / seconds));
+      t += gap;
+      gap = Math.max(0.03, gap * 0.94);
+    }
+    this.kick(now + seconds, 120, 60, 0.18, 0.5);
+    this.noise(now + seconds, 0.5, 'highpass', 5200, 0.7, 0.18, 0.004);
+  }
+
   /** A voiced "FAAH" when the ball leaves the visible area. */
   playOutOfBounds(): void {
     const ctx = this.ready();

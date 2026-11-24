@@ -35,6 +35,7 @@ import { SoloChallengeMachine } from '../rules/soloChallenge';
 import { SoloCoordinator } from '../rules/soloCoordinator';
 import { MultiplayerMatchMachine, OUTCOME_POINTS, type MPPlayerSetup } from '../rules/multiplayerMatch';
 import { MultiCoordinator } from '../rules/multiCoordinator';
+import { matchStakes, shotsLeftPerPlayer, tauntFor, type Stakes } from '../rules/matchStakes';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -128,6 +129,9 @@ export class PrototypeScene extends Phaser.Scene {
   private missStreak = 0;
   /** Jonh heckles a player who takes ages to aim. */
   private readonly heckles = new HeckleTimer();
+  /** Multiplayer party: the last scored shot (for the next handover's taunt) and the current stakes. */
+  private lastPartyShot: { shooter: number; outcome: ClassifiedOutcome } | null = null;
+  private currentStakes: Stakes | null = null;
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -268,6 +272,7 @@ export class PrototypeScene extends Phaser.Scene {
         if (this.online?.inMatch) { this.online.requestRematch(); return; }
         this.inputCoordinator.setOverlayVisible(false);
         this.multiMachine.rematch();
+        this.lastPartyShot = null;
         this.trailHistory.clear();
         this.loadMultiplayerMap(this.multiMachine.currentMapId);
         this.updateUIPerMultiState();
@@ -1078,6 +1083,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.soloCoordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
     } else if (this.activeMode === 'multi' && !this.online?.inMatch) {
       this.multiCoordinator.resolveShot(classification.outcome);
+      if (this.shotShooterIndex !== null) this.lastPartyShot = { shooter: this.shotShooterIndex, outcome: classification.outcome };
     }
 
     const feedback = classifyShotOutcome(
@@ -1593,6 +1599,7 @@ export class PrototypeScene extends Phaser.Scene {
   /** Shows a match from its machine: a fresh hot-seat match, or an online match fast-forwarded by replayMatch. */
   private beginMatch(machine: MultiplayerMatchMachine): void {
     this.hideAttract();
+    this.lastPartyShot = null;
     this.activeMode = 'multi';
     this.multiMachine = machine;
     this.trailHistory.clear();
@@ -1705,7 +1712,7 @@ export class PrototypeScene extends Phaser.Scene {
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
     if (match.state === 'handover') this.applyMultiplayerPosition();
-    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
+    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Shot ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
       match.players, match.state === 'result' ? match.lastShooterIndex
         : match.state === 'round_result' || match.state === 'match_result' ? null : match.activePlayerIndex, match.state);
     this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null);
@@ -1726,8 +1733,20 @@ export class PrototypeScene extends Phaser.Scene {
       const headline = this.online?.inMatch
         ? (match.activePlayerIndex === this.online.mySeat ? 'Your turn!' : `${player.name} is up`)
         : undefined;
-      this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1, headline);
-      this.autoAdvance.schedule('handover', FLOW.handoverSeconds);
+      // Party: what this shot means, and a word from whoever just scored.
+      const left = shotsLeftPerPlayer(match.players.length, match.roundIndex, match.roundCount, match.shotIndexInRound);
+      const stakes = matchStakes(match.players.map((p, i) => ({ name: p.name, score: p.totalScore, bodyHits: p.bodyHits, shotsLeft: left[i] ?? 0 })),
+        match.activePlayerIndex, { finalRound: match.roundCount > 1 && match.roundIndex === match.roundCount - 1, firstShotOfRound: match.shotIndexInRound === 0 });
+      this.currentStakes = stakes;
+      const prev = this.lastPartyShot;
+      const tauntText = prev && prev.shooter !== match.activePlayerIndex ? tauntFor(prev.outcome) : null;
+      const shooter = prev ? match.players[prev.shooter] : undefined;
+      const taunt = tauntText && shooter ? { name: shooter.name, color: shooter.color, text: tauntText } : null;
+      const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0);
+      this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1, headline,
+        { kicker: stakes.kicker, stakes: stakes.line, decisive: stakes.decisive, taunt, autoSeconds: handoverSeconds });
+      if (stakes.decisive) this.audioManager.playDrumroll();
+      this.autoAdvance.schedule('handover', handoverSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -1743,7 +1762,7 @@ export class PrototypeScene extends Phaser.Scene {
       const movement = match.moveCount > 0 ? ' · Jonh has moved—adjust your aim' : '';
       const status = this.online?.inMatch && match.activePlayerIndex !== this.online.mySeat
         ? `${match.activePlayer.name} is aiming…`
-        : `${match.activePlayer.name}'s turn · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}${movement}`;
+        : `${match.activePlayer.name}'s turn${this.currentStakes?.line ? ` · ${this.currentStakes.line}` : ''}${movement}`;
       this.htmlControls.setFeedback(status, 'info');
     } else if (match.state === 'round_result') {
       this.htmlControls.setControlsInert(true);
@@ -1888,6 +1907,8 @@ export class PrototypeScene extends Phaser.Scene {
   /** Scores and labels the current online shot with the server's outcome. */
   private applyOfficialOutcome(outcome: ClassifiedOutcome, mine: boolean): void {
     if (!this.multiCoordinator.resolveShot(outcome)) return;
+    const shooter = this.multiMachine.lastShooterIndex;
+    if (shooter !== null) this.lastPartyShot = { shooter, outcome };
     const local = this.onlineLocal;
     this.onlineLocal = null;
     const label = local && local.outcome === outcome ? local.label : OFFICIAL_LABELS[outcome];

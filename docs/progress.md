@@ -785,3 +785,33 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** on real touch hardware, whether the pass-through backdrop ever swallows a scroll gesture on the home card.
 
+### 7a. Multiplayer party: stakes, final round, taunts — done
+
+**Done**
+- `src/rules/matchStakes.ts` (pure):
+  - `verdictFor` applies the existing SPEC §7.1 winner rule (total, then body hits, else shared) after one more shot.
+  - `matchStakes` returns a banner, a stakes line and a "decisive" flag for the active player.
+  - `shotsLeftPerPlayer` derives remaining shots from the machine's counters; it uses a new read-only `MultiplayerMatchMachine.shotIndexInRound`, with no rule change.
+  - `tauntFor` picks a taunt by outcome.
+- **Handover card**, with `HandoverParty` passed to `showMPHandover`:
+  - a "Final round", "Your last shot" or "Last shot of the match" banner (the decisive one is red and throbs);
+  - the stakes line;
+  - a taunt bubble in the previous scorer's colour ("PLAYER 2: 'Watch and learn.'").
+  - Cards with extras stay 0.6 s longer and decisive ones 1.2 s longer (`FLOW.*HandoverExtraSeconds` [TUNE]). The auto-advance bar matches.
+- `AudioManager.playDrumroll()` plays a snare roll that speeds up and swells, with a cymbal hit, on the match's deciding shot.
+- **HUD while aiming:** "Player 1's turn · Only a trick shot wins it! A hit ties." The map chip says "Shot n/3" instead of the jargon "Cycle n/3".
+- **Round summary** before the final round: "Final round next. Everything to play for." with a "Final round ›" button.
+
+**Verified**
+- `tests/matchStakes.test.ts` (7 tests):
+  - the winner rule with the body-hit tie-break;
+  - every last-shot line (hat wins, any hit wins, trick only, trick ties, trick wins with a hit tying, can't catch up, already won);
+  - the final-round and last-shot banners;
+  - `shotsLeftPerPlayer` against real 2/3/4-player two-map matches;
+  - taunt pools.
+- **Browser:** a two-player Backyard + Fence match showed the "FINAL ROUND" banner; then "PLAYER 2: 'Watch and learn.'" after Player 2's hit; "Trailing Player 2 by 100"; "YOUR LAST SHOT"; then "LAST SHOT OF THE MATCH · Only a trick shot wins it! A hit ties." (also in the HUD); then the result. No page errors.
+
+**Not verified:**
+- How the drumroll sounds.
+- Online taunts were exercised only through shared code (`applyOfficialOutcome` records the shooter); there was no live online room.
+

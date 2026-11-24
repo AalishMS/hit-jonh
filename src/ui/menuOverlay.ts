@@ -54,6 +54,16 @@ export interface SoloResultExtras {
 
 
 
+/** Party extras on the multiplayer handover card (stakes callouts and the previous shooter's taunt). */
+export interface HandoverParty {
+  kicker: string | null;
+  stakes: string;
+  decisive: boolean;
+  taunt: { name: string; color: number; text: string } | null;
+  /** How long the card stays before the turn starts (the auto-advance bar matches it). */
+  autoSeconds: number;
+}
+
 export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -426,16 +436,27 @@ export class MenuOverlay {
     startBtn.focus();
   }
 
-  showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number, headline?: string): void {
+  showMPHandover(player: MPPlayerView, mapName: string, attemptNum: number, headline?: string, party?: HandoverParty): void {
     const signal = this.open('handover');
+    if (party?.kicker) {
+      const banner = el('div', `stakes-banner${party.decisive ? ' decisive' : ''}`, party.kicker);
+      this.content.appendChild(banner);
+    }
     if (!headline) this.content.appendChild(el('div', 'handover-kicker', 'Pass the cannon to'));
     const name = el('div', 'handover-name', headline ?? player.name);
     name.style.setProperty('--player-color', cssColor(playerDisplayColor(player.color)));
     this.content.appendChild(name);
+    if (party?.stakes) this.content.appendChild(el('p', `stakes-line${party.decisive ? ' decisive' : ''}`, party.stakes));
+    if (party?.taunt) {
+      const taunt = el('div', 'taunt');
+      taunt.style.setProperty('--player-color', cssColor(playerDisplayColor(party.taunt.color)));
+      taunt.append(el('strong', '', party.taunt.name), el('span', '', `“${party.taunt.text}”`));
+      this.content.appendChild(taunt);
+    }
     this.content.appendChild(el('p', '', `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}`));
     const btn = this.button('Ready now', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerHandoverContinue?.(); }, signal);
     const bar = el('div', 'auto-bar');
-    bar.style.setProperty('--auto-duration', `${FLOW.handoverSeconds}s`);
+    bar.style.setProperty('--auto-duration', `${party?.autoSeconds ?? FLOW.handoverSeconds}s`);
     bar.appendChild(el('i'));
     this.content.appendChild(bar);
     this.content.appendChild(el('p', 'auto-note', headline ? 'Starting automatically…' : 'Your turn starts automatically…'));
@@ -461,7 +482,9 @@ export class MenuOverlay {
     this.content.appendChild(el('h2', '', `Round ${roundIndex + 1} done`));
     const sorted = [...players].sort((a, b) => b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `+${p.roundScores[roundIndex] ?? 0} this round`));
-    const btn = this.button(roundIndex >= roundCount - 1 ? 'Final result' : 'Next round', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
+    const finalNext = roundIndex === roundCount - 2;
+    if (finalNext) this.content.appendChild(el('p', 'stakes-line', 'Final round next. Everything to play for.'));
+    const btn = this.button(roundIndex >= roundCount - 1 ? 'Final result' : finalNext ? 'Final round ›' : 'Next round', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
     const bar = el('div', 'auto-bar');
     bar.style.setProperty('--auto-duration', `${FLOW.roundResultSeconds}s`);
     bar.appendChild(el('i'));
