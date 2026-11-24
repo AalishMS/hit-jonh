@@ -4,7 +4,9 @@ _Last updated: 2026-11-24_
 
 ## Current milestone
 
-**Current (2026-11-24): "real game" pass.** The owner asked for the game to feel like a polished game people want to keep playing. The top-10 gap list and the per-item notes are in the "Real game pass" section at the end of this file.
+**Current (2026-11-24): "real game" pass complete on branch `real-game-pass` (not merged or pushed).** All ten gaps from the ranked list are fixed. The list, per-item notes, evidence and the next-10 proposal are in the "Real game pass" section at the end of this file.
+
+Final `npm run check`: `Test Files 58 passed (58)`, `Tests 585 passed | 10 skipped (595)`. `npm run build`: 194 modules; main 389 kB (116 kB gzip). The production build was checked through `vite preview`: no dev globals, a shot played through Skip, no console errors or warnings.
 
 **Current (2026-10-08): owner-requested polish pass complete on branch `polish-pass`.** See `CHANGELOG.md` and the "Polish pass" entries at the end of this file. The earlier text below is historical.
 
@@ -996,4 +998,38 @@ References: Greenhouse near 24°/58% (front window), middle 53°/46% (roof), far
 **Owner follow-ups (not done here)**
 - Online rooms can pick the two new maps only after the Convex functions are redeployed (`npx convex dev --once` for dev). No deploy was run.
 - Daily Bonk's date-to-map mapping changed (more maps), and the crown hat now needs three stars on all ten gardens.
+
+### Pass summary and next 10
+
+**All ten done**, in value-per-effort order. Item 10 landed before 8 and 9, which were built in parallel worktrees and merged afterwards.
+1. Snappy misses: fast-forward, Skip, floor out-of-bounds, instant retry.
+2. Phone landscape layout.
+3. Jonh's context lines, heckles and mutter.
+4. Campaign: stars, trick badges, unlocks, Next garden, Continue.
+5. Power-scaled launches.
+6. Title screen with demo shots and poke-to-bonk.
+7. Party stakes, taunts, drumroll, winning-shot replay.
+8. Cannon skins, outfits and wardrobe.
+9. Breakables and portals, with The Greenhouse and The Magic Act.
+10. Chapter cards, desktop FIRE placement, phone text size.
+
+There were also fixes from an independent review.
+
+**Owner decisions needed** (reversible defaults are in place and labelled [PROPOSED]):
+- Ricochet eligibility on the new gardens. Should a portal hit or a glass-smash hit count as a 125-point trick shot? Today neither does (SPEC §7.1 [OPEN]).
+- SPEC §4.2 now reads "destructible terrain" (deferred) as different from single breakable props that reset every attempt. Please confirm.
+- Unlock thresholds (campaign order, star gates, feats), the Trick shots preset contents and timing values are all [PROPOSED]/[TUNE].
+- Online play needs the Convex functions redeployed before rooms can pick the two new gardens.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Shareable Daily Bonk result.** A copyable line ("Hit Jonh Daily · 24 Nov · ★★☆ in 2 shots") with the link. Low effort; friends bring friends.
+2. **First-garden coach.** A ghost hand shows drag-to-aim on Garden 1. After a first miss, a hint names the fix ("Short: add power"). Better first two minutes.
+3. **Practice on cleared gardens.** Unlimited shots that never touch bests or stars (SPEC §4.2 "optional, only if cheap"). Lets players hunt trick badges and star improvements without pressure.
+4. **Online emotes.** Quick reactions everyone in the room sees ("Beat that!", "Unlucky"), matching the hot-seat taunts. Needs a small Convex mutation and schema field, plus a deploy.
+5. **A wind garden.** A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match. Variety at modest cost.
+6. **Feats screen.** "Hit him on the moon", "three trick shots in a row", with progress bars feeding cosmetics. A long-term goal list.
+7. **Sudden-death tie-break for hot-seat.** A one-shot shoot-out on the last garden. Party drama, but SPEC lists it as deferred, so it needs owner approval.
+8. **Accessibility pass.** Screen-reader announcements for stakes and results, remappable keys, a colour-blind check of trails and patterns, larger touch targets on small phones.
+9. **Mobile performance and install.** Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone. Today's GPU cost is unknown (headless SwiftShader only).
+10. **A walking-Jonh garden.** A predictable route timed from Fire (a timing challenge). SPEC lists "Jonh moving during shots" as deferred, so it needs owner approval.
 
