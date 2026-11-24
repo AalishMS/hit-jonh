@@ -8,6 +8,9 @@ import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame,
 import { clamp01 } from '../fx/easing';
 import { recordShot as recordDemoShot, type RecordedShot } from '../physics/shotRecorder';
 import { DemoStage } from '../render/demoStage';
+import { readabilityBoost } from '../fx/readability';
+import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
+import { campaignOrder } from '../rules/campaign';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
 import { distanceToBox, fastForwardTarget, SettleClock } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
@@ -131,6 +134,10 @@ export class PrototypeScene extends Phaser.Scene {
   private currentStakes: Stakes | null = null;
   /** Every body hit of the current match, for the winning-shot replay. */
   private matchHighlights: Array<{ player: number; mapId: string; positionId: string; angle: number; power: number; outcome: ClassifiedOutcome }> = [];
+  /** In-canvas text grows on small screens (speech bubble, landing label). */
+  private textBoost = 1;
+  /** A chapter card is covering the start of this round: the first handover waits for it. */
+  private titleCardPending = false;
   /** The winning-shot replay before the match result: not started, playing, or done for this match. */
   private showcaseState: 'none' | 'playing' | 'done' = 'none';
 
@@ -405,6 +412,12 @@ export class PrototypeScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.VISIBLE, onVisible);
     });
 
+    // Small screens: grow in-canvas text so it stays readable (re-measured whenever the canvas refits).
+    const onResize = () => this.updateTextBoost();
+    this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
+    this.cleanupHandlers.push(() => this.scale.off(Phaser.Scale.Events.RESIZE, onResize));
+    this.updateTextBoost();
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
 
     // Start at Home with gameplay controls hidden and disabled.
@@ -487,6 +500,16 @@ export class PrototypeScene extends Phaser.Scene {
     this.showAttract();
   }
 
+  private updateTextBoost(): void {
+    const width = this.game.canvas.getBoundingClientRect().width;
+    const boost = readabilityBoost(width);
+    if (Math.abs(boost - this.textBoost) < 0.01) return;
+    this.textBoost = boost;
+    this.jonhRenderer?.setUiScale(this.textBoost / (this.view.zoom ?? 1));
+    this.trailRenderer?.setTextBoost(this.textBoost);
+    this.attract?.stage.jonh.setUiScale(this.textBoost);
+  }
+
   /** The title screen's live backdrop: Jonh reading in one of your gardens while menus are open. */
   private showAttract(): void {
     this.hideAttract();
@@ -495,6 +518,7 @@ export class PrototypeScene extends Phaser.Scene {
       { hatId: this.progress.selectedHat, reducedMotion: loadSaveData().settings.reducedMotion });
     this.view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
     this.cameraRig?.setView(this.view);
+    stage.jonh.setUiScale(this.textBoost);
     this.attract = { stage, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2 };
   }
 
@@ -636,13 +660,14 @@ export class PrototypeScene extends Phaser.Scene {
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
     this.trailRenderer.setView(this.view);
+    this.trailRenderer.setTextBoost(this.textBoost);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -667,6 +692,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.reset();
     this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
+    const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
+    playTitleCard(level.name, daily ? 'Daily Bonk' : `Garden ${number}`, data.settings.reducedMotion);
   }
 
   private setAngle(angle: number): void {
@@ -1615,7 +1642,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.slotsRenderer = new CannonSlotsRenderer(this);
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
@@ -1625,6 +1652,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
     this.trailRenderer.setView(this.view);
+    this.trailRenderer.setTextBoost(this.textBoost);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -1644,6 +1672,10 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setCanFire(false);
 
     this.drawCannon();
+    const match = this.multiMachine;
+    const kicker = match.roundCount > 1 && match.roundIndex === match.roundCount - 1 ? 'Final round' : `Round ${match.roundIndex + 1} of ${match.roundCount}`;
+    playTitleCard(level.name, kicker, data.settings.reducedMotion);
+    this.titleCardPending = !data.settings.reducedMotion;
   }
 
   private updateUIPerMultiState(): void {
@@ -1679,7 +1711,10 @@ export class PrototypeScene extends Phaser.Scene {
       const tauntText = prev && prev.shooter !== match.activePlayerIndex ? tauntFor(prev.outcome) : null;
       const shooter = prev ? match.players[prev.shooter] : undefined;
       const taunt = tauntText && shooter ? { name: shooter.name, color: shooter.color, text: tauntText } : null;
-      const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0);
+      // The round's chapter card covers the first moment, so the first handover waits it out.
+      const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0)
+        + (this.titleCardPending ? TITLE_CARD_SECONDS : 0);
+      this.titleCardPending = false;
       this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1, headline,
         { kicker: stakes.kicker, stakes: stakes.line, decisive: stakes.decisive, taunt, autoSeconds: handoverSeconds });
       if (stakes.decisive) this.audioManager.playDrumroll();
@@ -1752,7 +1787,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
       WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
     this.jonhSays(this.reactionSelector.selectReaction('moved'));

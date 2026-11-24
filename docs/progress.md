@@ -835,3 +835,24 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 - A live online room.
 - Real-time feel and pacing: the browser here runs at about 4 fps, so the replay was stepped at an exact 60 Hz.
 
+### 10. Transitions and HUD polish — done
+
+(Done before items 8 and 9, which are being built in parallel worktrees and merged afterwards.)
+
+**Done**
+- **Chapter cards** (`ui/transition.ts`, CSS in `menu.css`). Entering a garden now shows an ink panel stamped with its name and a kicker, then an iris opens onto play (about 1.2 s; decorative; pointer events pass through). Before, maps swapped instantly.
+  - Kickers: "Garden 3" (campaign number), "Daily Bonk", "Round 2 of 4", "Final round".
+  - Retry never shows a card, so the one-more-try loop stays instant.
+  - The first hot-seat or online handover of a round waits out the card, and its auto-advance bar includes that wait.
+  - Off under reduced motion. The menu's own iris is skipped when a card is already covering the way in.
+- **Desktop FIRE out of the field.** With a mouse (`hover: hover`, `pointer: fine`, at least 1000×640), FIRE (84 px) and the Next/Skip pill sit in the control row under the garden, right of the sliders, so they no longer cover the playfield. Touch screens keep the thumb-side in-canvas button.
+- **Readable on phones.** `fx/readability.ts` scales Jonh's speech bubble and the landing label up as the canvas shrinks (1× at full size, about 1.3× at 844×390, capped at 1.6×). It is re-measured whenever the canvas refits.
+
+**Verified**
+- `tests/readability.test.ts`.
+- Browser: the chapter card read "GARDEN 1 / JONH'S BACKYARD", shown by pausing CSS animations at 320 ms, then the iris opened onto play.
+- The desktop rules, injected unconditionally because headless Chrome reports `hover: none` / `pointer: none` and cannot emulate them, put FIRE below the canvas: solo canvas bottom 699 px, FIRE 703–787 px at x 1332–1416, sliders end at x 1140; hot-seat similar; no page overflow.
+- At 844×390 the boost measured 1.31 and the bubble read clearly.
+
+**Not verified:** the desktop media query on a real mouse-driven browser (reasoned from the injected-rule check), and card timing in real time (headless runs at about 4 fps).
+

@@ -610,7 +610,8 @@ export class MenuOverlay {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const reduced = document.documentElement.classList.contains('reduced-motion') ||
       Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
-    if (enteringPlay && !reduced) {
+    // A chapter card (ui/transition.ts) already covers the way into play.
+    if (enteringPlay && !reduced && !document.querySelector('.title-card')) {
       const iris = el('div', 'iris');
       document.body.appendChild(iris);
       iris.addEventListener('animationend', () => iris.remove(), { once: true });

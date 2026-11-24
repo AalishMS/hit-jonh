@@ -46,6 +46,14 @@ export class TrailRenderer {
     this.redraw();
   }
 
+  /** Extra label size on small screens (see fx/readability.ts). */
+  private textBoost = 1;
+  setTextBoost(boost: number): void {
+    if (boost === this.textBoost) return;
+    this.textBoost = boost;
+    this.redraw();
+  }
+
   constructor(scene: Phaser.Scene) {
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(6);
@@ -139,7 +147,7 @@ export class TrailRenderer {
     if (marker) {
       this.landingText.setText(`${this.activeLandingMarker ? '' : 'Last: '}${marker.label}`);
       // Sized and placed in screen terms, so zoomed-out maps keep it readable.
-      const k = 1 / (this.view.zoom ?? 1);
+      const k = this.textBoost / (this.view.zoom ?? 1);
       this.landingText.setScale(k).setPosition(
         Math.max(10 * k, Math.min(this.view.width - this.landingText.width * k - 10 * k, marker.x + 12 * k)),
         (this.view.bottom ?? this.view.height) - 56 * k,
