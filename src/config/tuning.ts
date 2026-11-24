@@ -141,6 +141,9 @@ export const FLOW = {
   attractShotEverySeconds: 11,
   /** Seconds Jonh lies there after a title-screen bonk before climbing back into his chair. */
   attractRecoverSeconds: 3.4,
+  /** Winning-shot replay [TUNE]: a beat before the cannon swings, and how long after the impact it lingers. */
+  showcaseLeadSeconds: 0.5,
+  showcaseAfterSeconds: 2.2,
 } as const;
 
 /** Reversible art direction: a quiet, sunlit garden with inked cartoon figures. */

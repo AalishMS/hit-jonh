@@ -112,6 +112,10 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
   - The match's final shot spells out exactly what wins or ties under the §7.1 winner rule ("Only a trick shot wins it! A hit ties."). It plays a drumroll and gets a longer card.
   - Whoever just scored taunts the next player on the handover card (hot-seat and online).
   - The round summary before the final round says so.
+  - **Winning-shot replay:** when a match ends, the winner's best hit plays again before the scores. "Best" is their latest trick shot, else their latest hit; ties use any winner's.
+    - It plays in its own garden at the spot where it happened, with their cannon colours, under a "Winning shot · {name}" letterbox.
+    - It is the recorded Matter flight with the full impact, and it is skippable.
+    - It is off under reduced motion, and skipped if a re-simulation no longer reaches Jonh (cross-browser drift online).
 - Which previous trails are visible: active player's last trail in their colour **[PROPOSED]**; showing others' trails faintly is **[OPEN]**.
 
 ## 6.1 Online multiplayer [DECIDED by owner 2026-10-08]

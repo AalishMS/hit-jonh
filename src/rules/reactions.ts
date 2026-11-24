@@ -1,7 +1,7 @@
 import { JONH_TALK, SCORING } from '../config/tuning';
 import {
   FIRST_SHOT_LINES, HAT_LINES, HECKLE_AFTER_MISSES, HECKLE_LINES, HIT_STREAK_LINES, MAP_LINES, MISS_STREAK_LINES,
-  OBSTACLE_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES,
+  OBSTACLE_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES, WINNING_SHOT_LINES,
 } from './jonhLines';
 
 export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss' | 'moved';
@@ -128,6 +128,11 @@ export class JonhReactionSelector {
   /** A heckle while the player takes ages to aim; sharper after a few misses. */
   selectHeckle(missStreak = 0): string {
     return this.pick(missStreak >= 2 ? [...HECKLE_AFTER_MISSES, ...HECKLE_LINES] : HECKLE_LINES);
+  }
+
+  /** Watching the match-winning shot again. */
+  selectWinningShot(): string {
+    return this.pick(WINNING_SHOT_LINES);
   }
 
   /** The title screen: an idle quip, or his line after the demo shot gets him. */

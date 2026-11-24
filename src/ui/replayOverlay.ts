@@ -10,6 +10,14 @@ export class ReplayOverlay {
     parent.appendChild(this.root);
   }
 
+  /** Changes the tag ("REPLAY") and the skip hint, e.g. for the winning-shot replay. */
+  setText(tag: string, hint: string): void {
+    const tagEl = this.root.querySelector('.replay-tag');
+    if (tagEl) tagEl.replaceChildren(document.createElement('i'), document.createTextNode(tag));
+    const hintEl = this.root.querySelector('.replay-hint');
+    if (hintEl) hintEl.textContent = hint;
+  }
+
   show(): void { this.root.classList.add('on'); }
   hide(): void { this.root.classList.remove('on'); }
   get visible(): boolean { return this.root.classList.contains('on'); }

@@ -159,3 +159,13 @@ export const TITLE_HIT_LINES: readonly string[] = [
   'Lovely. A demonstration.',
   'Before the menu, even.',
 ];
+
+/** Jonh watching the winning shot replayed at the end of a match. */
+export const WINNING_SHOT_LINES: readonly string[] = [
+  "That's the one that did it.",
+  'Must we watch it again?',
+  'I was robbed.',
+  'Slow motion. Marvellous.',
+  "Frame it, why don't you.",
+];
+

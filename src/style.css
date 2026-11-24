@@ -251,3 +251,7 @@ input:disabled { opacity: .5; cursor: default; }
 @keyframes caption-fade { to { opacity: 0; } }
 .streak { padding: .35em .8em; border: 3px solid var(--ink); border-radius: 999px; background: var(--pow); color: var(--paper); box-shadow: 0 3px 0 var(--ink); font: 400 1em/1.1 var(--display); letter-spacing: .5px; animation: chip-pop 300ms cubic-bezier(.2, 1.6, .4, 1); }
 @keyframes chip-pop { from { transform: scale(.4); } }
+
+/* Winning-shot replay: the garden is a stage for a moment; the gameplay HUD steps aside. */
+body.showcase-on .hud, body.showcase-on .aim-bar { visibility: hidden; }
+

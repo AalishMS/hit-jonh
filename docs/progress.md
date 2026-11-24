@@ -815,3 +815,23 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 - How the drumroll sounds.
 - Online taunts were exercised only through shared code (`applyOfficialOutcome` records the shooter); there was no live online room.
 
+### 7b. Winning-shot replay — done
+
+**Done**
+- `render/demoStage.ts` (new) is a self-contained garden that plays a recorded shot at Jonh. The cannon swings, winds up and fires with power-scaled launch effects; the ball follows the recorded Matter path; then the full impact plays (hit-stop clock, comic word, flash, particles, camera punch, sound, knock-back) and the ball bounces away. The title screen (item 6) now uses it too.
+- `scenes/ShowcaseScene.ts` (new, registered in `main.ts`) runs over the game when a multiplayer match ends.
+  - It shows the garden and Jonh's spot where the winner's best hit happened (`levelAtMultiplayerPosition`), with the winner's cannon colour and pattern.
+  - A "Winning shot · {name}" letterbox shows (via a new `ReplayOverlay.setText`), and Jonh delivers a line ("Must we watch it again?").
+  - Tap, Enter, Space or Escape skips it. The keys are captured so the game underneath never sees them, and pausing is ignored while it plays.
+- Every body hit of a match (hot-seat and online official outcomes) is remembered with its map, position and exact aim. The match result waits for the replay. Rematch, Home and a rebuilt online match stop the replay cleanly.
+- It is not played under reduced motion, when the winners never hit Jonh, or when a local re-simulation no longer reaches Jonh (cross-browser drift online).
+- The HUD steps aside during the replay (`body.showcase-on`); the player panel stays.
+
+**Verified**
+- Browser (frame clock): a two-player Fence match where Player 2 hit with the position's reference shot. At the end, "WINNING SHOT · PLAYER 2" played: the blue striped cannon fired and BONK landed at the hit position. Then "PLAYER 2 WINS!" appeared with Rematch and Main menu. No page errors.
+- `npm run check` passes (below). The title screen still plays its demo through `DemoStage`; the recorder tests cover every map.
+
+**Not verified:**
+- A live online room.
+- Real-time feel and pacing: the browser here runs at about 4 fps, so the replay was stepped at an exact 60 Hz.
+
