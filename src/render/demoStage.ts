@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import type { AudioManager } from '../audio/audioManager';
 import { FLOW, FX, LOOK, PROJECTILE, WORLD } from '../config/tuning';
-import { aimFrame } from '../fx/cameraDirector';
+import { aimFrame, levelView, type Viewport } from '../fx/cameraDirector';
 import { clamp01, easeInOutSine } from '../fx/easing';
 import { impactProfile, type HitQuality } from '../fx/impactProfile';
 import { levelPhysics } from '../levels/levelPhysics';
@@ -31,6 +31,8 @@ export interface DemoStageOptions {
   /** Cannon paint (multiplayer colour + pattern); null keeps the solo cannon. */
   color?: number | null;
   pattern?: string;
+  /** In-canvas text size boost on small screens (see fx/readability.ts). */
+  textBoost?: number;
 }
 
 export interface DemoShot {
@@ -62,6 +64,8 @@ export class DemoStage {
   private recoverIn: number | null = null;
   private readonly color: number | null;
   private readonly pattern: string;
+  /** The map's resting view: wide maps (the Valley) are shown zoomed out, as in play. */
+  private readonly view: Viewport;
 
   constructor(scene: Phaser.Scene, readonly level: LevelData, private readonly deps: DemoStageDeps, options: DemoStageOptions) {
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
@@ -76,6 +80,11 @@ export class DemoStage {
     this.cannon.draw(this.angle, this.color, this.pattern);
     this.ball = new BallRenderer(scene, metresToPixels(PROJECTILE.radiusMetres, ppm));
     this.ball.setVisible(false);
+    this.view = levelView(level.bounds.maxX * ppm, { width: w, height: h });
+    deps.camera.setView(this.view);
+    const k = 1 / (this.view.zoom ?? 1);
+    this.cannon.setUiScale(k);
+    this.jonh.setUiScale(k * (options.textBoost ?? 1));
   }
 
   /** A shot is being aimed, flown or is bouncing away. */
@@ -161,7 +170,7 @@ export class DemoStage {
     this.cannon.setRecoil(recoil, this.angle);
     this.cannon.draw(this.angle, this.color, this.pattern);
     this.jonh.update(reaction);
-    camera.update(dt, aimFrame({ width: WORLD.designWidthPx, height: WORLD.designHeightPx }), 3.5, reduced);
+    camera.update(dt, aimFrame(this.view), 3.5, reduced);
   }
 
   destroy(): void {

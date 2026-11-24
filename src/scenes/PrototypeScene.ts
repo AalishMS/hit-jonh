@@ -469,6 +469,8 @@ export class PrototypeScene extends Phaser.Scene {
 
   private teardownGameplay(): void {
     this.stopShowcase();
+    this.titleCardPending = false;
+    this.missStreak = 0;
     this.daily = null;
     this.autoAdvance.cancel();
     this.resetEffects();
@@ -516,10 +518,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.hideAttract();
     const stage = new DemoStage(this, this.pickAttractLevel(),
       { audio: this.audioManager, effects: this.effects, camera: this.cameraRig, timeline: this.impactTimeline },
-      { hatId: this.progress.selectedHat, reducedMotion: loadSaveData().settings.reducedMotion });
+      { hatId: this.progress.selectedHat, reducedMotion: loadSaveData().settings.reducedMotion, textBoost: this.textBoost });
     this.view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
-    this.cameraRig?.setView(this.view);
-    stage.jonh.setUiScale(this.textBoost);
     this.attract = { stage, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2 };
   }
 
@@ -1663,6 +1663,8 @@ export class PrototypeScene extends Phaser.Scene {
 
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
+    // A round's chapter card pads only the handover that follows it (an online rebuild may land mid-turn).
+    if (match.state !== 'handover') this.titleCardPending = false;
     if (match.state === 'handover') this.applyMultiplayerPosition();
     this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Shot ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
       match.players, match.state === 'result' ? match.lastShooterIndex
@@ -1828,6 +1830,7 @@ export class PrototypeScene extends Phaser.Scene {
       playerName: player.name, color: player.color, pattern: player.pattern,
       hatId: this.progress.selectedHat, reducedMotion: false,
       line: this.reactionSelector.selectWinningShot(),
+      textBoost: this.textBoost,
       audio: this.audioManager,
       onDone: () => {
         document.body.classList.remove('showcase-on');

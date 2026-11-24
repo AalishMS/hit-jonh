@@ -44,7 +44,8 @@ export class CanvasAim {
   constructor(private canvas: HTMLCanvasElement, hooks: CanvasAimHooks) {
     const options = { signal: this.abort.signal };
     canvas.addEventListener('pointerdown', (event) => {
-      if (!hooks.canAim() || !event.isPrimary || event.button !== 0) return;
+      // Pointer checks first: canAim() may skip a result window, which only a real aim press should do.
+      if (!event.isPrimary || event.button !== 0 || !hooks.canAim()) return;
       const rect = canvas.getBoundingClientRect();
       const world = hooks.toWorld(event.clientX, event.clientY);
       const pivot = hooks.pivot();

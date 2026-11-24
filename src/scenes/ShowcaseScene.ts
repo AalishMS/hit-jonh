@@ -22,6 +22,8 @@ export interface ShowcaseData {
   reducedMotion: boolean;
   /** Jonh's line when it lands again. */
   line: string;
+  /** In-canvas text size boost on small screens (see fx/readability.ts). */
+  textBoost: number;
   audio: AudioManager;
   /** Called once, when the replay ends or is skipped. */
   onDone: () => void;
@@ -42,11 +44,13 @@ export class ShowcaseScene extends Phaser.Scene {
   private wait = 0;
   private after: number | null = null;
   private finished = false;
-  private readonly abort = new AbortController();
+  /** Recreated per run: Phaser reuses this scene instance, and an aborted signal adds no listeners. */
+  private abort = new AbortController();
 
   constructor() { super('ShowcaseScene'); }
 
   create(data: ShowcaseData): void {
+    this.abort = new AbortController();
     this.showcase = data;
     this.finished = false;
     this.wait = FLOW.showcaseLeadSeconds;
@@ -56,7 +60,7 @@ export class ShowcaseScene extends Phaser.Scene {
     this.effects = new ShotEffectsRenderer(this);
     this.stage = new DemoStage(this, data.level,
       { audio: data.audio, effects: this.effects, camera: new CameraRig(this.cameras.main), timeline: this.timeline },
-      { hatId: data.hatId, reducedMotion: data.reducedMotion, color: data.color, pattern: data.pattern });
+      { hatId: data.hatId, reducedMotion: data.reducedMotion, color: data.color, pattern: data.pattern, textBoost: data.textBoost });
     this.overlay = new ReplayOverlay(document.getElementById('game') ?? document.body);
     this.overlay.setText(`Winning shot · ${data.playerName}`, 'Tap or press Enter to skip');
     this.overlay.show();

@@ -119,6 +119,11 @@ export class MenuOverlay {
     this.container.addEventListener('click', (event) => {
       if (event.target instanceof HTMLElement && event.target.closest('button')) this.callbacks.onClick?.();
     });
+    // A key held from the game (Enter or Space used to skip a result) must not press the button that
+    // just got focus: repeats never activate menu buttons. A fresh press still does.
+    this.container.addEventListener('keydown', (event) => {
+      if (event.repeat && (event.code === 'Enter' || event.code === 'Space' || event.code === 'NumpadEnter')) event.preventDefault();
+    }, { capture: true });
 
     this.content = document.createElement('div');
     this.content.className = 'menu-content';
@@ -151,8 +156,10 @@ export class MenuOverlay {
 
   /** A keyboard shortcut that lives as long as the current view (ignores repeats and typing). */
   private shortcut(code: string, action: () => void, signal: AbortSignal): void {
+    const view = this.currentView;
     window.addEventListener('keydown', (e) => {
       if (e.code !== code || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.currentView !== view || !this.isVisible()) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       e.preventDefault();
@@ -605,6 +612,9 @@ export class MenuOverlay {
 
   hide(intoPlay = false): void {
     const enteringPlay = intoPlay || this.currentView === 'map_select' || this.currentView === 'multi_setup' || this.currentView === 'daily';
+    // The hidden view's buttons and shortcuts (R, N) must not keep acting during play.
+    this.clickAbortController?.abort();
+    this.clickAbortController = null;
     this.currentView = 'none';
     this.container.style.display = 'none';
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

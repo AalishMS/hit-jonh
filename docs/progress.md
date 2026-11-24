@@ -856,3 +856,18 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** the desktop media query on a real mouse-driven browser (reasoned from the injected-rule check), and card timing in real time (headless runs at about 4 fps).
 
+### Independent review fixes
+
+A read-only Sonnet review of the pass's commits found three bugs and some risks. All are fixed:
+- **Stale R/N shortcuts (bug).** Hiding the solo result never removed its key listeners, so R during play re-ran Retry (unlimited attempts) and N reloaded the garden. `MenuOverlay.hide()` now aborts the view's listeners, and shortcuts act only while their view is on show. Browser: after Retry and a miss, R and N during play left "2 of 3 attempts" and the garden unchanged.
+- **Second winning-shot replay not skippable by keyboard (bug).** Phaser reuses the scene instance, so its aborted listener controller added nothing the second time. A fresh controller is now made per run.
+- **Winning shot on Across the Valley played off-screen (bug).** `DemoStage` now frames a garden with its resting view (`levelView`), zoomed out as in play, with the matching cannon and bubble UI scale.
+- **Held Enter/Space pressed the next screen's button (risk).** Key repeats never activate menu buttons now (capture listener on the overlay), so holding a key after a skip cannot hit Retry, Next garden or Rematch. A fresh press still works.
+- **Nits:**
+  - canvas aim checks pointer type and button before it can skip a result (a right-click or second finger no longer skips);
+  - the chapter-card handover delay is cleared when no handover follows, and on Home;
+  - Jonh's miss streak resets on Home;
+  - the replay's speech bubble gets the phone text boost.
+
+`npm run check`: `Tests 522 passed | 8 skipped`.
+
