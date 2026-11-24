@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import Matter, { type Body, type Engine } from '@matter-js';
-import { PHYSICS, PROJECTILE, WORLD } from '../src/config/tuning';
+import { AIM, PHYSICS, PROJECTILE, WORLD } from '../src/config/tuning';
+import { hasMechanics } from '../src/dev/difficulty';
+import { MAPS } from '../src/levels';
 import { jonhAt } from '../src/levels/build';
+import { levelPhysics } from '../src/levels/levelPhysics';
+import { levelAtMultiplayerPosition } from '../src/levels/multiplayerPositions';
 import type { LevelData, PortalData } from '../src/levels/types';
 import { validateLevel } from '../src/levels/validation';
 import { MatterAdapter, type ProjectileState } from '../src/physics/matterAdapter';
 import { runHeadlessShot } from '../src/physics/headlessShot';
-import { matterGravityY, metresToPixels, simYToWorldY, speedMsToMatterVelocity } from '../src/sim/units';
+import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY, speedMsToMatterVelocity } from '../src/sim/units';
 import { sweepCircleVsDisc } from '../src/sim/swept';
 
 const PPM = WORLD.pixelsPerMetre;
@@ -228,10 +232,44 @@ describe('swept circle vs disc', () => {
   });
 });
 
+describe('mechanic maps', () => {
+  for (const base of MAPS.filter(hasMechanics)) {
+    it(`${base.id}: a low maximum-power shot is stopped by a solid obstacle, not by glass or a portal`, () => {
+      for (const position of base.multiplayerPositions) {
+        const level = levelAtMultiplayerPosition(base, position.id);
+        const w = world(level);
+        const rad = 10 * Math.PI / 180;
+        const offset = AIM.barrelLengthMetres + R + AIM.muzzleGapMetres;
+        w.adapter.spawnProjectile(metresToPixels(level.cannonSpawn.x + offset * Math.cos(rad), PPM),
+          simYToWorldY(level.cannonSpawn.y + offset * Math.sin(rad), H, PPM), R * PPM,
+          launchVelocityToWorld(levelPhysics(level).maxSpeedMs, 10, PPM));
+        let first: ProjectileState | null = null;
+        for (let i = 0; i < 720 && !first; i++) {
+          Matter.Engine.update(w.engine, PHYSICS.fixedStepSeconds * 1000);
+          const state = w.adapter.stepProjectile(level, R)!;
+          expect(state.brokenObstacleIds, `${position.id}: smashed before being blocked`).toEqual([]);
+          expect(state.portalsUsed, `${position.id}: used a portal before being blocked`).toEqual([]);
+          if (state.obstacleContacts.length > 0) first = state;
+        }
+        const blocker = level.obstacles.find(o => o.id === first?.obstacleContacts[0]?.id);
+        expect(blocker?.breakable, `${position.id}: blocked by ${blocker?.id}`).toBeUndefined();
+      }
+    });
+  }
+});
+
 describe('headless runner', () => {
   it('reports smashed props and portals used before the shot resolved', () => {
-    const r = runHeadlessShot(GLASS_LAB, 20, 90);
-    expect(Array.isArray(r.brokenObstacleIds)).toBe(true);
-    expect(Array.isArray(r.portalsUsed)).toBe(true);
+    const greenhouse = MAPS.find(m => m.id === 'greenhouse')!;
+    const smash = runHeadlessShot(greenhouse, 53, 46);
+    expect(smash.outcome).toBe('body');
+    expect(smash.brokenObstacleIds).toEqual(['pane-roof-2']);
+    expect(smash.portalsUsed).toEqual([]);
+    const magic = MAPS.find(m => m.id === 'magic')!;
+    const hoop = runHeadlessShot(magic, 48, 29);
+    expect(hoop.outcome).toBe('body');
+    expect(hoop.portalsUsed).toEqual(['hoops']);
+    expect(hoop.brokenObstacleIds).toEqual([]);
+    expect(runHeadlessShot(magic, 48, 29)).toEqual(hoop);
   });
 });
