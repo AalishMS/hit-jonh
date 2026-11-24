@@ -1,4 +1,4 @@
-import type { Box2D, JonhSpawnData, ObstacleData } from './types';
+import type { Box2D, BreakableData, JonhSpawnData, ObstacleData } from './types';
 
 /** The standard garden frame (SPEC §11): 25.6 × 14.4 m world, ground top at 1.6 m. */
 export const GARDEN_BOUNDS: Box2D = { minX: 0, maxX: 25.6, minY: 0, maxY: 14.4 };
@@ -15,4 +15,9 @@ export function jonhAt(x: number, floorY: number): JonhSpawnData {
 
 export function obstacle(id: string, minX: number, maxX: number, minY: number, maxY: number, material: string, ricochet: boolean): ObstacleData {
   return { id, box: { minX, maxX, minY, maxY }, material, ricochet };
+}
+
+/** A breakable glass pane: bounces a soft shot, smashed by a hard one. Never a ricochet surface [PROPOSED]. */
+export function pane(id: string, minX: number, maxX: number, minY: number, maxY: number, breakable: BreakableData): ObstacleData {
+  return { id, box: { minX, maxX, minY, maxY }, material: 'glass', ricochet: false, breakable };
 }

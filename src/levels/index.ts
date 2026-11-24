@@ -1,6 +1,8 @@
 import { BACKYARD_LEVEL } from './backyard';
 import { BANKSHOT_LEVEL } from './bankshot';
 import { FENCE_LEVEL } from './fence';
+import { GREENHOUSE_LEVEL } from './greenhouse';
+import { MAGIC_LEVEL } from './magic';
 import { MOON_LEVEL } from './moon';
 import { ROOFTOP_LEVEL } from './rooftop';
 import { RUBBER_LEVEL } from './rubber';
@@ -18,6 +20,8 @@ export const MAPS: LevelData[] = [
   TRAMPOLINE_LEVEL,
   MOON_LEVEL,
   VALLEY_LEVEL,
+  GREENHOUSE_LEVEL,
+  MAGIC_LEVEL,
 ];
 
 export const MAP_IDS: readonly string[] = MAPS.map(m => m.id);
@@ -40,4 +44,4 @@ export function inTourOrder(ids: Iterable<string>): string[] {
   return MAP_IDS.filter(id => chosen.has(id));
 }
 
-export { BACKYARD_LEVEL, BANKSHOT_LEVEL, FENCE_LEVEL, MOON_LEVEL, ROOFTOP_LEVEL, RUBBER_LEVEL, TRAMPOLINE_LEVEL, VALLEY_LEVEL };
+export { BACKYARD_LEVEL, BANKSHOT_LEVEL, FENCE_LEVEL, GREENHOUSE_LEVEL, MAGIC_LEVEL, MOON_LEVEL, ROOFTOP_LEVEL, RUBBER_LEVEL, TRAMPOLINE_LEVEL, VALLEY_LEVEL };

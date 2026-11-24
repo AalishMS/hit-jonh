@@ -198,7 +198,7 @@ export const DIFFICULTY = {
    * Mechanic maps: the least share of hits that must smash a breakable prop or go through a portal
    * first (coarse grid, every target position).
    */
-  minMechanicShare: {} as Readonly<Record<string, number>>,
+  minMechanicShare: { greenhouse: 1, magic: 1 } as Readonly<Record<string, number>>,
 } as const;
 
 export interface MaterialProps {
