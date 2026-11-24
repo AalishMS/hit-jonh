@@ -305,3 +305,9 @@
 @keyframes title-pop { from { transform: scale(.4) rotate(-8deg); opacity: 0; } }
 @keyframes title-out { to { transform: scale(1.15); opacity: 0; } }
 
+/* ---------- Wardrobe tabs (real game pass) ---------- */
+.wardrobe-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 4px 0 6px; }
+.wardrobe-tab { min-height: 40px; padding: 8px 16px 6px; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper);
+  box-shadow: 0 3px 0 var(--ink); font: 400 17px/1 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--ink); }
+.wardrobe-tab.active { background: var(--zap); transform: translateY(-2px); }
+

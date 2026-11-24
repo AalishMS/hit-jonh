@@ -8,6 +8,7 @@ import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame,
 import { clamp01 } from '../fx/easing';
 import { recordShot as recordDemoShot, type RecordedShot } from '../physics/shotRecorder';
 import { DemoStage } from '../render/demoStage';
+import { buildWardrobe, type WardrobeSection } from '../ui/wardrobe';
 import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
 import { campaignOrder } from '../rules/campaign';
@@ -1263,51 +1264,33 @@ export class PrototypeScene extends Phaser.Scene {
     });
   }
 
+  /** Jonh's wardrobe: every earned cosmetic, as tabs (hats today; more kinds plug in as sections). */
+  private wardrobeTab = 'hats';
+
   private showLocker(): void {
     const mapIds = MAPS.map(m => m.id);
-    this.menuOverlay.showCustom('locker', (content, signal) => {
-      const h = document.createElement('h2');
-      h.textContent = "Jonh's hats";
-      const intro = document.createElement('p');
-      intro.textContent = 'Earn hats by ruining his afternoon in new ways. Pick one; he will wear it everywhere.';
-      const grid = document.createElement('div');
-      grid.className = 'hat-grid';
-      const unlocked = new Set(unlockedHats(this.progress, mapIds));
-      for (const id of HAT_ORDER) {
-        const rule = HAT_RULES[id];
-        const open = unlocked.has(id);
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = `hat-card${open ? '' : ' locked'}${this.progress.selectedHat === id ? ' selected' : ''}`;
-        card.disabled = !open;
-        card.setAttribute('aria-pressed', String(this.progress.selectedHat === id));
-        const img = document.createElement('img');
-        img.src = this.hatImage(id);
-        img.alt = '';
-        const name = document.createElement('span');
-        name.textContent = open ? rule.name : 'Locked';
-        const hint = document.createElement('small');
-        hint.textContent = rule.hint;
-        card.append(img, name, hint);
-        card.addEventListener('click', () => {
-          this.progress = { ...this.progress, selectedHat: id };
-          saveProgress(this.progress);
-          this.attract?.stage.jonh.setHat(id);
-          this.showLocker();
-        }, { signal });
-        grid.appendChild(card);
-      }
-      const back = document.createElement('button');
-      back.type = 'button';
-      back.className = 'btn';
-      back.textContent = 'Back';
-      back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
-      const stats = document.createElement('p');
-      stats.className = 'home-note';
-      stats.textContent = `Hits: ${this.progress.totalHits} · Best streak: ${this.progress.bestStreak} · Three-star gardens: ${this.progress.threeStarMaps.length}/${mapIds.length}`;
-      content.append(h, intro, grid, stats, back);
-      (grid.querySelector('button:not(:disabled)') as HTMLElement | null)?.focus();
-    });
+    const unlockedHatIds = new Set(unlockedHats(this.progress, mapIds));
+    const sections: WardrobeSection[] = [{
+      id: 'hats',
+      title: 'Hats',
+      items: HAT_ORDER.map(id => ({ id, name: HAT_RULES[id].name, hint: HAT_RULES[id].hint, unlocked: unlockedHatIds.has(id),
+        selected: this.progress.selectedHat === id, image: this.hatImage(id) })),
+      onSelect: id => {
+        this.progress = { ...this.progress, selectedHat: id as HatName };
+        saveProgress(this.progress);
+        this.attract?.stage.jonh.setHat(id as HatName);
+        this.showLocker();
+      },
+    }];
+    const campaign = campaignTotals(campaignStatus(MAP_IDS, loadSaveData().solo));
+    this.menuOverlay.showCustom('locker', (content, signal) => buildWardrobe(content, signal, {
+      intro: 'Earn things by ruining his afternoon in new ways. Pick one; he will wear it everywhere.',
+      stats: `Hits: ${this.progress.totalHits} · Best streak: ${this.progress.bestStreak} · Campaign ★ ${campaign.stars} / ${campaign.maxStars}`,
+      sections,
+      activeSection: this.wardrobeTab,
+      onTab: id => { this.wardrobeTab = id; this.showLocker(); },
+      onBack: () => this.menuOverlay.showHome(),
+    }));
   }
 
   private replayPlan() {
