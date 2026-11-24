@@ -276,6 +276,27 @@ export const FX = {
 };
 
 /**
+ * Breakable props and portals: presentation only [PROPOSED][TUNE]. The physics values live in level data.
+ * Reduced motion keeps the state changes (pane gone, hoop spent) and drops everything that flies or spins.
+ */
+export const MECHANIC_FX = {
+  /** Glass shards thrown along the ball's path when a pane breaks. */
+  shardCount: 14,
+  shardSpeedMinPx: 140,
+  shardSpeedMaxPx: 360,
+  /** Sparkles at each hoop when the ball goes through. */
+  sparkleCount: 10,
+  /** Seconds per turn of a hoop's swirl (ambient motion stays slow, ≥ 4 s). */
+  swirlTurnSeconds: 5,
+  /** Swirl opacity once a hoop has been used this shot (each portal works once per shot). */
+  spentAlpha: 0.22,
+  popSeconds: 0.3,
+  /** The exit hoop is drawn smaller than the entry and squashed along its heading, so it points. */
+  exitScale: 0.8,
+  exitSquash: 0.45,
+};
+
+/**
  * Online multiplayer (spec 2026-10-08). PROPOSED/TUNE except turnLimitSeconds (owner decision).
  * Imported by both the browser and the Convex functions.
  */

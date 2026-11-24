@@ -5,6 +5,7 @@ import { hash01 } from '../fx/easing';
 import type { LevelData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import { artImage, artMeta, artScale } from './artTextures';
+import { MechanicsRenderer } from './mechanicsRenderer';
 
 /** Layer depths: background < playfield < actors. */
 const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
@@ -28,13 +29,17 @@ export class SceneryRenderer {
   /** World-x extent of the drawn layers for the current map. */
   private left = -OVERDRAW;
   private span = 2 * OVERDRAW + 1280;
+  /** Breakable props, portals and their effects: the scene forwards physics events and resets here. */
+  readonly mechanics: MechanicsRenderer;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly ppm: number,
     private readonly worldHeightPx: number,
     private readonly worldWidthPx: number,
-  ) {}
+  ) {
+    this.mechanics = new MechanicsRenderer(scene, ppm, worldHeightPx);
+  }
 
   draw(level: LevelData): void {
     this.clear();
@@ -98,8 +103,9 @@ export class SceneryRenderer {
     add(s.add.tileSprite(LEFT, groundTop - 1.5, SPAN, 40, groundKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
     add(s.add.tileSprite(LEFT, groundTop + 38, SPAN, 400, earthKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
 
-    // Obstacles: textures generated at their collider size.
+    // Obstacles: textures generated at their collider size. Breakables are drawn by `mechanics`.
     for (const obs of level.obstacles) {
+      if (obs.breakable) continue;
       const x = metresToPixels(obs.box.minX, this.ppm);
       const y = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
       if (obs.material === 'rubber') {
@@ -132,10 +138,13 @@ export class SceneryRenderer {
       obj.setScale(obj.scaleX * (0.8 + hash01(i) * 0.4));
       this.flora.push({ obj, phase: hash01(i * 9.1) * Math.PI * 2 });
     }
+
+    this.mechanics.draw(level);
   }
 
   /** Ambient motion on the real-time clock (not the hit-stop clock). */
   update(dt: number, reduced: boolean): void {
+    this.mechanics.update(dt, reduced);
     if (reduced || !(dt > 0)) return;
     this.time += dt;
     this.rays?.setRotation(this.time * 0.05);
@@ -161,7 +170,11 @@ export class SceneryRenderer {
     this.birds = [];
     this.flora = [];
     this.rays = null;
+    this.mechanics.clear();
   }
 
-  destroy(): void { this.clear(); }
+  destroy(): void {
+    this.clear();
+    this.mechanics.destroy();
+  }
 }

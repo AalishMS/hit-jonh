@@ -56,7 +56,7 @@ const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
 };
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
@@ -727,7 +727,9 @@ export class PrototypeScene extends Phaser.Scene {
             this.audioManager.playOutOfBounds();
           }
           if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
-          this.detectBounce(state, reduced);
+          // [mechanics] A smashed pane or a portal plays its own effects and sound; it is not a bounce.
+          if (this.sceneryRenderer.mechanics.onStep(state, reduced, this.audioManager)) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+          else this.detectBounce(state, reduced);
           this.lastProjectileState = state;
           const ppmNow = WORLD.pixelsPerMetre;
           this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
@@ -1242,6 +1244,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.pendingLaunch = null;
     this.impactQuality = null;
     this.effects?.reset();
+    // [mechanics] Every pane whole and every portal ready again (SPEC §7.2).
+    this.sceneryRenderer?.mechanics.reset();
     this.cameraRig?.reset();
     this.cannonRenderer?.setRecoil(0, this.currentAngleDeg);
     this.jonhRenderer?.settleImpact();

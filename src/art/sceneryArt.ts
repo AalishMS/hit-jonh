@@ -1,4 +1,5 @@
 import type { LevelData, ObstacleData } from '../levels/types';
+import { mechanicArt, mechanicObstacleBody } from './mechanicArt';
 import { PAL } from './palette';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
 
@@ -39,6 +40,10 @@ export const THEMES: Record<string, Theme> = {
     id: 'valley', skyTop: '#62B6E8', skyLow: '#FFD9A0', far: '#E0A87A', farDetail: '#C98C62', mid: '#D19A6A', midDark: '#A8714A', sunY: 110, sun: PAL.sun,
     skyline: 'mesas', groundTop: '#C9A06A', groundDark: '#A37A48', groundEarth: '#B98A55', noFence: true,
   },
+  /** A bright spring morning in the allotment. */
+  greenhouse: { id: 'greenhouse', skyTop: '#58C4F0', skyLow: '#FFF2C6', far: '#ACDBBE', farDetail: '#90C8A6', mid: '#84C86E', midDark: '#5AA44E', sunY: 86, sun: PAL.sun, skyline: 'village' },
+  /** A garden party at dusk. */
+  magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
 };
 
 export function themeFor(levelId: string): Theme {
@@ -362,6 +367,8 @@ function hedge(w: number, h: number): string {
 }
 
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
+  const mechanic = mechanicObstacleBody(obs, w, h);
+  if (mechanic !== null) return mechanic;
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.id.includes('trunk')) return trunk(w, h);
   if (obs.id.includes('planter')) return planter(w, h);
@@ -400,5 +407,5 @@ export function obstacleArt(levels: readonly LevelData[], ppm: number): ArtDef[]
 
 export function sceneryArt(levels: readonly LevelData[], ppm: number): ArtDef[] {
   const themes = [...new Set(levels.map(l => themeFor(l.id)))];
-  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm)];
+  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm), ...mechanicArt(levels, ppm, obstacleKey)];
 }
