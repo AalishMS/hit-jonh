@@ -73,6 +73,8 @@ export const OBSTACLE_LINES: ReadonlyArray<{ match: { id?: string; material?: st
   { match: { id: 'billboard' }, lines: ['Mind the advertising.', "That billboard isn't even mine."] },
   { match: { id: 'carport' }, lines: ['Mind the carport.', 'That carport is load-bearing, probably.'] },
   { match: { id: 'silo' }, lines: ['You hit a silo. From there. Somehow.'] },
+  { match: { material: 'glass' }, lines: ['Mind the glass!', 'That glass was imported.'] },
+  { match: { material: 'velvet' }, lines: ['That velvet was hired.', 'Mind the curtains.'] },
   { match: { material: 'trampoline' }, lines: ['That trampoline is for the grandchildren.', 'Boing. Very mature.'] },
   { match: { material: 'rubber' }, lines: ['Boing. Very mature.', 'The rubber ceiling was a bargain.'] },
   { match: { material: 'leaves' }, lines: ['Leave the apple tree out of this.', "You've bruised the apples."] },
@@ -117,6 +119,16 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     arrival: ['Finally. Some peace and quiet.', 'No one will bother me on the moon.'],
     miss: ['Low gravity. High blood pressure.', 'It floats. You might have noticed.'],
     hit: ['You followed me to the moon?', 'One small step for man. One giant bonk.'],
+  },
+  greenhouse: {
+    arrival: ['Double glazing. Perfectly safe.', 'Nothing gets through glass.', 'Lovely and warm in here.'],
+    miss: ['Not a scratch on the glass.', 'The tomatoes are unbothered.'],
+    hit: ['Through the glass? Really?', 'My seedlings!'],
+  },
+  magic: {
+    arrival: ['Sealed tent. No tricks.', 'Abracadabra. Safe as houses.', 'Nobody gets past the velvet.'],
+    miss: ['The magician will hear about this.', 'Nothing up my sleeve, either.'],
+    hit: ['Was that part of the act?', "Through the hoop? That's cheating."],
   },
   valley: {
     arrival: ["They'll never reach me out here.", 'Is that a cannon? From over there?'],

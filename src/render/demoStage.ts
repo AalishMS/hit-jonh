@@ -64,7 +64,7 @@ export class DemoStage {
   readonly cannon: CannonRenderer;
   readonly ball: BallRenderer;
   angle = 38;
-  private demo: (DemoShot & { aimFrom: number; phase: Phase; t: number; ball: { x: number; y: number; vx: number; vy: number } | null }) | null = null;
+  private demo: (DemoShot & { aimFrom: number; phase: Phase; t: number; ball: { x: number; y: number; vx: number; vy: number } | null; nextEvent: number }) | null = null;
   private recoverIn: number | null = null;
   private readonly color: number | null;
   private readonly pattern: string;
@@ -98,7 +98,8 @@ export class DemoStage {
     if (this.demo) return;
     this.jonh.resetToIdle();
     this.recoverIn = null;
-    this.demo = { ...shot, aimFrom: this.angle, phase: 'aim', t: 0, ball: null };
+    this.scenery.mechanics.reset(); // every pane whole, every hoop ready (as before any shot)
+    this.demo = { ...shot, aimFrom: this.angle, phase: 'aim', t: 0, ball: null, nextEvent: 0 };
   }
 
   update(dt: number, reduced: boolean): void {
@@ -131,6 +132,12 @@ export class DemoStage {
         const q = sampleRecorded(points, Math.max(0, now - 1 / 60));
         const maxSpeed = levelPhysics(this.level).maxSpeedMs * WORLD.pixelsPerMetre;
         this.ball.draw(p.x, p.y, (p.x - q.x) * 60, (p.y - q.y) * 60, dt, reduced, maxSpeed);
+        // Smashed panes and portal jumps happen on the recorded steps, with their sound and sparkle.
+        const recorded = d.shot.events;
+        while (d.nextEvent < recorded.length && recorded[d.nextEvent]!.t <= now) {
+          const e = recorded[d.nextEvent++]!;
+          this.scenery.mechanics.playRecorded(e.events, e.vxSim, e.vySim, reduced, audio);
+        }
         if (d.t >= end) {
           d.phase = 'after';
           d.t = 0;

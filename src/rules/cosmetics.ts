@@ -5,7 +5,7 @@
  *
  * Unlock thresholds are [PROPOSED]. Star gates use the campaign star total (3 per garden).
  */
-import { campaignStatus, campaignTotals, type MapRecord } from './campaign';
+import { CAMPAIGN_ORDER, campaignStatus, campaignTotals, type MapRecord } from './campaign';
 import type { Progress } from './progression';
 
 export const CANNON_SKIN_ORDER = ['classic', 'admiral', 'garden', 'pirate', 'moonshot', 'golden'] as const;
@@ -37,12 +37,12 @@ export interface CosmeticRule {
   unlocked: (p: Progress, ctx: CosmeticContext) => boolean;
 }
 
-/** Star gates [PROPOSED]: with eight gardens the maximum is 24. */
+/** Star gates [PROPOSED]. `starsAll` is every campaign star (3 per garden: 30 with ten gardens). */
 export const COSMETIC_GATES = {
   stars6: 6,
   stars12: 12,
   stars18: 18,
-  stars24: 24,
+  starsAll: CAMPAIGN_ORDER.length * 3,
   gardensCleared: 4,
   tricks: 3,
   streak: 5,
@@ -58,7 +58,7 @@ export const CANNON_SKIN_RULES: Record<CannonSkinId, CosmeticRule> = {
   garden: { name: 'Garden Party', hint: `Clear ${G.gardensCleared} gardens.`, unlocked: (_p, c) => c.cleared >= G.gardensCleared },
   pirate: { name: 'Pirate', hint: `Land ${G.tricks} trick shots (ricochet hits).`, unlocked: p => p.trickHits >= G.tricks },
   moonshot: { name: 'Moonshot', hint: `Earn ${G.stars12} stars in the gardens.`, unlocked: (_p, c) => c.stars >= G.stars12 },
-  golden: { name: 'Golden Bonk', hint: `Earn every star: ${G.stars24}.`, unlocked: (_p, c) => c.stars >= G.stars24 },
+  golden: { name: 'Golden Bonk', hint: `Earn every star in the gardens (${G.starsAll}).`, unlocked: (_p, c) => c.stars >= G.starsAll },
 };
 
 export const OUTFIT_RULES: Record<OutfitId, CosmeticRule> = {

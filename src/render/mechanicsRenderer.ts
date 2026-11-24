@@ -145,7 +145,15 @@ export class MechanicsRenderer {
     return state.events.length > 0;
   }
 
-  private onEvent(event: MechanicEvent, state: ProjectileState, reduced: boolean, sounds?: MechanicSounds): void {
+  /**
+   * Plays events from a recorded shot (the title demo and the winning-shot replay animate recorded
+   * flights rather than live physics). `vxSim`/`vySim` are the ball's velocity at that step.
+   */
+  playRecorded(events: readonly MechanicEvent[], vxSim: number, vySim: number, reduced: boolean, sounds?: MechanicSounds): void {
+    for (const event of events) this.onEvent(event, { vxSim, vySim }, reduced, sounds);
+  }
+
+  private onEvent(event: MechanicEvent, state: Pick<ProjectileState, 'vxSim' | 'vySim'>, reduced: boolean, sounds?: MechanicSounds): void {
     if (event.kind === 'break') {
       const pane = this.panes.get(event.id);
       if (pane && !pane.broken) {

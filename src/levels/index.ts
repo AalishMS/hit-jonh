@@ -31,7 +31,7 @@ export interface MapPreset { id: string; name: string; maps: readonly string[] }
 /** Multiplayer map-set shortcuts [PROPOSED]; any distinct subset of MAP_IDS is also allowed. */
 export const MAP_PRESETS: readonly MapPreset[] = [
   { id: 'classic', name: 'Classic tour', maps: ['backyard', 'fence', 'rooftop', 'rubber'] },
-  { id: 'new', name: 'Trick shots', maps: ['bankshot', 'trampoline', 'moon', 'valley'] },
+  { id: 'new', name: 'Trick shots', maps: ['bankshot', 'trampoline', 'moon', 'valley', 'greenhouse', 'magic'] },
   { id: 'all', name: 'Every map', maps: MAP_IDS },
 ];
 

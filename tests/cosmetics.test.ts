@@ -25,16 +25,17 @@ describe('cosmetic unlock rules', () => {
     for (const id of OUTFIT_ORDER) expect(OUTFIT_RULES[id].name.length + OUTFIT_RULES[id].hint.length).toBeGreaterThan(5);
   });
 
-  it('opens the star gates at 6, 12, 18 and 24 stars', () => {
+  it('opens the star gates at 6, 12, 18 stars and every star', () => {
     expect(unlockedCannonSkins(freshProgress(), withStars(5))).toEqual(['classic']);
     expect(unlockedCannonSkins(freshProgress(), withStars(6))).toContain('admiral');
     expect(unlockedCannonSkins(freshProgress(), withStars(12))).toContain('moonshot');
     expect(unlockedOutfits(freshProgress(), withStars(11))).not.toContain('hawaiian');
     expect(unlockedOutfits(freshProgress(), withStars(12))).toContain('hawaiian');
     expect(unlockedOutfits(freshProgress(), withStars(18))).toContain('tuxedo');
-    expect(unlockedCannonSkins(freshProgress(), withStars(23))).not.toContain('golden');
-    expect(unlockedCannonSkins(freshProgress(), withStars(24))).toContain('golden');
-    expect(COSMETIC_GATES.stars24).toBe(CAMPAIGN_ORDER.length * 3);
+    const all = CAMPAIGN_ORDER.length * 3;
+    expect(unlockedCannonSkins(freshProgress(), withStars(all - 1))).not.toContain('golden');
+    expect(unlockedCannonSkins(freshProgress(), withStars(all))).toContain('golden');
+    expect(COSMETIC_GATES.starsAll).toBe(all);
   });
 
   it('opens the feat gates', () => {
@@ -61,7 +62,7 @@ describe('cosmetic unlock rules', () => {
     expect(newlyUnlockedOutfits(freshProgress(), p, none)).toEqual(['argyle']);
     expect(newlyUnlockedOutfits(p, p, none)).toEqual([]);
     expect(newlyUnlockedCannonSkins(p, p, withStars(5), withStars(6))).toEqual(['admiral']);
-    expect(newlyUnlockedCannonSkins(p, p, withStars(6), withStars(24))).toEqual(['moonshot', 'golden']);
+    expect(newlyUnlockedCannonSkins(p, p, withStars(6), withStars(COSMETIC_GATES.starsAll))).toEqual(['moonshot', 'golden']);
   });
 
   it('derives stars and gardens cleared from the saved solo bests', () => {
@@ -84,7 +85,7 @@ describe('saved cosmetic selection', () => {
 
   it('a locked selection falls back; an unlocked one is kept', () => {
     expect(sanitizeProgress({ selectedCannon: 'golden', selectedOutfit: 'tuxedo' }, MAP_IDS, withStars(17, 8))).toMatchObject({ selectedCannon: 'classic', selectedOutfit: 'cardigan' });
-    expect(sanitizeProgress({ selectedCannon: 'golden', selectedOutfit: 'tuxedo' }, MAP_IDS, withStars(24, 8))).toMatchObject({ selectedCannon: 'golden', selectedOutfit: 'tuxedo' });
+    expect(sanitizeProgress({ selectedCannon: 'golden', selectedOutfit: 'tuxedo' }, MAP_IDS, withStars(COSMETIC_GATES.starsAll, 8))).toMatchObject({ selectedCannon: 'golden', selectedOutfit: 'tuxedo' });
     expect(sanitizeProgress({ bestStreak: 5, selectedOutfit: 'argyle' }, MAP_IDS).selectedOutfit).toBe('argyle');
     expect(sanitizeProgress({ bestStreak: 4, selectedOutfit: 'argyle' }, MAP_IDS).selectedOutfit).toBe('cardigan');
   });

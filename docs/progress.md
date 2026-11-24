@@ -972,3 +972,28 @@ References: Greenhouse near 24°/58% (front window), middle 53°/46% (roof), far
 **Next**
 - Owner playtest of both maps; tune the glass and hoop placement from feedback; decide on presets; redeploy Convex so online rooms can use the maps.
 
+### 9b. New gardens wired into the pass — done (item 9 complete; all ten items done)
+
+**Done**
+- **Merge.** The only conflict was in `PrototypeScene.ts`: the mechanics hook from the old inline step loop now lives in `simulateStep()`. It runs even during Skip, so broken panes and spent hoops stay correct. All existing outcomes are unchanged.
+- **Campaign order** [PROPOSED]: Backyard → Fence → Rooftop → **Greenhouse** → Rubber Yard → Bank Shot → **Magic Act** → Lunar Picnic → Bounce House → Valley, so each mechanic gets its own step. Gardens with a saved record stay open, so existing saves keep their progress.
+- **Jonh:** opening, miss and hit lines for both gardens, and complaints about glass ("That glass was imported.") and velvet ("That velvet was hired.").
+- **Replays show the mechanics.** `recordShot` captures each step's smash and portal events. `DemoStage` replays them through the same `MechanicsRenderer` (new `playRecorded`), so the title demo and the winning-shot replay smash panes and spin hoops. Every demo starts with whole panes.
+- **Trick shots preset** now includes both new maps [PROPOSED].
+- **Golden Bonk** now needs every campaign star (`COSMETIC_GATES.starsAll`, derived from the campaign: 30 with ten gardens), as the cosmetics tests intended.
+
+**Verified**
+- `npm run check` (below).
+- The full fast-forward/Skip identity suite, the recorder suite and the campaign suite now cover all ten maps.
+- New test: the Greenhouse reference replay records a `break`, the Magic Act a `portal`, and the Backyard none.
+- Browser (dev server and headless Chromium, started and stopped per check):
+  - from a save with three gardens cleared, Continue offered The Greenhouse;
+  - the map list was `backyard fence rooftop greenhouse rubber(L) bankshot(L) magic(L) moon(L) trampoline(L) valley(L)`;
+  - the home tally read ★ 9 / 30;
+  - the title demo on The Greenhouse smashed a roof pane with shards and hit Jonh;
+  - no page errors.
+
+**Owner follow-ups (not done here)**
+- Online rooms can pick the two new maps only after the Convex functions are redeployed (`npx convex dev --once` for dev). No deploy was run.
+- Daily Bonk's date-to-map mapping changed (more maps), and the crown hat now needs three stars on all ten gardens.
+

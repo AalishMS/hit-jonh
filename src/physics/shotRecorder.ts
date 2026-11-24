@@ -3,7 +3,7 @@ import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
 import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
-import { MatterAdapter } from './matterAdapter';
+import { MatterAdapter, type MechanicEvent } from './matterAdapter';
 
 export interface RecordedPoint { t: number; x: number; y: number }
 
@@ -17,6 +17,8 @@ export interface RecordedShot {
   dirX: number;
   /** A ricochet surface was touched before the body. */
   trick: boolean;
+  /** Breakable smashes and portal jumps, with the ball's velocity then (to replay their effects). */
+  events: Array<{ t: number; events: MechanicEvent[]; vxSim: number; vySim: number }>;
 }
 
 /**
@@ -40,6 +42,7 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
   };
   adapter.spawnProjectile(start.x, start.y, PROJECTILE.radiusMetres * ppm, launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm));
   const points: RecordedPoint[] = [{ t: 0, ...start }];
+  const events: RecordedShot['events'] = [];
   const steps = Math.ceil(maxSeconds / PHYSICS.fixedStepSeconds);
   let dirX = 1;
   for (let step = 1; step <= steps; step++) {
@@ -47,12 +50,13 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
     const state = adapter.stepProjectile(level, PROJECTILE.radiusMetres);
     if (!state) break;
     points.push({ t: step * PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx });
+    if (state.events.length > 0) events.push({ t: step * PHYSICS.fixedStepSeconds, events: [...state.events], vxSim: state.vxSim, vySim: state.vySim });
     if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) dirX = Math.sign(state.vxSim);
     if (state.hitJonh) {
-      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody };
+      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody, events };
     }
   }
-  return { points, contactIndex: null, impactSpeedMs: 0, dirX, trick: false };
+  return { points, contactIndex: null, impactSpeedMs: 0, dirX, trick: false, events };
 }
 
 /** The recorded ball position at simulated time `t` (linear between steps). */

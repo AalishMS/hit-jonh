@@ -5,7 +5,7 @@
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
 **Status:** Playable. It has:
-- a solo campaign through eight gardens, with stars, trick-shot badges and unlocks;
+- a solo campaign through ten gardens, including smashable glass and a magician's portal hoops, with stars, trick-shot badges and unlocks;
 - 2–4 player hot-seat and online rooms with stakes callouts, taunts and a winning-shot replay;
 - a hand-drawn "Sunday Funnies" look;
 - layered impact effects with slow-motion replays, an original soundtrack, unlockable cosmetics and a Daily Bonk.

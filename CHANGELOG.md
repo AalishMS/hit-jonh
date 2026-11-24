@@ -28,6 +28,13 @@ The owner asked for Hit Jonh to feel like a polished game people want to keep pl
 - **Taunts.** Whoever just scored taunts the next player on the handover card.
 - **Winning-shot replay.** The winner's best hit plays again, in its own garden and with their cannon, before the scores.
 
+### Variety
+- **Two new gardens and two new mechanics.**
+  - **The Greenhouse:** smash through glass. Soft shots bounce off it; hard ones break through and slow down.
+  - **The Magic Act:** a magician's hoop teleports the ball into a sealed tent.
+  - Both are SI level data with tested reference shots. The 8 existing maps play bit for bit as before.
+- **Cosmetics.** Jonh's wardrobe gains 7 outfits and 6 cannon skins, earned with campaign stars and feats.
+
 ### Presentation
 - **Chapter cards** between gardens ("Garden 3 · Rooftop Lunch", "Final round").
 - **Phone landscape fixed.** The canvas was cropped until a 500 ms poll and the sliders squeezed it. It now refits at once, and the sliders fold into a toggle (the garden is 87% bigger at 844×390).
