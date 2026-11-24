@@ -146,3 +146,38 @@ export function sweepCircleVsBox(
 
   return bestHit;
 }
+
+/**
+ * Sweeps a circle of radius `radius` from `p0` to `p1` against a disc (centre `centre`, radius
+ * `discRadius`). Returns the earliest time in [0, 1] at which they touch (0 when they already do),
+ * or null. Used for portal entries, which are not surfaces: no normal, no contact point.
+ */
+export function sweepCircleVsDisc(
+  p0: Point2D,
+  p1: Point2D,
+  radius: number,
+  centre: Point2D,
+  discRadius: number,
+): number | null {
+  const reach = radius + discRadius;
+  const dx = p0.x - centre.x;
+  const dy = p0.y - centre.y;
+  const c = dx * dx + dy * dy - reach * reach;
+  if (c <= 0) return 0;
+  const vx = p1.x - p0.x;
+  const vy = p1.y - p0.y;
+  const a = vx * vx + vy * vy;
+  if (a <= 1e-12) return null;
+  const b = 2 * (dx * vx + dy * vy);
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : null;
+}
+
+/** True when a circle at `p` overlaps (or touches) the box. */
+export function circleOverlapsBox(p: Point2D, radius: number, box: Box2D): boolean {
+  const dx = p.x - clamp(p.x, box.minX, box.maxX);
+  const dy = p.y - clamp(p.y, box.minY, box.maxY);
+  return dx * dx + dy * dy <= radius * radius;
+}

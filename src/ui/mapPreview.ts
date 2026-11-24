@@ -1,7 +1,8 @@
+import { backdropBox } from '../art/mechanicArt';
 import { PAL } from '../art/palette';
 import { THEMES } from '../art/sceneryArt';
 import { MAPS } from '../levels';
-import type { Box2D, LevelData, ObstacleData } from '../levels/types';
+import type { Box2D, LevelData, ObstacleData, PortalData } from '../levels/types';
 
 const INK = `stroke="${PAL.ink}" stroke-width="3" stroke-linejoin="round"`;
 const PREVIEW_W = 300;
@@ -25,7 +26,12 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   const w = (b.maxX - b.minX) * f.s;
   const h = (b.maxY - b.minY) * f.s;
   const rect = (fill: string, extra = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" ${INK} stroke-width="2"${extra}/>`;
+  if (obs.id.startsWith('frame-')) return rect(PAL.paper);
+  if (obs.id.startsWith('brick-')) return rect(PAL.brick);
+  if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
   switch (obs.material) {
+    case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
+    case 'velvet': return rect(PAL.velvet, ' rx="1.5"');
     case 'wood':
       return obs.id === 'garden-shed'
         ? `${rect(PAL.wood, ' rx="2"')}<rect x="${x}" y="${y}" width="${w}" height="${Math.min(6, h / 4)}" fill="#5B3A4A"/>`
@@ -44,6 +50,22 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'rug': return rect(PAL.pow);
     default: return rect(PAL.stone);
   }
+}
+
+/** The inside of the greenhouse (glass-tinted) or the tent (dark velvet), so they read as rooms. */
+function interiorSvg(level: LevelData, f: Frame): string {
+  const box = backdropBox(level);
+  if (!box) return '';
+  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"` : `fill="${PAL.glass}" opacity="0.55"`;
+  return `<rect x="${f.x(box.minX)}" y="${f.y(box.maxY)}" width="${(box.maxX - box.minX) * f.s}" height="${(box.maxY - box.minY) * f.s}" ${fill}/>`;
+}
+
+/** A magic hoop: face-on at the entry, side-on (pointing the way out) at the exit. */
+function portalSvg(portal: PortalData, f: Frame): string {
+  const r = Math.max(4, portal.entry.radius * f.s * 1.25);
+  const hoop = (cx: number, cy: number, sx: number, rot: number) =>
+    `<g transform="translate(${cx} ${cy}) rotate(${rot}) scale(${sx} 1)"><circle r="${r}" fill="${PAL.magicDark}"/><circle r="${r * 0.45}" fill="${PAL.magic}"/><circle r="${r}" fill="none" stroke="${PAL.brass}" stroke-width="2.4"/></g>`;
+  return hoop(f.x(portal.entry.x), f.y(portal.entry.y), 1, 0) + hoop(f.x(portal.exit.x), f.y(portal.exit.y), 0.5, -portal.exit.angleDeg);
 }
 
 function jonhSvg(body: Box2D, hat: Box2D | undefined, f: Frame): string {
@@ -89,7 +111,9 @@ export function mapPreview(id: string): string {
     <rect x="0" y="${ground}" width="${PREVIEW_W}" height="${PREVIEW_H - ground}" fill="${t.groundEarth ?? PAL.earth}"/>
     <rect x="0" y="${ground}" width="${PREVIEW_W}" height="5" fill="${t.groundTop ?? PAL.grass}"/>
     <path d="M0 ${ground + 0.5} H${PREVIEW_W}" stroke="${PAL.ink}" stroke-width="3"/>
+    ${interiorSvg(level, f)}
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
+    ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
     ${cannonSvg(level, f)}
     ${jonhSvg(level.jonhSpawn.bodyBox, level.jonhSpawn.hatBox, f)}
   </svg>`;
@@ -132,6 +156,8 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   trampoline: 'A hedge, a balcony and a trampoline. Drop it in and let it spring.',
   moon: 'Low gravity. Everything floats. Feather that power.',
   valley: 'He is a dot on a far mesa. Hope you brought the big cannon.',
+  greenhouse: 'Glass shrugs off a soft shot. Hit it hard enough and it smashes.',
+  magic: 'Through the floating hoop and out the other. Power decides where it lands.',
 };
 
 export function mapDescription(id: string): string {

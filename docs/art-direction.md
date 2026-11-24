@@ -21,6 +21,9 @@ All tokens below live in code at `src/art/palette.ts` (game) and `src/style.css`
 | `brick` | `#D9573B` | Roofs, chimney pots, rooftop parapet. |
 | `stone` / `stoneDark` | `#C3BDD6` / `#948DAE` | Concrete building, wall (lavender grey, warm in light). |
 | `rubber` / `rubberDark` | `#FF6FA0` / `#C93E73` | Bouncy surfaces. Pink means "this bounces"; it is used for nothing else. |
+| `glass` / `glassDark` | `#BDE7F5` / `#7FC4E0` | Window panes and breakable glass (translucent fill, paper shine streaks, `glassDark` cel shadow), glass shards. |
+| `magic` / `magicDark` / `magicLight` | `#9B6BE0` / `#5E3A9E` / `#E2D2FF` | Portal hoops' swirl and sparkles only (the grape player colour family, so it never reads as bouncy pink). |
+| `velvet` / `velvetDark` | `#B8324A` / `#7E1F33` | The magician's tent drapes, stage carpet and the tent's back curtain. |
 | `iron` / `brass` | `#3A3F63` / `#F2B33D` | Cannon barrel, cannonball / bands, hub. |
 | `jonhShirt` | `#F2643C` | Jonh's cardigan. He is the warmest object in the scene, so he always pops against green and blue. |
 | `jonhTrousers` | `#3B4A7A` | |
@@ -54,6 +57,12 @@ Every filled foreground shape gets **one** flat cel shadow (the dark tone of its
 - **Exaggerate proportions about 1.25×** where it helps reading at small size: bigger head, hat brim, cannon muzzle and ball highlight.
 - **Every collider is drawn exactly.** Decoration may overhang a collider by ≤ 2 px. The fence, shed, wall, roof and rubber edges sit on the collider edge, so what you see is what the ball hits.
 - **Background silhouettes:** gently rolling hills, lollipop trees, terraced houses with chimneys and a church spire. They are low-detail and sit at most 60% of the viewport height, so the flight corridor stays open.
+
+## Mechanic props (2026-11-24)
+
+- **Breakable glass** looks fragile and see-through: a translucent pane with two or three diagonal paper shine streaks and a 2.6 px ink outline, set in white-painted timber. Brick and timber parts are separate solid colliders, drawn opaque. When a pane breaks it swaps (on that frame) to its smashed texture: only jagged glass teeth where it met the frame, nothing in the middle. Shards fly along the ball's path and fall. Reduced motion keeps the swap and drops the shards.
+- **Portal hoops** are a brass ring around a turning purple swirl, with slow twinkling sparkles. The entry hoop is face-on (a circle: anything through the middle disappears). The exit hoop is side-on (squashed along its heading) with a brass chevron pointing the way the ball comes out. A used hoop's swirl dims until the next attempt. Hoops float: no stand is drawn, because nothing that looks solid may lack a collider.
+- **Interiors** (greenhouse glass, tent curtain) are flat background with no ink, so they never read as surfaces.
 
 ## Typography
 

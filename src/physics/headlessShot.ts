@@ -12,6 +12,10 @@ export interface HeadlessShotResult {
   endXSim: number;
   endYSim: number;
   steps: number;
+  /** Breakable props smashed before the shot resolved. */
+  brokenObstacleIds: string[];
+  /** Portals the ball went through before the shot resolved. */
+  portalsUsed: string[];
 }
 
 /** Runs one shot with real Matter and no rendering, classified exactly as the scene does. */
@@ -49,7 +53,10 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     if (state.hitHat || result.hadHatHit) classifier.recordContact({ role: 'jonhHat' });
     if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });
     if (state.passedOverhead) classifier.recordOverhead();
-    return { outcome: classifier.classify(true).outcome, endXSim: state.xSim, endYSim: state.ySim, steps: step };
+    return {
+      outcome: classifier.classify(true).outcome, endXSim: state.xSim, endYSim: state.ySim, steps: step,
+      brokenObstacleIds: state.brokenObstacleIds, portalsUsed: state.portalsUsed,
+    };
   }
-  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps };
+  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps, brokenObstacleIds: [], portalsUsed: [] };
 }

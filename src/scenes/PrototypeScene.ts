@@ -78,7 +78,7 @@ type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | 
 const AIM_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
@@ -925,7 +925,10 @@ export class PrototypeScene extends Phaser.Scene {
       if (!quiet) this.audioManager.playOutOfBounds();
     }
     if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
-    if (quiet) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+    // [mechanics] A smashed pane or a portal plays its own effects and sound; it is not a bounce.
+    // It always runs (even during Skip) so the renderer's broken panes and spent hoops stay right.
+    const mechanicsEvent = this.sceneryRenderer.mechanics.onStep(state, reduced, this.audioManager);
+    if (quiet || mechanicsEvent) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     else this.detectBounce(state, reduced);
     this.lastProjectileState = state;
     const ppmNow = WORLD.pixelsPerMetre;
@@ -1557,6 +1560,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.pendingLaunch = null;
     this.impactQuality = null;
     this.effects?.reset();
+    // [mechanics] Every pane whole and every portal ready again (SPEC §7.2).
+    this.sceneryRenderer?.mechanics.reset();
     this.cameraRig?.reset();
     this.cannonRenderer?.setRecoil(0, this.currentAngleDeg);
     this.jonhRenderer?.settleImpact();

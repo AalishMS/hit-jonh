@@ -31,7 +31,7 @@ export async function preloadSamples(baseUrl = './audio/'): Promise<void> {
   }));
 }
 
-export type SurfaceSound = 'ground' | 'wood' | 'concrete' | 'rubber' | 'body';
+export type SurfaceSound = 'ground' | 'wood' | 'concrete' | 'rubber' | 'glass' | 'body';
 
 export class AudioManager {
   private ctx: AudioContext | null = null;
@@ -299,6 +299,12 @@ export class AudioManager {
         if (!this.sample('impactMining_000', 0.85 * s, 0.9 * v)) this.noise(now, 0.12, 'bandpass', 1800, 1, 0.5 * s);
         this.kick(now, 110 * v, 45, 0.16, 0.45 * s);
         break;
+      case 'glass':
+        // Unbroken glass: a bright "tink" (the pane held).
+        this.tinkle(now, 2900 * v, 0.28 * s, 0.18);
+        this.tinkle(now + 0.012, 4300 * v, 0.14 * s, 0.12);
+        this.kick(now, 240 * v, 120, 0.06, 0.25 * s);
+        break;
       case 'rubber': {
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
@@ -318,6 +324,62 @@ export class AudioManager {
         if (!this.sample(this.pick(['impactSoft_heavy_000', 'impactSoft_heavy_001'] as const), 0.9 * s, v)) this.kick(now, 90 * v, 30, 0.18, 0.6 * s);
         this.noise(now, 0.1, 'lowpass', 500, 0.7, 0.3 * s);
     }
+  }
+
+  /** One short glassy ping (triangle wave, fast decay). */
+  private tinkle(start: number, freq: number, gain: number, duration = 0.12): void {
+    const ctx = this.ctx!;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, start);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(gain, start + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    osc.connect(g).connect(this.sfxBus!);
+    osc.start(start);
+    osc.stop(start + duration + 0.02);
+  }
+
+  /** A pane smashed: a bright crash, a scatter of falling tinkles and a dull knock. `strength` 0..1. */
+  playGlassBreak(strength: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const s = Math.max(0.35, Math.min(1, strength));
+    const now = ctx.currentTime;
+    const v = this.vary(0.08);
+    this.noise(now, 0.24, 'highpass', 4200 * v, 0.7, 0.6 * s, 0.001);
+    this.noise(now, 0.08, 'bandpass', 2400 * v, 1.3, 0.5 * s, 0.001);
+    this.kick(now, 190 * v, 70, 0.12, 0.35 * s);
+    this.sample('impactPlate_light_000', 0.45 * s, 1.9 * v);
+    for (let i = 0; i < 7; i++) {
+      this.tinkle(now + 0.035 + i * 0.04 + this.rng() * 0.025, (2200 + this.rng() * 3600) * v, (0.16 - i * 0.015) * s);
+    }
+  }
+
+  /** A magic hoop: a breathy "fwoop" (noise sweeping down) and a bright glide up as the ball pops out. */
+  playPortal(): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const v = this.vary(0.06);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 2.2;
+    filter.frequency.setValueAtTime(2600 * v, now);
+    filter.frequency.exponentialRampToValueAtTime(380 * v, now + 0.22);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.42, now + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+    src.connect(filter).connect(g).connect(this.sfxBus!);
+    src.start(now, this.rng());
+    src.stop(now + 0.3);
+    this.slideWhistle(now + 0.16, 420 * v, 1500 * v, 0.24, 0.09);
+    this.tinkle(now + 0.34, 3100 * v, 0.08);
   }
 
   /** Jonh's yelp: a formant voice sweeping "WAH-oof" with vibrato and breath. */

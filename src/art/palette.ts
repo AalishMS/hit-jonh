@@ -24,6 +24,7 @@ export const PAL = {
   stone: '#C3BDD6',
   stoneDark: '#948DAE',
   glass: '#BDE7F5',
+  glassDark: '#7FC4E0',
   rubber: '#FF6FA0',
   rubberDark: '#C93E73',
   iron: '#3A3F63',
@@ -54,6 +55,13 @@ export const PAL = {
   smoke: '#EFE6DA',
   dust: '#E8C79A',
   leaf: '#4DBA4F',
+  /** Magic hoops (portals): the grape player colour family, so it never reads as "bouncy" pink. */
+  magic: '#9B6BE0',
+  magicDark: '#5E3A9E',
+  magicLight: '#E2D2FF',
+  /** The magician's tent: deep red velvet. */
+  velvet: '#B8324A',
+  velvetDark: '#7E1F33',
 } as const;
 
 export type PaletteKey = keyof typeof PAL;

@@ -69,6 +69,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 - One cannonball type.
 - Three maps: Jonh's Backyard (flat), The Fence Dispute (obstacle), Rooftop Lunch (elevated target).
 - **[DECIDED by owner 2026-10-10]** Eight maps, the same in every mode (solo, Daily Bonk, hot-seat, online): the original three plus Rubber Yard, retuned to be clearly harder, and four mechanic maps — a ricochet-only bank shot, a trampoline-only map, a low-gravity Moon map and a very zoomed-out map. See §11.
+- **[DECIDED request by owner 2026-11-24]** "New obstacle types and map mechanics (moving platforms, breakables, portals or wind), all in SI level data with reference solutions that pass the existing tests." Implemented: **breakable props** and **one-way portals** (§8.6), each showcased by one new map (The Greenhouse, The Magic Act; §11), so there are now ten maps in every mode. Moving platforms and wind were not chosen and stay deferred (§4.2). Rules and values are [PROPOSED][TUNE].
 - Solo challenges: three attempts per map.
 - Local multiplayer, 2–4 players, one device, turn-based.
 - Saved aiming settings, previous-shot trails, scoring, quick rematch.
@@ -77,7 +78,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; extra ammo; articulated ragdolls; destructible terrain and chain reactions; Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
 
 ## 5. Solo rules
 
@@ -144,13 +145,14 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 
 - Award only the **highest** applicable outcome. Hat-then-body ⇒ body result.
 - **Ground is never ricochet-eligible.** Which surfaces are eligible is per-map data **[OPEN]** (initial proposal: fence faces and the building wall).
+- **[PROPOSED 2026-11-24]** Smashing through a breakable prop and going through a portal are never ricochet contacts (nor obstacle contacts). A breakable struck too softly to break is an ordinary obstacle and uses its own `ricochet` flag. On the new maps no surface is ricochet-eligible (glass, greenhouse frame and brick, tent velvet, stage), so both score plain body hits.
 - No near-miss points. **[DECIDED]**
 - Idempotency: the first body contact finalises scoring; later collision callbacks cannot change or repeat it. **[DECIDED]**
 - Winner: highest total. Tie-break: more body hits; still tied ⇒ shared win. **[PROPOSED]** (Sudden-death tie-breaker deferred.)
 
 ### 7.2 Scene reset [DECIDED principle]
 
-Before **every** attempt (solo and MP): remove live projectiles, restore Jonh, hat, and every prop/obstacle to level-data spawn state, clear pending timers and score events from the previous shot. Preserve: each player's angle/power, each player's last trail and landing marker, scores. The map is unchanged within a round.
+Before **every** attempt (solo and MP): remove live projectiles, restore Jonh, hat, and every prop/obstacle to level-data spawn state, clear pending timers and score events from the previous shot. This includes making every smashed breakable whole again and re-arming every portal (§8.6). Preserve: each player's angle/power, each player's last trail and landing marker, scores. The map is unchanged within a round.
 
 **Multiplayer exception [DECIDED]:** Jonh and his nearby decorative scenery reset to the active cycle's authored position, rather than the solo spawn. The effective level is shared by rendering, Matter colliders and swept collision detection; original level data is never mutated. Position changes happen only in handover after all players complete the preceding cycle.
 
@@ -202,9 +204,11 @@ x(t)   = x0 + vx·t ;  y(t) = y0 + vy·t − ½·g·t²
 
 ### 8.4 Materials [TUNE]
 
-Per-surface `restitution` and `friction` come from a material table in tuning config, referenced by name in level data. First release uses **grass** (low bounce), **wood** (fence; solid, static), **concrete** (roof/wall; some bounce). A surface that looks the same must behave the same every attempt. Glass is deferred.
+Per-surface `restitution` and `friction` come from a material table in tuning config, referenced by name in level data. First release uses **grass** (low bounce), **wood** (fence; solid, static), **concrete** (roof/wall; some bounce). A surface that looks the same must behave the same every attempt. Glass was deferred; it was added on 2026-11-24 for breakable panes (below).
 
 **[DECIDED 2026-10-10, values TUNE]** Added for the new maps: **rubber**, **trampoline** (gives back almost all speed), **steel** (billboard, silo), **leaves** (soft canopy/hedge), **rock** and **regolith** (moon dust; also stops a rolling ball quickly via a per-material `rollingDamping`). Bounces now honour these values: an impact faster than `PHYSICS.bounceMinNormalSpeedMs` is re-bounced from its incoming velocity with the material's restitution even when Matter's contact solver already resolved it (Matter damped every material alike, so materials barely mattered before). A ball resting on any flat top (ground, roof, deck) gets rolling damping, not just on the ground.
+
+**[PROPOSED 2026-11-24, values TUNE]** **glass** (unbroken panes: hard and slick, restitution 0.35) and **velvet** (tent drapes: dead, restitution 0.1, rolling damping 0.88).
 
 ### 8.5 Shot end conditions [PROPOSED][TUNE]
 
@@ -213,6 +217,24 @@ A shot resolves at the first of:
 2. **Out of bounds** — projectile centre with x < −1 m or x > world width + 1 m, **or below the world's floor (bounds minY − 1 m)** [PROPOSED 2026-11-24: a ball that rolled off the end of the ground used to fall until the 15 s timeout]. Leaving the **top** is allowed (it may come back); show an off-screen marker.
 3. **Settled** — projectile speed < 0.05 m/s for 0.5 s.
 4. **Safety timeout** — 15 s of simulated time (longest legitimate flight ≈ 4 s), logged as a warning in dev.
+
+### 8.6 Breakable props and portals [DECIDED request 2026-11-24; PROPOSED rules; TUNE values]
+
+Both live in SI level data (`src/levels/types.ts`) and are run by the physics adapter as per-shot state; level data is never mutated.
+
+**Breakable props.** An obstacle may carry `breakable: { minImpactSpeedMs, speedKept }`.
+- When the swept guard's earliest contact is an intact breakable and the ball drives into it at least as fast as `minImpactSpeedMs` (normal component, using the same incoming velocity a bounce would use), the prop breaks for the rest of that shot: it is switched off in Matter (collision mask) and dropped from the swept guard. The ball carries on from the contact point with `speedKept` × its incoming velocity, with no reflection.
+- A slower contact is an ordinary solid obstacle hit (bounce with its material, obstacle contact, own ricochet flag).
+- A smash is not an obstacle contact and never a ricochet (§7.1). It is reported as `brokenObstacleIds` and a per-step `break` event for effects.
+- The next attempt starts with every prop whole (§7.2). Breakables obey the thickness rule (§9.2) like any obstacle.
+- The Greenhouse glass is [TUNE]: breaks at 6.5 m/s, keeps 35 % of the velocity.
+
+**Portals (one-way).** A level may list `portals: [{ id, entry: { x, y, radius }, exit: { x, y, angleDeg } }]`.
+- When the ball's swept circle touches an unused entry disc before any solid contact in that step, the ball reappears at the exit point, keeping its speed (the speed entering that step) and heading in the exit direction. **Choice [PROPOSED]:** speed preserved, direction set to the exit heading (not the incoming vector), so a hoop always throws the ball the same way and power alone decides how far.
+- A portal is not a surface: no bounce, never an obstacle contact or ricochet. It works from either side of the disc.
+- Each portal works **once per shot** (loop guard), then is spent until the next attempt.
+- The hat and overhead checks cover the path up to the entry. The next step's sweep starts from the exit, so the swept guard and Jonh-hit detection work after the exit.
+- Level validation rejects an exit that overlaps any collider, Jonh's body or hat (at every target position) or any entry disc, and any entry within reach of the cannon muzzle. At runtime a blocked exit is skipped.
 
 ## 9. Hit detection and fast projectiles
 
@@ -230,6 +252,7 @@ Matter.js has **no continuous collision detection**; a fast body can tunnel thro
 1. **Swept-circle guard:** each fixed step, sweep the projectile circle from its previous to its new position against static colliders and Jonh's colliders (pure-TS geometry in `src/sim/`). Any contact the discrete step missed is registered for hit classification; for solid obstacles the projectile is moved back to the time-of-impact contact point and its velocity reflected using the material. `Matter.Query.ray` can be used only as a broad-phase filter (it returns no contact points).
 2. **Level validation:** every solid collider's minimum thickness ≥ `maxSpeed · dt` (≈ 0.17 m at 20 m/s, 1/120 s) **and** ≥ 0.2 m **[TUNE]**. Enforced by an automated level-data test.
 3. **Automated tunnelling test:** fire at maximum power across the full angle range into the thinnest obstacle and Jonh's collider; assert zero pass-throughs.
+4. **[2026-11-24]** A smashed breakable is removed from the swept guard for the rest of the shot only (§8.6). A teleport restarts the sweep at the portal exit.
 
 **[ASSUMPTION — verify in M1]** Matter can be driven headlessly in Vitest by importing Phaser's bundled Matter modules. If not, physics integration tests run in the browser (e.g. a `?selftest` route) and results are reported explicitly.
 
@@ -323,6 +346,8 @@ Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bo
 | 6 | **Bounce House** | Tall hedge; trampoline; Jonh on a covered balcony (rug floor) whose roof reaches toward the hedge. | Trampoline shots (≥ 90% of hits bounce first — tested). |
 | 7 | **Lunar Picnic** | Gravity 2.0 m/s², cannon ×0.6; boulder and overhanging rock shelf; moon-dust ground. | Floaty, power-sensitive shots. |
 | 8 | **Across the Valley** | 64 m × 28 m (camera 0.4×); cannon on a 10.4 m cliff, cannon ×1.6; grain silo; Jonh on one of three 1 m rock pillars ~45 m away. | Tiny far target; ~1 m per power step. |
+| 9 | **The Greenhouse** [PROPOSED 2026-11-24] | Glasshouse x 14–21.75 m: brick walls (front 2.2 m tall), glass front window and four glass roof panes in a white timber frame, gravel floor; Jonh inside on one of three spots under the roof panes. | Breakables: every hit smashes glass first (tested). Soft shots bounce; hard ones smash through and slow down. 1° grid: 7.1 / 5.1 / 3.8 %. |
+| 10 | **The Magic Act** [PROPOSED 2026-11-24] | Sealed velvet tent x 13–24.5 m (roof 8.5 m) with a carpeted stage; a hoop floats over the lawn at (8.5, 6.5) m, r 0.6 m; its exit hoop inside the tent at (14.3, 3.4) m throws the ball up at 65°. | Portals: every hit goes through the hoop (tested). The angle threads the hoop; power decides where it lands. 1° grid: 2.7 / 3.3 / 2.4 %. |
 
 Each map introduces exactly one new complication.
 

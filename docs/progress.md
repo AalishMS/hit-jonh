@@ -919,3 +919,56 @@ The wardrobe screen and the scene wiring are a separate task; this item delivers
 
 **Not verified:** how skins look at the 1.8× hit zoom on a real screen (seen only at the screenshot scale above).
 
+## Breakable props and portals (2026-11-24, branch `t3/breakables-portals-maps`)
+
+Owner request (2026-11-24): "new obstacle types and map mechanics (moving platforms, breakables, portals or wind), all in SI level data with reference solutions that pass the existing tests". The lead chose breakable props and portals; moving platforms and wind stay deferred.
+
+**Done**
+- **Physics** (`src/physics/matterAdapter.ts`, SPEC §8.6). Breakable obstacles (`breakable: { minImpactSpeedMs, speedKept }`): a hit at or above the threshold (normal speed, same incoming velocity a bounce uses) switches the prop off in Matter (collision mask, so the body order never changes) and in the swept guard for the rest of the shot; the ball carries on from the contact point with the kept share of its velocity. One-way portals (`portals: [{ entry disc, exit point + heading }]`): touching an unused entry before any solid teleports the ball to the exit at the same speed, heading the exit's way; once per shot; a blocked exit is skipped. Per-shot state is restored on every spawn. `ProjectileState` gains `brokenObstacleIds`, `portalsUsed` and per-step `events`; the headless runner and difficulty tool report them.
+- **Validation**: breakable ranges, unique obstacle/portal ids, portal exits clear of every collider, Jonh (each target position) and every entry, entries out of muzzle reach.
+- **Maps** (appended to `MAPS`, so every mode has them): **The Greenhouse** (breakables) and **The Magic Act** (portals), each with three target positions and references that miss the other positions. New materials `glass`, `velvet` [TUNE].
+- **Difficulty guard**: `DIFFICULTY.minMechanicShare` (1 for both maps: every hit must smash glass / use the hoop, on every position).
+- **Presentation**: `src/render/mechanicsRenderer.ts` (owned by `SceneryRenderer`) draws panes, hoops and interiors and plays the events: shards + glass crash, sparkles + "fwoop", dimmed spent hoop; `reset()` restores everything. Art in `src/art/mechanicArt.ts`; palette tokens and rules in `docs/art-direction.md`. Map previews and blurbs. Audio: glass smash, glass "tink" for an unbroken pane, portal fwoop. The replay holds the ball across a teleport instead of sliding it between hoops.
+- **Scene** (`PrototypeScene.ts`): three marked lines only — forward each step's events (a break or teleport is not read as a bounce), reset mechanics in `resetEffects()`, glass/velvet surface sounds.
+
+**Decisions [PROPOSED]**
+- Portals keep the speed and set the direction to the exit heading (not the incoming vector), so the hoop always throws the same way and power alone sets the distance. They work from either side.
+- Smashing through and going through a portal are never ricochet or obstacle contacts. No surface on the new maps is ricochet-eligible, so both score plain body hits (100).
+- Greenhouse glass breaks at 6.5 m/s and keeps 35 % of the velocity. Both maps are difficulty 2.
+- Magic Act exit hoop sits inside the tent's left side (heading 65°): at first it was on the right, under the HTML Fire button.
+- Map presets unchanged: "Every map" includes the new maps, "Trick shots" is still the four 2026-10-10 mechanic maps. Owner to decide whether to add them.
+
+**Measured difficulty** (share of the aim grid that scores a body hit, near / middle / far)
+
+| Map | 1° × 1% grid | 5° × 5% guard | Hits using the mechanic |
+| --- | --- | --- | --- |
+| The Greenhouse | 7.10 / 5.11 / 3.83% | 6.2 / 5.0 / 4.2% | 100% smash glass |
+| The Magic Act | 2.71 / 3.34 / 2.37% | 2.8 / 3.1 / 2.2% | 100% through the hoop |
+
+References: Greenhouse near 24°/58% (front window), middle 53°/46% (roof), far 44°/57% (roof, off the back wall); Magic Act near 55°/24%, middle 48°/29%, far 42°/40%.
+
+**Existing maps unchanged**
+- Per-map cross-check digests (outcomes plus exact end positions and step counts for every reference and a 10 × 7 grid on every position) are identical before the change (`deae97b`) and after (`2a522af`, `ae26c48`).
+- The full `DIFFICULTY_REPORT=1` 1° × 1% table for the eight existing maps is byte-identical before (`deae97b`) and after (`ae26c48`): all 24 rows, including hit and ricochet counts, widest runs and suggested references.
+
+**Verified**
+- `npm run check`: typecheck and lint passed; `Test Files 50 passed (50)`, `Tests 508 passed | 10 skipped (518)` (the skips are the opt-in difficulty report). `npm run build`: succeeded, 180 modules transformed.
+- New tests: `tests/mechanics.test.ts` (smash vs bounce, no contact or ricochet, restore and identical replays, teleport speed and heading, once per shot, blocked exit, validation, low shot stopped by a solid on each mechanic map, headless reporting) and `tests/mechanicsRenderer.test.ts` (pane swap and restore, spent hoop, reduced motion), plus a replay teleport case.
+- Browser (Vite dev server on port 5199, headless Chromium via playwright-core, screenshots reviewed): Greenhouse solo 53°/46% smashed a roof pane (shards, jagged gap) and hit Jonh ("Bullseye", 1 shot); 24°/58% smashed the front window and fell short, the window was whole again for attempt 2, and 53°/46% then hit ("hit Jonh in 2 shots"). Magic Act solo 48°/29% went through the hoop, the swirl dimmed, the ball popped out of the exit hoop and hit ("Direct hit +100"). Emulated reduced motion: fixed camera, no shards or sparkles, but the smashed pane and the dimmed hoop still show. The map list shows all ten cards. Hot-seat Greenhouse-only match: four turns, Jonh drawn at the far position, panes whole between turns. No console errors in any run.
+
+**Not verified**
+- Sound: the new voices were not listened to (headless browser); unit tests only check they do not throw.
+- A hot-seat hit in the browser (my driver's timing around the handover card was flaky); scoring is covered by the automated multiplayer tests.
+- Online play on the new maps: needs a Convex redeploy, not done. Real devices, touch, Firefox and Safari.
+
+**Known issues / consequences**
+- Online: the Convex server validates map ids from `src/levels` (`MAP_IDS`), so online hosts can pick the new maps only after the Convex functions are redeployed. Nothing was deployed.
+- Daily Bonk draws from all maps' target positions, so adding maps changes the date → map mapping.
+- The crown hat ("three stars on every garden") now needs all ten maps.
+- The scene's cosmetic post-hit ball and bounce-sound lookup read level data, so they do not know a pane is smashed. On these two maps the panes are above the cosmetic ball's arc, so nothing visible happens.
+- After a teleport the ball's speed ribbon leaves a short fading streak at the entry hoop.
+- Magic Act: a fast flat shot that misses the hoop can rebound off the tent wall back through it from behind. This is legitimate and deterministic.
+
+**Next**
+- Owner playtest of both maps; tune the glass and hoop placement from feedback; decide on presets; redeploy Convex so online rooms can use the maps.
+

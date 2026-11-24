@@ -230,6 +230,11 @@ export const DIFFICULTY = {
    * 1 = no direct line to Jonh at all.
    */
   minTrickShare: { bankshot: 1, trampoline: 0.9 } as Readonly<Record<string, number>>,
+  /**
+   * Mechanic maps: the least share of hits that must smash a breakable prop or go through a portal
+   * first (coarse grid, every target position).
+   */
+  minMechanicShare: { greenhouse: 1, magic: 1 } as Readonly<Record<string, number>>,
 } as const;
 
 export interface MaterialProps {
@@ -256,6 +261,9 @@ export const MATERIALS = {
   rug: { restitution: 0.15, friction: 0.9, rollingDamping: 0.88 },
   /** Moon dust: dead landings, and a rolling ball stops within a metre or two. */
   regolith: { restitution: 0.15, friction: 0.8, rollingDamping: 0.95 },
+  /** Mechanic maps [PROPOSED][TUNE]: unbroken glass is hard and slick; velvet drapes swallow a ball. */
+  glass: { restitution: 0.35, friction: 0.2 },
+  velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
@@ -320,6 +328,27 @@ export const FX = {
   settleClearMetres: 2.5,
   /** How quickly the fast-forward eases in and out (per second). */
   settleEaseRate: 7,
+};
+
+/**
+ * Breakable props and portals: presentation only [PROPOSED][TUNE]. The physics values live in level data.
+ * Reduced motion keeps the state changes (pane gone, hoop spent) and drops everything that flies or spins.
+ */
+export const MECHANIC_FX = {
+  /** Glass shards thrown along the ball's path when a pane breaks. */
+  shardCount: 14,
+  shardSpeedMinPx: 140,
+  shardSpeedMaxPx: 360,
+  /** Sparkles at each hoop when the ball goes through. */
+  sparkleCount: 10,
+  /** Seconds per turn of a hoop's swirl (ambient motion stays slow, ≥ 4 s). */
+  swirlTurnSeconds: 5,
+  /** Swirl opacity once a hoop has been used this shot (each portal works once per shot). */
+  spentAlpha: 0.22,
+  popSeconds: 0.3,
+  /** The exit hoop is drawn smaller than the entry and squashed along its heading, so it points. */
+  exitScale: 0.8,
+  exitSquash: 0.45,
 };
 
 /**
