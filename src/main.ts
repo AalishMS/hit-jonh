@@ -58,6 +58,13 @@ try {
     }
   });
 
+  // Phaser only polls its parent's size every 500 ms of game time, so entering a game (the HUD and
+  // aim bar change the stage size) used to show a cropped canvas first. Refit the moment it changes.
+  const stage = document.getElementById('game');
+  if (stage && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => game.scale.getParentBounds() && game.scale.refresh()).observe(stage);
+  }
+
   // Expose for dev-only inspection in the browser console; `?tune` opens the FX tuning panel.
   if (import.meta.env.DEV) {
     (window as unknown as { __HIT_JONH__: Phaser.Game }).__HIT_JONH__ = game;

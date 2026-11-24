@@ -654,3 +654,27 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** real-time feel on a real device. The "R" key hint is hidden on touch-only screens (CSS `hover: none`), but that was not tried on a phone.
 
+### 2. Phone landscape layout — done
+
+**Cause.** Phaser's ScaleManager checks its parent's size only every 500 ms of game time. Entering a game changes the stage size (the HUD and slider bar appear), so the canvas kept its menu-sized scale and was cropped until the next poll. On a slow device that lasts noticeably longer than 0.5 s. Even after the refit, the slider bar shrank the phone-landscape game to 608×266 on an 844×390 screen.
+
+**Done**
+- `main.ts`: a `ResizeObserver` on `#game` refits the canvas the moment the stage changes size.
+- Short landscape screens (`max-height: 520px`): the Angle/Power sliders fold away and a "Precise aim" HUD toggle (sliders icon, `aria-pressed`, `aria-controls`) floats them over the bottom of the field. Desktop and portrait are unchanged.
+
+**Verified** (headless Chromium, the canvas measured after the first frame in game):
+
+| Viewport | Canvas before | Canvas after |
+| --- | --- | --- |
+| 844×390 | 817×357 inside a 608×266 frame (cropped), then 608×266 | 832×364 |
+| 667×375 | — | 655×287 |
+| 932×430 | — | 920×403 |
+| 1440×800 | — | 1400×613 (unchanged layout) |
+| 390×844 | — | 358×157 (unchanged layout) |
+
+- No horizontal overflow at any size.
+- The toggle opens and closes the slider overlay.
+- Hot-seat at 844×390 fits the player panel plus a 642×281 canvas.
+
+**Not verified:** a real phone. Safe-area insets were not exercised on a notched device.
+

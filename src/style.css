@@ -211,11 +211,21 @@ input:disabled { opacity: .5; cursor: default; }
 .replay-hint { font: 800 clamp(10px, 1.3cqw, 14px)/1 var(--ui); color: var(--paper); opacity: .75; }
 @keyframes replay-blink { to { visibility: hidden; } }
 
+/* The precise-aim toggle only exists where the sliders are folded away (short landscape). */
+.btn-aimbar { display: none !important; }
+
 /* Phones in landscape: the panel fills the screen. */
 @media (max-height: 520px) and (orientation: landscape) {
   :root { --gutter: 6px; }
   #game { border-width: 3px; border-radius: 14px; box-shadow: 0 4px 0 var(--ink); }
   .game-home-button { width: 40px; height: 40px; }
+  /* The sliders fold away so the garden gets the whole height; a HUD toggle floats them over the field. */
+  body.in-game { --readout-h: 0px; }
+  .btn-aimbar { display: inline-grid !important; }
+  .aim-bar { position: fixed; left: 50%; bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    width: min(64vw, 520px); z-index: 20; display: none; padding: 2px 16px; font-size: 13px; }
+  .aim-bar .value-badge { font-size: 18px; }
+  body.aim-open .aim-bar { display: flex; }
 }
 /* Portrait: canvas on top, controls below in normal flow. */
 @media (orientation: portrait) and (max-width: 700px) {

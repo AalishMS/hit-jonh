@@ -18,6 +18,7 @@ const ICON = {
   soundOn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   soundOff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5m0-5-5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>',
+  sliders: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="9" cy="7" r="2.8" fill="currentColor"/><circle cx="15" cy="17" r="2.8" fill="currentColor"/></svg>',
   home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.5 12 4l8.5 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10v9.5h4.2v-5.2h2.6v5.2h4.2V10" fill="currentColor"/></svg>',
 };
 
@@ -74,6 +75,7 @@ export class HTMLControls {
     // Precise aim lives below the canvas, in normal flow, never over the game.
     this.aimBar = document.createElement('section');
     this.aimBar.className = 'aim-bar';
+    this.aimBar.id = 'aim-bar';
     this.aimBar.setAttribute('aria-label', 'Precise aim');
     (parentElement.closest('.stage-wrap') ?? parentElement).after(this.aimBar);
     this.render(initialAngleDeg, initialPowerPercent, initialDebug, initialMuted);
@@ -94,6 +96,7 @@ export class HTMLControls {
           <div class="streak" hidden></div>
         </div>
         <div class="hud-icons">
+          <button type="button" class="icon-btn btn-aimbar" id="aimbar-btn" aria-label="Precise aim" aria-pressed="false" aria-controls="aim-bar">${ICON.sliders}<span class="visually-hidden">Precise aim</span></button>
           <button type="button" class="icon-btn btn-mute" id="mute-btn"></button>
           <button type="button" class="icon-btn btn-pause" id="pause-btn" aria-label="Pause">${ICON.pause}<span class="visually-hidden">Pause</span></button>
         </div>
@@ -156,6 +159,12 @@ export class HTMLControls {
     this.on(this.resetButton, 'click', () => this.callbacks.onReset());
     this.on(this.muteButton, 'click', () => this.setMuted(this.callbacks.onToggleMute()));
     this.on(this.pauseButton, 'click', () => this.callbacks.onPause?.());
+    // Short landscape screens fold the precise-aim sliders away so the garden gets the full height.
+    const aimToggle = q<HTMLButtonElement>('#aimbar-btn');
+    this.on(aimToggle, 'click', () => {
+      const open = document.body.classList.toggle('aim-open');
+      aimToggle.setAttribute('aria-pressed', String(open));
+    });
     this.on(this.debugToggle, 'change', () => this.callbacks.onToggleDebug(this.debugToggle.checked));
   }
 
@@ -283,6 +292,7 @@ export class HTMLControls {
   }
 
   destroy(): void {
+    document.body.classList.remove('aim-open');
     this.playerPanel.destroy();
     this.homeButton.remove();
     this.aimBar.remove();
