@@ -285,6 +285,13 @@ export const FX = {
   /** Cannon anticipation: physics waits this long after Fire while the cannon winds up. */
   windupSeconds: 0.12,
   recoilPx: 18,
+  /** Launch feel by power [TUNE]: effects at 0 % power are this fraction of full (recoil, smoke). */
+  launchMinStrength: 0.4,
+  /** Camera kick backwards along the barrel at full power (px) and its zoom punch. */
+  launchKickPx: 9,
+  launchPunch: 0.035,
+  /** Above this power the wheels throw up dust. */
+  launchDustFrom: 0.6,
   /** Camera follow during flight. */
   flightZoomMin: 0.72,
   followRate: 5,

@@ -743,3 +743,22 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** touch on a real phone.
 
+### 5. Launch feel scales with power — done
+
+**Done** (all cosmetic, values [TUNE] in `FX.launch*`)
+- `ShotEffectsRenderer.launch(…, power)` scales with power:
+  - smoke puffs 4 → 12, with spread, speed, size and lifetime;
+  - sparks 3 → 13;
+  - muzzle flash size ×0.75 → ×1.35, and one extra flash frame above 66%;
+  - barrel recoil from 40% of `FX.recoilPx` at 0% power to 100% at full.
+- New camera kick backwards along the barrel: up to 9 px plus a small zoom punch at full power. It goes through `CameraRig.impact`, so reduced motion suppresses it.
+- Above 60% power the wheels throw up dust from the surface under the cannon (`floorAt`, so it works on the Valley cliff).
+- `AudioManager.playCannonFire(power)`: low power is a short, higher "pop"; full power is a deeper, longer boom with a low rumbling tail.
+
+**Verified**
+- `tests/shotEffects.test.ts`: a full-power launch has more particles and a bigger recoil peak than a 0% one, bounded by `FX.recoilPx`; reduced motion has no particles or recoil.
+- Polish determinism and audio tests unchanged and passing.
+- Browser frames 9 and 15 after Fire at 10% and 100%: the full-power shot shows a bigger flash, wheel dust, more smoke and the kick.
+
+**Not verified:** how the boom sounds (no listening possible).
+

@@ -226,17 +226,24 @@ export class AudioManager {
     this.noise(ctx.currentTime, 0.13, 'highpass', 5200, 0.7, 0.12, 0.01);
   }
 
-  /** Cannon: sub kick + body boom + bright crack, with a little air movement after. */
-  playCannonFire(): void {
+  /**
+   * Cannon: sub kick + body boom + bright crack, with a little air movement after. `power` (0..1)
+   * shapes it: a short, higher "pop" at low power; a deeper, longer boom with a rumbling tail at full.
+   */
+  playCannonFire(power = 1): void {
     const ctx = this.ready();
     if (!ctx) return;
+    const p = Math.max(0, Math.min(1, power));
     const now = ctx.currentTime;
     const v = this.vary(0.06);
-    this.kick(now, 140 * v, 38, 0.42, 0.95);
-    this.noise(now, 0.38, 'lowpass', 700 * v, 0.8, 0.85);
-    this.noise(now, 0.06, 'highpass', 2500, 0.6, 0.55);
-    this.sample(this.pick(['impactPunch_heavy_000', 'impactPunch_heavy_002'] as const), 0.6, 0.62 * v);
-    this.noise(now + 0.05, 0.5, 'bandpass', 900, 0.9, 0.12, 0.08);
+    const weight = 0.55 + 0.45 * p;
+    this.kick(now, (190 - 60 * p) * v, 38 + 14 * (1 - p), 0.26 + 0.2 * p, 0.95 * weight);
+    this.noise(now, 0.22 + 0.24 * p, 'lowpass', (900 - 260 * p) * v, 0.8, 0.85 * weight);
+    this.noise(now, 0.05 + 0.02 * p, 'highpass', 2200 + 900 * p, 0.6, 0.4 + 0.2 * p);
+    this.sample(this.pick(['impactPunch_heavy_000', 'impactPunch_heavy_002'] as const), 0.6 * weight, (0.78 - 0.2 * p) * v);
+    this.noise(now + 0.05, 0.3 + 0.35 * p, 'bandpass', 900, 0.9, 0.12 * weight, 0.08);
+    // Full power: a low rolling rumble after the bang.
+    if (p > 0.7) this.kick(now + 0.06, 70 * v, 30, 0.5, 0.35 * (p - 0.7) / 0.3);
   }
 
   /** Layered on the contact frame: thump + crack + yelp; intensity scales by hit quality. */

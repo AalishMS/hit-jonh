@@ -59,6 +59,32 @@ describe('Shot effects', () => {
     expect(flash.visible).toBe(false);
   });
 
+  it('a full-power launch belches more smoke and recoils harder than a feeble one', () => {
+    const peakRecoil = (power: number) => {
+      const { effects } = makeEffects();
+      effects.launch(100, 400, Math.PI / 4, false, power);
+      const count = effects.particleCount;
+      let peak = 0;
+      for (let i = 0; i < 30; i++) peak = Math.max(peak, effects.update(1 / 60, false, 1 / 60));
+      return { count, peak };
+    };
+    const weak = peakRecoil(0);
+    const full = peakRecoil(1);
+    expect(full.count).toBeGreaterThan(weak.count);
+    expect(full.peak).toBeGreaterThan(weak.peak);
+    expect(full.peak).toBeLessThanOrEqual(FX.recoilPx + 1e-9);
+    expect(weak.peak).toBeGreaterThan(0);
+  });
+
+  it('a reduced-motion launch has no smoke, sparks or recoil', () => {
+    const { effects } = makeEffects();
+    effects.launch(100, 400, Math.PI / 4, true, 1);
+    expect(effects.particleCount).toBe(0);
+    let peak = 0;
+    for (let i = 0; i < 30; i++) peak = Math.max(peak, effects.update(1 / 60, true, 1 / 60));
+    expect(peak).toBe(0);
+  });
+
   it('keeps the camera untouched (the camera rig owns shake and zoom)', () => {
     const { effects, camera } = makeEffects();
     effects.impact(800, 400, impactProfile('trick'), 1, 0, false, 'KA-BLAM!');

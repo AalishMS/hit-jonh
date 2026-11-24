@@ -25,6 +25,8 @@ export class ShotEffectsRenderer {
   private flashFramesLeft = 0;
   private muzzleFrames = 0;
   private launchAge: number | null = null;
+  /** 0..1 launch power (cosmetic): scales smoke, sparks, flash and recoil. */
+  private launchStrength = 1;
   private hit: { x: number; y: number; age: number; profile: ImpactProfile; reduced: boolean; dir: number } | null = null;
   private labelAge: number | null = null;
   private labelBase = { x: 0, y: 0, rot: 0 };
@@ -41,15 +43,20 @@ export class ShotEffectsRenderer {
     this.label = scene.add.image(0, 0, 'fx-pixel').setDepth(50).setVisible(false);
   }
 
-  /** Muzzle flash, smoke and sparks on the frame the ball leaves the barrel. */
-  launch(x: number, y: number, angleRad: number, reduced: boolean): void {
+  /**
+   * Muzzle flash, smoke and sparks on the frame the ball leaves the barrel. `power` (0..1, cosmetic)
+   * scales everything: a feeble pop at low power, a thunderous belch of smoke at full.
+   */
+  launch(x: number, y: number, angleRad: number, reduced: boolean, power = 1): void {
+    const p = clamp01(power);
     this.launchAge = 0;
+    this.launchStrength = FX.launchMinStrength + (1 - FX.launchMinStrength) * p;
     if (reduced) return;
     const dir = -angleRad; // screen y is down
-    this.muzzleFrames = 3;
-    this.muzzle.setPosition(x, y).setRotation(dir).setVisible(true).setScale(artScale('fx-muzzle') * 1.1);
-    this.burst({ kind: 'fx-smoke', count: 7, x, y, angle: dir, spread: 0.9, speed: [40, 150], life: [0.45, 0.85], scale: [0.55, 0.9], endScale: 2.1, gravity: -40, drag: 3.2, spin: 1.5 });
-    this.burst({ kind: 'fx-spark', count: 8, x, y, angle: dir, spread: 0.7, speed: [260, 520], life: [0.12, 0.26], scale: [0.7, 1.1], endScale: 0.2, drag: 4 });
+    this.muzzleFrames = p > 0.66 ? 4 : 3;
+    this.muzzle.setPosition(x, y).setRotation(dir).setVisible(true).setScale(artScale('fx-muzzle') * (0.75 + 0.6 * p));
+    this.burst({ kind: 'fx-smoke', count: Math.round(4 + 8 * p), x, y, angle: dir, spread: 0.7 + 0.4 * p, speed: [35, 90 + 110 * p], life: [0.4, 0.7 + 0.4 * p], scale: [0.45 + 0.2 * p, 0.7 + 0.35 * p], endScale: 1.6 + 1.1 * p, gravity: -40, drag: 3.2, spin: 1.5 });
+    this.burst({ kind: 'fx-spark', count: Math.round(3 + 10 * p), x, y, angle: dir, spread: 0.7, speed: [220, 320 + 300 * p], life: [0.1, 0.18 + 0.12 * p], scale: [0.7, 1.1], endScale: 0.2, drag: 4 });
   }
 
   /** Small dust puff where the ball lands or strikes scenery. */
@@ -164,7 +171,7 @@ export class ShotEffectsRenderer {
     if (this.launchAge !== null) {
       this.launchAge += realDt;
       const p = clamp01(this.launchAge / 0.32);
-      recoil = reduced ? 0 : FX.recoilPx * (p < 0.12 ? p / 0.12 : (1 - easeOutCubic((p - 0.12) / 0.88)));
+      recoil = reduced ? 0 : FX.recoilPx * this.launchStrength * (p < 0.12 ? p / 0.12 : (1 - easeOutCubic((p - 0.12) / 0.88)));
       if (p >= 1) this.launchAge = null;
     }
 

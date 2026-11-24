@@ -1351,8 +1351,20 @@ export class PrototypeScene extends Phaser.Scene {
     const launch = this.pendingLaunch;
     this.pendingLaunch = null;
     if (!launch) return;
-    this.effects.launch(launch.x, launch.y, launch.angleRad, this.jonhRenderer.isReducedMotionActive());
-    this.audioManager.playCannonFire();
+    const reduced = this.jonhRenderer.isReducedMotionActive();
+    // Cosmetic only: how hard it was fired shapes the flash, smoke, recoil, kick and boom.
+    const power = clamp01(this.currentPowerPercent / 100);
+    this.effects.launch(launch.x, launch.y, launch.angleRad, reduced, power);
+    this.audioManager.playCannonFire(power);
+    if (!reduced) {
+      const k = FX.launchMinStrength + (1 - FX.launchMinStrength) * power;
+      this.cameraRig.impact(FX.launchKickPx * k, 0.22, FX.shakeHz, -Math.cos(launch.angleRad), Math.sin(launch.angleRad), FX.launchPunch * power, 0.28);
+      if (power >= FX.launchDustFrom) {
+        // The surface under the wheels (the Valley cannon stands on a cliff).
+        const pivot = this.cannonRenderer.pivot;
+        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false);
+      }
+    }
   }
 
   private updateCamera(realDt: number, reduced: boolean, frame: ReplayFrame | null): void {
