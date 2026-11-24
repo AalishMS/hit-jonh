@@ -122,7 +122,11 @@ export const JUICE = {
 } as const;
 
 export const FLOW = {
-  shotResultSeconds: 1.4,
+  /**
+   * Miss / hat result window [TUNE]. Was 1.4 s; shortened for a snappier retry loop. Jonh's line
+   * stays in his speech bubble while you re-aim, and touching the aim skips the window in solo.
+   */
+  shotResultSeconds: 1.0,
   /** Body hits hold longer so Jonh's knock-back (and the replay) can land. Polish pass [TUNE]. */
   bodyHitResultSeconds: 2.6,
   handoverSeconds: 1.2,
@@ -265,6 +269,18 @@ export const FX = {
   followRate: 5,
   /** Ball stretch along velocity at maximum launch speed. */
   ballStretch: 0.35,
+  /**
+   * Snappy misses [TUNE]: once a missed ball has landed and is only rolling to a stop, the
+   * presentation clock runs this many times faster (outcome-identical; see fx/settleClock.ts).
+   */
+  settleFastForward: 4,
+  /** A landed ball slower than this (m/s) is fast-forwarded anywhere. */
+  settleCrawlSpeedMs: 0.8,
+  /** A landed ball slower than this (m/s) is fast-forwarded when at least settleClearMetres from Jonh. */
+  settleRollSpeedMs: 4,
+  settleClearMetres: 2.5,
+  /** How quickly the fast-forward eases in and out (per second). */
+  settleEaseRate: 7,
 };
 
 /**

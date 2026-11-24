@@ -15,15 +15,19 @@ export class FixedStepper {
     if (!(maxStepsPerFrame >= 1)) throw new Error('maxStepsPerFrame must be >= 1');
   }
 
-  /** Returns the number of fixed steps to simulate for this frame. */
-  advance(frameSeconds: number): number {
+  /**
+   * Returns the number of fixed steps to simulate for this frame. `maxSteps` raises the cap for
+   * frames that deliberately feed scaled time (fast-forward); the step size never changes.
+   */
+  advance(frameSeconds: number, maxSteps = this.maxStepsPerFrame): number {
     if (!Number.isFinite(frameSeconds) || frameSeconds <= 0) return 0;
     this.accumulator += frameSeconds;
+    const cap = Math.max(1, Math.floor(maxSteps));
 
     // Small epsilon guards against float drift (e.g. 3 × (1/120) ≠ 0.025 exactly).
     let steps = Math.floor(this.accumulator / this.stepSeconds + 1e-9);
-    if (steps > this.maxStepsPerFrame) {
-      steps = this.maxStepsPerFrame;
+    if (steps > cap) {
+      steps = cap;
       this.accumulator = 0;
     } else {
       this.accumulator = Math.max(0, this.accumulator - steps * this.stepSeconds);

@@ -7,6 +7,7 @@ import { ReplayOverlay } from '../ui/replayOverlay';
 import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame, type Viewport } from '../fx/cameraDirector';
 import { clamp01 } from '../fx/easing';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
+import { distanceToBox, fastForwardTarget, SettleClock } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
@@ -55,6 +56,9 @@ const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
   ricochet_body: 'Ricochet hit', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
 };
 
+/** Keys that adjust the aim; pressing one during a solo miss's result goes straight back to aiming. */
+const AIM_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
 const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground' };
 
@@ -96,6 +100,12 @@ export class PrototypeScene extends Phaser.Scene {
   private cosmeticBall: { x: number; y: number; vx: number; vy: number } | null = null;
   private outOfCanvasSoundPlayed = false;
   private skipPresentationFrame = false;
+  /** Fast-forwards a missed ball that is only rolling to a stop (presentation time only). */
+  private readonly settleClock = new SettleClock();
+  /** The HUD pill currently offers "Skip" for a rolling ball. */
+  private skipOffered = false;
+  /** Solo: Jonh's line about the last miss stays in his bubble while the player re-aims. */
+  private lastMissQuote: string | null = null;
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -193,7 +203,7 @@ export class PrototypeScene extends Phaser.Scene {
         onAngleChange: (angle) => this.setAngle(angle),
         onPowerChange: (power) => this.setPower(power),
         onFire: () => this.fire(),
-        onReset: () => this.reset(),
+        onReset: () => { if (!this.hurryShot()) this.reset(); },
         onToggleDebug: (enabled) => {
           if (!this.isDevOptIn) return;
           this.isDebugEnabled = enabled;
@@ -219,6 +229,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.menuOverlay = new MenuOverlay(gameContainer, {
       onMapSelected: (mapId) => this.loadMap(mapId),
       onRetry: () => {
+        this.lastMissQuote = null;
         this.inputCoordinator.setOverlayVisible(false);
         this.htmlControls.setVisible(true);
         this.htmlControls.setControlsInert(false);
@@ -260,12 +271,15 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.inputCoordinator = new InputCoordinator({
       onFire: () => this.fire(),
-      onReset: () => this.reset(),
+      onReset: () => { if (!this.hurryShot()) this.reset(); },
       onContinue: () => {
+        if (this.hurryShot()) return;
         if (this.attemptMachine?.state === 'resolved') {
           this.reset();
         }
       },
+      // Space while it can't fire: finish a rolling ball, or (solo) skip the result window.
+      onSkip: () => { if (!this.hurryShot()) this.skipResult(false); },
       onToggleMute: () => {
         const isMuted = this.audioManager.toggleMute();
         this.htmlControls.setMuted(isMuted);
@@ -285,7 +299,11 @@ export class PrototypeScene extends Phaser.Scene {
     });
 
     this.canvasAim = new CanvasAim(this.game.canvas, {
-      canAim: () => this.canAimNow(),
+      canAim: () => {
+        // Touching the field during a solo miss's result window skips straight back to aiming.
+        this.skipResult(true);
+        return this.canAimNow();
+      },
       getAim: () => ({ angle: this.currentAngleDeg, power: this.currentPowerPercent }),
       onAim: (angle, power) => { this.setAngle(angle); this.setPower(power); },
       toWorld: (clientX, clientY) => {
@@ -321,6 +339,7 @@ export class PrototypeScene extends Phaser.Scene {
       
       const isOverlayOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
       this.inputCoordinator.setOverlayVisible(isOverlayOpen);
+      if (!isInput && !e.repeat && AIM_KEYS.has(e.code)) this.skipResult(true);
 
       const focused = e.target instanceof HTMLElement ? e.target : document.activeElement;
       const isActionButton = focused instanceof HTMLButtonElement && focused.id !== 'fire-btn';
@@ -461,6 +480,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!level) return;
     this.daily = daily;
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
+    this.lastMissQuote = null;
 
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
@@ -483,6 +503,7 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.settledSeconds,
       SHOT.timeoutSeconds,
       SHOT.boundsMarginMetres,
+      this.currentLevel.bounds.minY,
     );
     this.soloMachine = new SoloChallengeMachine(mapId);
 
@@ -580,6 +601,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.resetEffects();
     this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
+    this.lastMissQuote = null;
 
     this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
@@ -648,6 +670,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.ballRenderer.setVisible(false);
     this.jonhRenderer.resetToIdle();
     this.jonhRenderer.draw(false);
+    // Solo: his line about the miss stays up while you re-aim (the result window is short).
+    if (this.activeMode === 'solo' && this.lastMissQuote) this.jonhRenderer.triggerArrival(this.lastMissQuote);
     this.drawCannon();
     this.trailRenderer.onAttemptReset();
     
@@ -709,60 +733,16 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setAware(this.canvasAim.isDragging);
     this.jonhRenderer.setAlarm(replayFrameNow?.phase === 'pre' ? this.replayAlarm(replayFrameNow) : this.incomingAlarm());
     this.jonhRenderer.update(reactionSeconds);
-    const steps = this.stepper.advance(timelineSeconds);
+    // A missed ball that is only rolling to a stop is fast-forwarded: scaled real time is fed to
+    // the accumulator (with a matching step cap); the fixed step itself never changes.
+    const fastForward = this.settleClock.advance(dtSeconds, this.fastForwardTarget());
+    this.offerSkip(this.settleClock.isFastForwarding && this.attemptMachine.state === 'simulating');
+    const steps = this.stepper.advance(timelineSeconds * fastForward, Math.ceil(PHYSICS.maxStepsPerFrame * fastForward));
     const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
 
     for (let i = 0; i < steps; i++) {
       this.matter.world.step(stepMs);
-
-      if (this.attemptMachine.state === 'simulating') {
-        const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
-        if (state) {
-          // Sound follows the visible canvas; top exits still keep their valid flight path.
-          const v = this.view;
-          const bottom = v.bottom ?? v.height;
-          if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > v.width ||
-            state.yPx < bottom - v.height || state.yPx > bottom)) {
-            this.outOfCanvasSoundPlayed = true;
-            this.audioManager.playOutOfBounds();
-          }
-          if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
-          this.detectBounce(state, reduced);
-          this.lastProjectileState = state;
-          const ppmNow = WORLD.pixelsPerMetre;
-          this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
-          this.trailRenderer.addPoint(state.xPx, state.yPx);
-          if (state.firstGroundContact && !this.groundFeedbackShown) {
-            this.groundFeedbackShown = true;
-            const landing = state.firstGroundContact;
-            this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
-          }
-
-          if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
-            this.hatReactionTriggered = true;
-            this.activeReactionQuote = this.reactionSelector.selectReaction('hat');
-            this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
-            this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
-          } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
-            this.overheadReactionTriggered = true;
-            this.activeReactionQuote = this.reactionSelector.selectReaction('overhead');
-            this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
-          }
-
-          const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
-            x: state.xSim,
-            y: state.ySim,
-            speed: state.speedMs,
-            hitBody: state.hitJonh,
-            hitHat: state.hitHat,
-          });
-
-          if (result.resolved) {
-            this.handleResolution(result, state);
-            break;
-          }
-        }
-      }
+      if (this.attemptMachine.state === 'simulating' && this.simulateStep(reduced)) break;
     }
 
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
@@ -787,6 +767,106 @@ export class PrototypeScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * One fixed step of the live shot after Matter has stepped: contacts, trail, reactions and the
+   * shot rules. Returns true when the shot resolved. `quiet` (Skip) drops per-bounce sound and dust.
+   */
+  private simulateStep(reduced: boolean, quiet = false): boolean {
+    const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
+    if (!state) return false;
+    // Sound follows the visible canvas; top exits still keep their valid flight path.
+    const v = this.view;
+    const bottom = v.bottom ?? v.height;
+    if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > v.width ||
+      state.yPx < bottom - v.height || state.yPx > bottom)) {
+      this.outOfCanvasSoundPlayed = true;
+      if (!quiet) this.audioManager.playOutOfBounds();
+    }
+    if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
+    if (quiet) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+    else this.detectBounce(state, reduced);
+    this.lastProjectileState = state;
+    const ppmNow = WORLD.pixelsPerMetre;
+    this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
+    this.trailRenderer.addPoint(state.xPx, state.yPx);
+    if (state.firstGroundContact && !this.groundFeedbackShown) {
+      this.groundFeedbackShown = true;
+      const landing = state.firstGroundContact;
+      this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
+    }
+
+    if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
+      this.hatReactionTriggered = true;
+      this.activeReactionQuote = this.reactionSelector.selectReaction('hat');
+      this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
+      this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
+    } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
+      this.overheadReactionTriggered = true;
+      this.activeReactionQuote = this.reactionSelector.selectReaction('overhead');
+      this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
+    }
+
+    const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
+      x: state.xSim,
+      y: state.ySim,
+      speed: state.speedMs,
+      hitBody: state.hitJonh,
+      hitHat: state.hitHat,
+    });
+    if (!result.resolved) return false;
+    this.handleResolution(result, state);
+    return true;
+  }
+
+  /** How fast presentation time runs this frame: faster only while a landed miss rolls to a stop. */
+  private fastForwardTarget(): number {
+    const p = this.lastProjectileState;
+    if (!p || this.attemptMachine.state !== 'simulating' || this.pendingLaunch) return 1;
+    return fastForwardTarget({
+      landed: p.firstGroundContact !== null || p.obstacleContacts.length > 0,
+      speedMs: p.speedMs,
+      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.currentLevel.jonhSpawn.bodyBox),
+      impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
+    });
+  }
+
+  /** The Next pill turns into "Skip" while a missed ball is rolling to a stop. */
+  private offerSkip(on: boolean): void {
+    if (on === this.skipOffered) return;
+    this.skipOffered = on;
+    if (on) this.htmlControls.setResetLabel('Skip »');
+    else if (this.attemptMachine?.state === 'simulating') this.htmlControls.setResetLabel('Aim again ↵');
+  }
+
+  /**
+   * Skip: finishes a shot that is only rolling to a stop within this frame. It runs the very same
+   * fixed steps the clock would have, so the outcome is unchanged; only waiting is removed.
+   */
+  private hurryShot(): boolean {
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() ||
+      this.attemptMachine?.state !== 'simulating' || !this.settleClock.isFastForwarding) return false;
+    const reduced = this.jonhRenderer.isReducedMotionActive();
+    const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
+    const maxSteps = Math.ceil(SHOT.timeoutSeconds / PHYSICS.fixedStepSeconds) + 1;
+    for (let i = 0; i < maxSteps && this.attemptMachine.state === 'simulating'; i++) {
+      this.matter.world.step(stepMs);
+      if (this.simulateStep(reduced, true)) break;
+    }
+    this.stepper.reset();
+    return true;
+  }
+
+  /**
+   * Solo only: skips a shot's result window. `aimOnly` (aim keys or touching the field) skips just
+   * a non-final miss, straight back to aiming; Space also skips a final miss or a hit's replay.
+   */
+  private skipResult(aimOnly: boolean): void {
+    if (this.activeMode !== 'solo' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() ||
+      this.attemptMachine?.state !== 'resolved') return;
+    if (aimOnly && this.soloMachine?.state !== 'result') return;
+    this.reset();
+  }
+
   private handleResolution(result: { resolved: true; outcome: 'hit' | 'miss'; reason?: string; hadHatHit?: boolean }, state: ProjectileState): void {
     for (const obs of state.obstacleContacts) {
       this.classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
@@ -796,6 +876,8 @@ export class PrototypeScene extends Phaser.Scene {
     if (state.hitJonh) this.classifier.recordContact({ role: 'jonhBody' });
     if (state.passedOverhead) this.classifier.recordOverhead();
 
+    this.settleClock.reset();
+    this.skipOffered = false;
     const classification = this.classifier.classify(true);
     const isBodyHit = classification.isHit;
 
@@ -828,6 +910,7 @@ export class PrototypeScene extends Phaser.Scene {
     const quote = isBodyHit
       ? this.reactionSelector.selectReaction(feedback.category)
       : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category));
+    this.lastMissQuote = isBodyHit ? null : quote;
 
     const landing = !isBodyHit ? state.firstGroundContact : null;
     this.trailRenderer.setLandingMarker(
@@ -1235,6 +1318,7 @@ export class PrototypeScene extends Phaser.Scene {
   private resetEffects(): void {
     this.audioManager?.setFlightWhoosh(null);
     this.impactTimeline.reset();
+    this.settleClock.reset();
     this.replay = null;
     this.replayCountdown = null;
     this.replayOverlay?.hide();
@@ -1331,6 +1415,7 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.settledSeconds,
       SHOT.timeoutSeconds,
       SHOT.boundsMarginMetres,
+      this.currentLevel.bounds.minY,
     );
     
     this.multiCoordinator = new MultiCoordinator(this.attemptMachine, this.multiMachine, {

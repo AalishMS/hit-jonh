@@ -180,6 +180,7 @@ x(t)   = x0 + vx·t ;  y(t) = y0 + vy·t − ½·g·t²
 - Max **8** steps per frame; excess backlog is discarded **[TUNE]**. On tab hidden/visible the accumulator resets (no catch-up burst).
 - Optional render interpolation uses `FixedStepper.alpha`.
 - Pause = stop calling `step`. Slow motion, if ever added, must still step the same fixed `dt` (scale real time fed to the accumulator, never `dt`).
+- **Fast-forward [PROPOSED 2026-11-24, values TUNE in `FX.settle*`]:** once a missed ball has landed and is only rolling to a stop (crawling anywhere, or rolling while clear of Jonh), the real time fed to the accumulator is scaled up (×4) with a matching step cap, eased in and out. **Skip** (Space, Enter, the HUD pill) finishes such a shot within one frame by running the same fixed steps. Outcomes, contacts and step counts are identical to an unscaled run at 30/60/144 Hz (`tests/settleFastForward.test.ts`).
 - Reproducibility target: identical within one build + browser + configuration. Cross-device bit-identity is **not** assumed.
 - Matter sleeping disabled during shots (`enableSleeping: false`) **[PROPOSED]**.
 
@@ -193,7 +194,7 @@ Per-surface `restitution` and `friction` come from a material table in tuning co
 
 A shot resolves at the first of:
 1. **Valid outcome registered** — a body hit resolves scoring immediately; physics may continue briefly (≤ 1.5 s) for the comic aftermath, skippable.
-2. **Out of bounds** — projectile centre with x < −1 m or x > world width + 1 m. Leaving the **top** is allowed (it may come back); show an off-screen marker.
+2. **Out of bounds** — projectile centre with x < −1 m or x > world width + 1 m, **or below the world's floor (bounds minY − 1 m)** [PROPOSED 2026-11-24: a ball that rolled off the end of the ground used to fall until the 15 s timeout]. Leaving the **top** is allowed (it may come back); show an off-screen marker.
 3. **Settled** — projectile speed < 0.05 m/s for 0.5 s.
 4. **Safety timeout** — 15 s of simulated time (longest legitimate flight ≈ 4 s), logged as a warning in dev.
 
@@ -330,7 +331,7 @@ stateDiagram-v2
 
 Rules:
 - Only `Aiming` accepts angle/power changes and Fire. **[DECIDED]**
-- Presentation windows [TUNE]: shot result 1.4 s, handover 1.2 s, round summary 2.4 s. Timers freeze on pause and cancel on manual skip, Home, retry/rematch and map load. A visible Home button quits/cleans the session from gameplay and its overlays; startup opens the illustrated home screen above mode selection.
+- Presentation windows [TUNE]: shot result 1.0 s (1.4 s before 2026-11-24; body hits keep their longer window), handover 1.2 s, round summary 2.4 s. In solo, touching the aim (aim keys or the field) during a miss's result goes straight back to aiming, and Space skips the result; Jonh's line about the miss stays in his speech bubble while you re-aim. R retries from the solo result screen. Timers freeze on pause and cancel on manual skip, Home, retry/rematch and map load. A visible Home button quits/cleans the session from gameplay and its overlays; startup opens the illustrated home screen above mode selection.
 - `Firing` is a short presentation state (muzzle flash, ≤ 0.2 s); inputs stay locked.
 - `Pause` can overlay `Aiming`, `Simulating`, `Result`; it freezes simulation and timers; Resume returns to the exact prior state; Quit returns to menu. **[DECIDED]**
 - Restart/rematch clears live bodies, trails as appropriate, score events, and pending timers. **[DECIDED]**

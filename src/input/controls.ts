@@ -16,6 +16,8 @@ export interface InputCallbacks {
   onToggleMute?: () => void;
   onAimChange: (deltaAngle: number, deltaPower: number) => void;
   onEscape?: () => void;
+  /** A fresh Space press while firing isn't allowed: skip what's on screen (rolling ball, result). */
+  onSkip?: () => void;
 }
 
 /**
@@ -102,6 +104,9 @@ export class InputCoordinator {
       if (!repeat && this.canFire && this.spaceReleasedSinceAiming) {
         this.spaceReleasedSinceAiming = false;
         this.callbacks.onFire();
+      } else if (!repeat && !this.canFire) {
+        // Skipping never fires: aiming then waits for this Space to be released (setCanFire).
+        this.callbacks.onSkip?.();
       }
       // Consumed in gameplay so native button focus doesn't bypass coordinator
       return true;

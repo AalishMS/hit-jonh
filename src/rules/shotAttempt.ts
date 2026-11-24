@@ -25,6 +25,11 @@ export class ShotAttemptMachine {
     readonly settledDurationSeconds: number = 0.5,
     readonly safetyTimeoutSeconds: number = 15.0,
     readonly outOfBoundsMarginMetres: number = 1.0,
+    /**
+     * Bottom of the world (level bounds minY). A ball that rolls off the end of the ground falls
+     * below it and can never come back, so it is out of bounds instead of waiting for the timeout.
+     */
+    readonly floorYMetres: number = Number.NEGATIVE_INFINITY,
   ) {}
 
   get state(): ShotState {
@@ -98,10 +103,12 @@ export class ShotAttemptMachine {
       return { resolved: true, outcome: 'hit', hadHatHit: this._hadHatHit };
     }
 
-    // 2. Out of bounds (x < -margin or x > width + margin)
+    // 2. Out of bounds (x < -margin, x > width + margin, or fallen below the world's floor).
+    //    Leaving the top is allowed: the ball may come back down.
     if (
       snapshot.x < -this.outOfBoundsMarginMetres ||
-      snapshot.x > this.worldWidthMetres + this.outOfBoundsMarginMetres
+      snapshot.x > this.worldWidthMetres + this.outOfBoundsMarginMetres ||
+      snapshot.y < this.floorYMetres - this.outOfBoundsMarginMetres
     ) {
       this._state = 'resolved';
       this._outcome = 'miss';

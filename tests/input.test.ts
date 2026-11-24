@@ -20,6 +20,26 @@ describe('InputCoordinator and Accidental-Action Rules', () => {
     coordinator.handleKeyDown('Space', false, false);
     expect(onFire).toHaveBeenCalledOnce();
   });
+  it('Space while firing is not allowed skips instead, and the next shot still needs a fresh press', () => {
+    const onFire = vi.fn();
+    const coordinator = new InputCoordinator({ onFire, onReset: () => {}, onAimChange: () => {}, onSkip: () => coordinator.setCanFire(true) });
+    coordinator.setCanFire(false);
+    coordinator.handleKeyDown('Space', false, false); // skips the result → aiming
+    expect(onFire).not.toHaveBeenCalled();
+    coordinator.handleKeyDown('Space', true, false); // still held: no fire
+    expect(onFire).not.toHaveBeenCalled();
+    coordinator.handleKeyUp('Space');
+    coordinator.handleKeyDown('Space', false, false);
+    expect(onFire).toHaveBeenCalledOnce();
+  });
+
+  it('a held Space (repeat) never skips', () => {
+    const onSkip = vi.fn();
+    const coordinator = new InputCoordinator({ onFire: () => {}, onReset: () => {}, onAimChange: () => {}, onSkip });
+    coordinator.handleKeyDown('Space', true, false);
+    expect(onSkip).not.toHaveBeenCalled();
+  });
+
   it('triggers fire on fresh space press when aiming', () => {
     let fireCount = 0;
     const coordinator = new InputCoordinator({

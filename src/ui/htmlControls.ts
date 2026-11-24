@@ -257,7 +257,7 @@ export class HTMLControls {
 
   setResetLabel(label: string): void {
     this.resetButton.textContent = label;
-    this.resetButton.classList.toggle('is-next', /next|continue/i.test(label));
+    this.resetButton.classList.toggle('is-next', /next|continue|skip/i.test(label));
   }
 
   setMuted(muted: boolean): void {

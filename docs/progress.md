@@ -1,8 +1,10 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-10_
+_Last updated: 2026-11-24_
 
 ## Current milestone
+
+**Current (2026-11-24): "real game" pass.** The owner asked for the game to feel like a polished game people want to keep playing. The top-10 gap list and the per-item notes are in the "Real game pass" section at the end of this file.
 
 **Current (2026-10-08): owner-requested polish pass complete on branch `polish-pass`.** See `CHANGELOG.md` and the "Polish pass" entries at the end of this file. The earlier text below is historical.
 
@@ -585,3 +587,70 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 - Browser fixture verified local cards contain no Here labels and online dots compute green for Online and red for Away. Live online connection changes not verified: the configured server was previously unreachable.
 - `npm run check`: typecheck and lint passed; `Test Files 48 passed (48)`; `Tests 464 passed | 8 skipped (472)`. `npm run build`: succeeded, 176 modules transformed.
 - Current: requested presence presentation complete. Next: verify live online disconnect/reconnect once the server is reachable.
+
+
+## Real game pass (2026-11-24)
+
+The owner asked for Hit Jonh to feel like a polished game people want to keep playing for 30 minutes. They asked for the gaps to be listed and ranked by value per unit of effort, then fixed in that order with small commits.
+
+**How the list was made.** I played the dev build in headless Chromium: desktop 1440 wide, phone landscape 844×390 and portrait 390×844. I also timed 99 shots per map with real Matter (9 angles × 11 powers).
+
+**Top-10 gaps, ranked by value per unit of effort**
+
+1. **Slow shot loop.** A typical miss took 5.5 s of simulation, and 4.5 s of that was the ball rolling after it landed. A ball rolling off either end of the ground fell until the 15 s timeout. With the 1.4 s result window, it was about 7 s from Fire to aiming again.
+2. **Phone landscape broken.** At 844×390 the canvas is cropped: the ground, the cannon and Jonh are hidden behind the slider bar.
+3. **Jonh has about 35 lines and no memory.** Nothing escalates, nothing depends on the map, and lines repeat within minutes.
+4. **No campaign.** After a win the only options are Retry and Change map. All 8 maps sit unlocked in a flat grid, with no star total.
+5. **Every launch is identical.** A 5% shot and a 100% shot get the same flash, smoke, recoil and boom.
+6. **The title card covers Jonh.** There is no character on the title screen.
+7. **Multiplayer lacks party energy.** No taunts, no replay of the winning shot, no final-round moment.
+8. **Only hats unlock.** There are no cannon skins or outfits.
+9. **Every obstacle is a static box.** There are no breakables and no portals.
+10. **Abrupt transitions.** Maps swap instantly, and the FIRE button covers part of the field on desktop.
+
+**Rules followed throughout.** These stay unchanged: scoring (100/125/20/0, [OPEN]), three solo shots ([OPEN]), shot outcomes, the aim ranges and the "no full trajectory preview" rule. Unlockable maps and the new mechanics are owner requests; they supersede SPEC §5 ("all unlocked") and the §4.2 deferral and are recorded there.
+
+### 1. Snappy shot loop — done
+
+**Done**
+- **Fast-forward after landing** (`src/fx/settleClock.ts`, `FX.settle*` [TUNE]). It applies once a missed ball has touched the ground or an obstacle and is either crawling (< 0.8 m/s) or rolling (< 4 m/s) at least 2.5 m from Jonh.
+  - Presentation time then eases up to 4×. `FixedStepper.advance` takes a matching step cap, so no steps are dropped at 30 Hz.
+  - Fast bounces and anything close to Jonh stay at real speed.
+- **Skip.** While the ball is fast-forwarding, the HUD pill reads "Skip »", and Space, Enter or the pill finishes the shot within one frame. It runs the same fixed steps without per-bounce sound or dust.
+- **Floor out-of-bounds** (`ShotAttemptMachine` `floorYMetres` = level bounds minY). A ball below minY − 1 m is out of bounds. Before, a ball that rolled off either end of the ground (x between 25.6 and 26.6 m, or between −1 and 0 m) fell until the 15 s timeout.
+- **Miss result window** 1.4 s → 1.0 s (`FLOW.shotResultSeconds` [TUNE]). Body hits keep their longer window and replay.
+- **Solo skips.**
+  - Aim keys or touching the field during a non-final miss go straight back to aiming.
+  - Space skips any result, including a hit's replay.
+  - Jonh's line about the miss stays in his bubble while you re-aim.
+  - R (and the focused Retry button) retries from the solo result screen.
+  - After any skip, Space still needs a fresh release before it fires (accidental-action rule kept).
+
+**Measured** (simulated seconds from Fire to resolution for misses, 9 × 11 aim grid per map, at 60 Hz):
+
+| Map | Before: median / p90 / max | After: median / p90 / max |
+| --- | --- | --- |
+| Backyard | 5.48 / 7.35 / 9.50 | 2.57 / 4.27 / 5.73 |
+| Fence | 5.17 / 7.03 / 9.80 | 2.53 / 3.97 / 5.83 |
+| Rooftop | 5.83 / 7.67 / 9.80 | 2.85 / 4.02 / 5.83 |
+| Rubber Yard | 5.58 / 7.15 / 15.02 | 2.78 / 4.62 / 10.83 |
+| Bank Shot | 5.72 / 7.47 / 10.75 | 2.60 / 4.12 / 6.35 |
+| Bounce House | 5.67 / 7.63 / 15.02 | 2.63 / 4.30 / 6.32 |
+| Lunar Picnic | 5.40 / 10.70 / 15.02 | 3.72 / 8.23 / 12.93 |
+| Valley | 7.72 / 11.28 / 14.70 | 4.63 / 7.22 / 9.57 |
+
+The "before" column already includes the floor fix, so the old timeouts were worse than shown.
+
+Skip makes any landed miss instant. The remaining long tails are legitimate: low-gravity Lunar flights, and an 85°/100% Rubber Yard shot that bounces on top of the rubber ceiling for 13 s.
+
+**Verified**
+- `tests/settleFastForward.test.ts` covers all 8 maps × 8 aims (misses plus the reference hit). Fast-forward at 30/60/144 Hz and Skip give identical outcomes, end points, miss reasons and step counts to the plain run, and misses resolve sooner. A Backyard ball that rolls off the end of the ground is now out of bounds in under 6 s.
+- Unit tests cover `fastForwardTarget`, `SettleClock`, `distanceToBox`, the raised stepper cap, the floor rule, and Space-skip needing a fresh press before firing.
+- `npm run check`: `Test Files 50 passed (50)`, `Tests 484 passed | 8 skipped (492)`.
+- **Browser** (dev server, headless Chromium, the game stepped at an exact 60 Hz). The machine was too loaded to run in real time.
+  - Fence 45°/0%: Skip offered at 1.6 s, resolved at 2.5 s, aiming again at 3.5 s.
+  - Space chain over three misses: fire → Space (finish roll) → Space (skip result) → "Jonh wins", with Retry focused; R restarted at once.
+  - Backyard 56°/32%: still a ricochet hit with the full impact and replay, then the result screen.
+
+**Not verified:** real-time feel on a real device. The "R" key hint is hidden on touch-only screens (CSS `hover: none`), but that was not tried on a phone.
+

@@ -107,6 +107,25 @@ export class MenuOverlay {
     return this.clickAbortController.signal;
   }
 
+  /** A keyboard shortcut that lives as long as the current view (ignores repeats and typing). */
+  private shortcut(code: string, action: () => void, signal: AbortSignal): void {
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== code || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault();
+      action();
+    }, { signal });
+  }
+
+  /** Appends a small key hint (e.g. "R") to a button. */
+  private keyHint(button: HTMLButtonElement, key: string): void {
+    const hint = el('kbd', 'key-hint', key);
+    hint.setAttribute('aria-hidden', 'true');
+    button.appendChild(hint);
+    button.setAttribute('aria-keyshortcuts', key);
+  }
+
   private button(label: string, className: string, onClick: () => void, signal: AbortSignal, parent: HTMLElement = this.content): HTMLButtonElement {
     const b = el('button', `btn ${className}`.trim(), label);
     b.type = 'button';
@@ -435,7 +454,10 @@ export class MenuOverlay {
     }
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
-    const retryBtn = this.button('Retry map', 'btn-retry', () => { this.hide(); this.callbacks.onRetry(); }, signal, actions);
+    const retry = () => { this.hide(); this.callbacks.onRetry(); };
+    const retryBtn = this.button('Retry map', 'btn-retry', retry, signal, actions);
+    this.keyHint(retryBtn, 'R');
+    this.shortcut('KeyR', retry, signal);
     this.button('Change map', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
     retryBtn.focus();
   }

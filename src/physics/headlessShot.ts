@@ -32,7 +32,7 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm),
   );
   const attempt = new ShotAttemptMachine(level.bounds.maxX, SHOT.settledSpeedMs,
-    SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres);
+    SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres, level.bounds.minY);
   attempt.fire(angleDeg, powerPercent);
   const classifier = new ShotClassifier();
   const maxSteps = Math.ceil(SHOT.timeoutSeconds / PHYSICS.fixedStepSeconds) + 1;

@@ -195,6 +195,9 @@ input:disabled { opacity: .5; cursor: default; }
 .btn-primary, .btn-retry { background: var(--pow); color: var(--paper); text-shadow: 0 2px 0 #2A1B2E55; }
 .btn-primary:disabled { filter: grayscale(1); }
 .btn-quiet { background: transparent; border-color: transparent; box-shadow: none; text-decoration: underline; text-underline-offset: 4px; }
+/* Keyboard hint inside a button ("Retry map  R"); hidden on touch-only screens. */
+.key-hint { display: inline-block; margin-left: .55em; padding: .18em .42em; border: 2px solid currentColor; border-radius: 6px; font: 900 .72em/1 var(--ui); opacity: .8; vertical-align: .1em; }
+@media (hover: none) and (pointer: coarse) { .key-hint { display: none; } }
 :focus-visible { outline: 4px solid var(--grape); outline-offset: 3px; }
 
 /* Replay letterbox */
