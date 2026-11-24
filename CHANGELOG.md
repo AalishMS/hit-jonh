@@ -1,5 +1,40 @@
 # Changelog
 
+## Real game pass (branch `real-game-pass`, 24 November 2026)
+
+The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").
+
+### One more try
+- **Snappy misses.** A miss used to take about 7 s before you could aim again; 4.5 s of that was watching the ball roll.
+  - Once a missed ball has landed and is only rolling, the game fast-forwards it 4×. **Skip** (Space, Enter or the pill) finishes it at once.
+  - Both run the same fixed physics steps, so the outcome is identical (tested on every map at 30/60/144 Hz).
+  - A ball that rolls off the end of the ground now ends the shot instead of falling for 15 s.
+  - The miss result is 1.0 s and is skipped by touching the aim. R retries from the result screen.
+- **A campaign.** The gardens are in order, each with 3 stars and a trick-shot badge.
+  - Clearing a garden unlocks the next. A win offers **Next garden** (N). The title offers **Continue**. There is a campaign star total.
+  - Hot-seat, online and Daily Bonk keep every map.
+
+### Game feel and character
+- **Jonh has things to say.** About 120 new lines fit the moment:
+  - miss streaks ("Take your time. Apparently you need it."), first-shot hits, third hits in a row;
+  - his hat ("Not the fez!"), the bit of his property you hit ("That shed took me three weekends.");
+  - each garden ("You followed me to the moon?").
+  - He heckles slow aimers and mutters when he speaks.
+- **Launches scale with power.** A feeble pop at low power; a big flash, smoke, sparks, wheel dust, recoil, camera kick and a rumbling boom at full.
+- **A title screen with a star.** Jonh is on stage in one of your gardens. Every so often the cannon fires a real reference shot at him (with the full impact), and poking the garden fires it now.
+
+### Party
+- **Stakes.** Every handover says what the shot means ("Trailing Bo by 75", "Only a trick shot wins it! A hit ties."). Banners mark the final round and last shots, and the deciding shot gets a drumroll.
+- **Taunts.** Whoever just scored taunts the next player on the handover card.
+- **Winning-shot replay.** The winner's best hit plays again, in its own garden and with their cannon, before the scores.
+
+### Presentation
+- **Chapter cards** between gardens ("Garden 3 · Rooftop Lunch", "Final round").
+- **Phone landscape fixed.** The canvas was cropped until a 500 ms poll and the sliders squeezed it. It now refits at once, and the sliders fold into a toggle (the garden is 87% bigger at 844×390).
+- **Readable on phones.** Jonh's bubble and the landing label grow on small screens.
+- **Desktop.** With a mouse, FIRE sits under the garden instead of over it.
+- **The hat locker is now Jonh's wardrobe.**
+
 ## Online multiplayer (branch `online-multiplayer`, 8 October 2026)
 
 Play with 2–4 friends over the internet. One player creates a room and shares a 5-character code or a `?room=CODE` link; the others join. Turns are live: everyone sees each shot as it is fired, and the shooter's result decides the score.

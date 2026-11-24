@@ -4,7 +4,25 @@
 
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
-**Status:** Playable, with four gardens, solo and 2–4 player hot-seat modes, a hand-drawn "Sunday Funnies" look, layered impact effects with slow-motion replays, an original soundtrack, unlockable hats and a Daily Bonk. See [`CHANGELOG.md`](CHANGELOG.md) for the polish pass and [`docs/progress.md`](docs/progress.md) for history.
+**Status:** Playable. It has:
+- a solo campaign through eight gardens, with stars, trick-shot badges and unlocks;
+- 2–4 player hot-seat and online rooms with stakes callouts, taunts and a winning-shot replay;
+- a hand-drawn "Sunday Funnies" look;
+- layered impact effects with slow-motion replays, an original soundtrack, unlockable cosmetics and a Daily Bonk.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](docs/progress.md) for history.
+
+## How to play
+
+| Action | Mouse / touch | Keyboard |
+| --- | --- | --- |
+| Aim | Drag the cannon (it points at your finger; distance is power) or drag the field up/down for angle | ← / → angle, ↓ / ↑ power |
+| Fire | FIRE button | Space |
+| Skip a rolling ball or a result | Skip / Next pill, or touch the aim | Space or Enter |
+| Retry / next garden (result screen) | Buttons | R / N |
+| Pause | Pause button | Escape |
+
+On a phone in landscape, the sliders icon at top right shows the precise Angle/Power sliders.
 
 ## Stack
 
