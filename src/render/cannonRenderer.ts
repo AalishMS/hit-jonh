@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
-import { barrelKey } from '../art/cannonArt';
+import { barrelKey, cannonSkinKeys } from '../art/cannonArt';
+import { DEFAULT_CANNON_SKIN, type CannonSkinId } from '../rules/cosmetics';
 import { PAL, hex } from '../art/palette';
 import { AIM, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
@@ -41,6 +42,7 @@ export class CannonRenderer {
     private readonly ppm: number,
     private readonly worldHeightPx: number,
     private readonly physics: LevelPhysics = levelPhysics({}),
+    private skin: CannonSkinId = DEFAULT_CANNON_SKIN,
   ) {
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
@@ -55,6 +57,13 @@ export class CannonRenderer {
       fontFamily: 'Nunito, system-ui, sans-serif', fontStyle: '900', fontSize: '13px', color: PAL.ink,
     }).setOrigin(0.5, 0).setResolution(2).setDepth(8);
   }
+
+  /**
+   * Changes the cannon's skin at runtime (all skin textures are rasterized at boot). A skin shows
+   * only on the unpainted solo cannon (`draw` with no colour); a multiplayer cannon keeps the
+   * classic parts so the player's colour band and pattern read exactly as before.
+   */
+  setSkin(skin: CannonSkinId): void { this.skin = skin; }
 
   get pivot(): { x: number; y: number } { return { x: this.pivotXPx, y: this.pivotYPx }; }
 
@@ -94,8 +103,12 @@ export class CannonRenderer {
   draw(angleDeg: number, color: number | null = null, pattern: string = 'solid'): void {
     this.angleDeg = angleDeg;
     const rad = (angleDeg * Math.PI) / 180;
-    const key = barrelKey(color, color === null ? null : pattern);
-    if (this.barrel.texture.key !== key && this.barrel.scene.textures.exists(key)) this.barrel.setTexture(key);
+    const keys = cannonSkinKeys(color === null ? this.skin : DEFAULT_CANNON_SKIN);
+    const key = color === null ? keys.barrel : barrelKey(color, pattern);
+    const textures = this.barrel.scene.textures;
+    if (this.barrel.texture.key !== key && textures.exists(key)) this.barrel.setTexture(key);
+    if (this.carriage.texture.key !== keys.carriage && textures.exists(keys.carriage)) this.carriage.setTexture(keys.carriage);
+    if (this.wheel.texture.key !== keys.wheel && textures.exists(keys.wheel)) this.wheel.setTexture(keys.wheel);
     const base = artScale('cannon-barrel');
     const w = this.windup;
     const ax = Math.cos(rad);

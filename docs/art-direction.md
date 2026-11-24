@@ -30,6 +30,8 @@ All tokens below live in code at `src/art/palette.ts` (game) and `src/style.css`
 | `zap` | `#FFE14D` | Impact stars, sparks, mid-tier comic text, the full-power glow. |
 | `flash` | `#FFFFFF` | Only for the 1–2 frame impact flash. |
 
+**Cosmetic unlocks** (cannon skins, Jonh outfits) add six tokens to `palette.ts` and nothing else: `coal` / `coalLight` (pirate cannon, tuxedo), `silver` / `silverDark` (moonshot cannon) and `grape` / `grapeDark` (tracksuit). Outfits keep Jonh's silhouette, rig and hat; skins never touch the multiplayer colour band.
+
 **Player colours (multiplayer):** tomato `#FF5A3C`, sky `#3FA7E8`, leaf `#4DBA4F`, grape `#9B6BE0`. Each is always paired with its pattern (solid, stripes, dots, checks), never colour alone.
 
 ## Outline rules

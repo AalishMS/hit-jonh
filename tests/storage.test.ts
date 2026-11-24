@@ -211,6 +211,19 @@ describe('Storage', () => {
 });
 
 describe('Progress persistence (polish pass)', () => {
+  it('keeps a selected cannon skin or outfit only while the campaign stars still unlock it', async () => {
+    const { freshProgress } = await import('../src/rules/progression');
+    const { saveProgress, loadProgress } = await import('../src/storage/storage');
+    // Mocked MAPS here has two gardens, so at most 6 stars are reachable.
+    const pick = { ...freshProgress(), selectedCannon: 'admiral' as const, selectedOutfit: 'argyle' as const, bestStreak: 5 };
+    saveProgress(pick);
+    expect(loadProgress()).toMatchObject({ selectedCannon: 'classic', selectedOutfit: 'argyle' });
+    recordSoloResult('backyard', 1, false, 40, 50);
+    recordSoloResult('fence', 1, false, 40, 50);
+    saveProgress(pick);
+    expect(loadProgress()).toMatchObject({ selectedCannon: 'admiral', selectedOutfit: 'argyle' });
+  });
+
   it('round-trips progress and ignores corrupt progress safely', async () => {
     const { loadProgress, saveProgress } = await import('../src/storage/storage');
     const { freshProgress, recordShot } = await import('../src/rules/progression');
