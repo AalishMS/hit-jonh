@@ -141,3 +141,21 @@ export const HECKLE_AFTER_MISSES: readonly string[] = [
   'Maybe aim at me this time.',
   'Have you considered a hobby?',
 ];
+
+/** The title screen: idle quips, and what he says when the demo shot (or a tap) gets him. */
+export const TITLE_LINES: readonly string[] = [
+  'Oh good. Visitors.',
+  'This is a private garden.',
+  "I'm not here.",
+  'Go on, then. If you must.',
+  'Nobody press Play.',
+  'Lovely afternoon. Shame about you.',
+];
+
+export const TITLE_HIT_LINES: readonly string[] = [
+  'Every single time.',
+  "And we haven't even started.",
+  'Was that the tutorial?',
+  'Lovely. A demonstration.',
+  'Before the menu, even.',
+];

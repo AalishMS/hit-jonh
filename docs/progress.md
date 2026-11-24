@@ -762,3 +762,26 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** how the boom sounds (no listening possible).
 
+### 6. Title screen with character — done
+
+**Done**
+- **Jonh is on stage.** The title card now sits between the cannon (left) and Jonh (right) on desktop and phone landscape; on portrait phones it sits under the stage.
+  - The menu backdrop lets pointer events through outside the card, so the garden can be poked.
+  - Jonh greets you with a title quip ("Nobody press Play.", "Oh good. Visitors.") and a mutter.
+- **Demo shot.** About 4 s after the title appears, then every 11–15 s, the cannon swings round, winds up and fires one of the garden's reference solutions. Clicking or tapping the garden ("Psst: poke the garden.") fires it at once.
+  - The flight is a genuine Matter run: `physics/shotRecorder.ts` records it on a private engine and the title animates the recorded path.
+  - Impact: the real impact profile with the shared hit-stop clock, comic word, flash, ring, particles, camera punch, hit sound and Jonh's knock-back with a title line ("Was that the tutorial?").
+  - Afterwards the ball bounces away, and Jonh climbs back into his chair 3.4 s later.
+  - Under reduced motion there is no flying ball; a poke just gets a line.
+- **Variety.** The title garden is picked at random from your unlocked gardens of ordinary width, with the selected hat. "Continue" and the star total (item 4) live on the same card.
+
+**Verified**
+- `tests/shotRecorder.test.ts`: every map's first reference shot, recorded, reaches Jonh's body, and its trick flag matches the headless runner. Sampling is linear and clamped.
+- Browser (frame clock):
+  - At 1440, 844×390 and 390×844 the cannon and Jonh are both visible around the card.
+  - Clicking the garden fired the Backyard demo trick shot: flash, "TRICK SHOT!", ring and knock-back.
+  - Jonh's quip bubble anchors over his head when every frame is rendered. A top-left bubble seen with skipped renders was an artefact of headless stepping: the camera world view updates only on rendered frames.
+  - No page errors.
+
+**Not verified:** on real touch hardware, whether the pass-through backdrop ever swallows a scroll gesture on the home card.
+

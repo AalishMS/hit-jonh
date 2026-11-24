@@ -206,6 +206,7 @@ export class MenuOverlay {
     }, signal, row);
     mute.setAttribute('aria-pressed', String(silenced));
     this.content.appendChild(el('div', 'home-note', 'Solo challenges · 2–4 friends on one device · One very annoyed man'));
+    this.content.appendChild(el('p', 'home-tip', 'Psst: poke the garden.'));
     play.focus();
   }
 

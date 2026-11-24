@@ -5,7 +5,8 @@ import { CameraRig } from '../render/cameraRig';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
 import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame, type Viewport } from '../fx/cameraDirector';
-import { clamp01 } from '../fx/easing';
+import { clamp01, easeInOutSine } from '../fx/easing';
+import { recordShot as recordDemoShot, sampleRecorded, type RecordedShot } from '../physics/shotRecorder';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
 import { distanceToBox, fastForwardTarget, SettleClock } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
@@ -86,7 +87,22 @@ export class PrototypeScene extends Phaser.Scene {
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
-  private attract: { scenery: SceneryRenderer; jonh: JonhRenderer; cannon: CannonRenderer } | null = null;
+  /**
+   * The title screen's live garden. A demo shot (one of the garden's physics-proven reference
+   * solutions, recorded on a private engine) bonks Jonh every so often, or whenever the player taps.
+   */
+  private attract: {
+    scenery: SceneryRenderer; jonh: JonhRenderer; cannon: CannonRenderer; ball: BallRenderer; level: LevelData;
+    angle: number;
+    /** Seconds until the next demo shot (counts only on the home view). */
+    timer: number;
+    /** Seconds until Jonh's opening quip, if not said yet. */
+    quipIn: number | null;
+    demo: { shot: RecordedShot; aimFrom: number; aimTo: number; power: number; phase: 'aim' | 'windup' | 'flight' | 'after'; t: number; ball: { x: number; y: number; vx: number; vy: number } | null } | null;
+    /** Seconds until Jonh climbs back into his chair after a bonk. */
+    recoverIn: number | null;
+  } | null = null;
+  private readonly recordedShots = new Map<string, RecordedShot>();
   private soloResultExtras: SoloResultExtras = {};
   private progress: Progress = freshProgress();
   private pendingUnlocks: HatName[] = [];
@@ -323,6 +339,15 @@ export class PrototypeScene extends Phaser.Scene {
       worldPerPx: () => 1 / (this.view.zoom ?? 1),
     });
 
+    // Title screen: tapping the garden fires the demo shot at Jonh right away.
+    const onTitleTap = (event: PointerEvent) => {
+      if (this.activeMode !== 'none' || !this.attract || !event.isPrimary || this.menuOverlay.getView() !== 'home') return;
+      this.audioManager.unlock();
+      this.attractFire();
+    };
+    this.game.canvas.addEventListener('pointerdown', onTitleTap);
+    this.cleanupHandlers.push(() => this.game.canvas.removeEventListener('pointerdown', onTitleTap));
+
     // Gesture unlock
     const unlockAudio = () => this.audioManager.unlock();
     window.addEventListener('click', unlockAudio, { once: true });
@@ -451,21 +476,31 @@ export class PrototypeScene extends Phaser.Scene {
     this.showAttract();
   }
 
-  /** The title screen's live backdrop: Jonh reading in his garden while menus are open. */
+  /** The title screen's live backdrop: Jonh reading in one of your gardens while menus are open. */
   private showAttract(): void {
     this.hideAttract();
-    const level = MAPS[0]!;
+    const level = this.pickAttractLevel();
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
     const scenery = new SceneryRenderer(this, ppm, h, w);
     scenery.draw(level);
     const jonh = new JonhRenderer(this, level.jonhSpawn, ppm, h, { level, hatId: this.progress.selectedHat });
     jonh.setReducedMotion(loadSaveData().settings.reducedMotion);
-    const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h);
+    const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h, levelPhysics(level));
     cannon.setAimAids(false, 50);
     cannon.draw(38, null);
+    const ball = new BallRenderer(this, metresToPixels(PROJECTILE.radiusMetres, ppm));
+    ball.setVisible(false);
     this.view = { width: w, height: h };
     this.cameraRig?.setView(this.view);
-    this.attract = { scenery, jonh, cannon };
+    this.attract = { scenery, jonh, cannon, ball, level, angle: 38, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2, demo: null, recoverIn: null };
+  }
+
+  /** A garden the player has unlocked (ordinary width, so the title framing fits). */
+  private pickAttractLevel(): LevelData {
+    const fits = (m: LevelData) => m.bounds.maxX * WORLD.pixelsPerMetre <= WORLD.designWidthPx;
+    const open = campaignStatus(MAP_IDS, loadSaveData().solo).filter(e => e.unlocked).map(e => MAPS.find(m => m.id === e.mapId)!)
+      .filter(m => m && fits(m) && m.referenceSolutions.length > 0);
+    return open.length > 0 ? open[Math.floor(Math.random() * open.length)]! : MAPS[0]!;
   }
 
   private hideAttract(): void {
@@ -473,9 +508,129 @@ export class PrototypeScene extends Phaser.Scene {
     this.attract.scenery.destroy();
     this.attract.jonh.destroy();
     this.attract.cannon.destroy();
+    this.attract.ball.destroy();
     this.attract = null;
+    this.effects?.reset();
+    this.impactTimeline.reset();
+    this.cameraRig?.reset();
   }
 
+  /** Title screen: aim at Jonh, wind up and fire a recorded reference shot (tap = right now). */
+  private attractFire(): void {
+    const a = this.attract;
+    if (!a || a.demo) return;
+    if (a.jonh.isReducedMotionActive()) {
+      // No flying ball under reduced motion: he just answers.
+      const line = this.reactionSelector.selectTitle(false);
+      a.jonh.triggerArrival(line);
+      this.audioManager.playMutter(line.length);
+      return;
+    }
+    const aims = a.level.referenceSolutions;
+    const aim = aims[Math.floor(Math.random() * aims.length)]!;
+    const key = `${a.level.id}:${aim.angleDeg}:${aim.powerPercent}`;
+    let shot = this.recordedShots.get(key);
+    if (!shot) {
+      shot = recordDemoShot(a.level, aim.angleDeg, aim.powerPercent);
+      this.recordedShots.set(key, shot);
+    }
+    a.jonh.resetToIdle();
+    a.recoverIn = null;
+    a.demo = { shot, aimFrom: a.angle, aimTo: aim.angleDeg, power: aim.powerPercent, phase: 'aim', t: 0, ball: null };
+  }
+
+  private updateAttract(dt: number, reduced: boolean): void {
+    const a = this.attract!;
+    a.scenery.update(dt, reduced);
+    const onHome = this.menuOverlay.isVisible() && this.menuOverlay.getView() === 'home';
+    if (a.quipIn !== null) {
+      a.quipIn -= dt;
+      if (a.quipIn <= 0) {
+        a.quipIn = null;
+        if (onHome && !a.demo) {
+          const line = this.reactionSelector.selectTitle(false);
+          a.jonh.triggerArrival(line);
+          this.audioManager.playMutter(line.length);
+        }
+      }
+    }
+    if (!a.demo && onHome && !reduced) {
+      a.timer -= dt;
+      if (a.timer <= 0) this.attractFire();
+    }
+    // The same hit-stop/slow-motion clock as play, so a title bonk lands like a real one.
+    const reaction = this.impactTimeline.advance(dt, false, reduced);
+    const recoil = this.effects.update(reaction, reduced, dt);
+    const d = a.demo;
+    if (d) {
+      d.t += dt;
+      if (d.phase === 'aim') {
+        const k = clamp01(d.t / 0.45);
+        a.angle = d.aimFrom + (d.aimTo - d.aimFrom) * easeInOutSine(k);
+        if (k >= 1) { d.phase = 'windup'; d.t = 0; this.audioManager.playFuse(); }
+      } else if (d.phase === 'windup') {
+        a.cannon.setWindup(clamp01(d.t / FX.windupSeconds));
+        if (d.t >= FX.windupSeconds) {
+          a.cannon.setWindup(0);
+          d.phase = 'flight';
+          d.t = 0;
+          const muzzle = a.cannon.getMuzzlePosition(a.angle, PROJECTILE.radiusMetres);
+          this.effects.launch(muzzle.x, muzzle.y, a.angle * Math.PI / 180, reduced, d.power / 100);
+          this.audioManager.playCannonFire(d.power / 100);
+        }
+      } else if (d.phase === 'flight') {
+        const points = d.shot.points;
+        const end = points[d.shot.contactIndex ?? points.length - 1]!.t;
+        const now = Math.min(d.t, end);
+        const p = sampleRecorded(points, now);
+        const q = sampleRecorded(points, Math.max(0, now - 1 / 60));
+        const maxSpeed = levelPhysics(a.level).maxSpeedMs * WORLD.pixelsPerMetre;
+        a.ball.draw(p.x, p.y, (p.x - q.x) * 60, (p.y - q.y) * 60, dt, reduced, maxSpeed);
+        if (d.t >= end) {
+          d.phase = 'after';
+          d.t = 0;
+          if (d.shot.contactIndex !== null) {
+            const quality: HitQuality = d.shot.trick ? 'trick' : d.shot.impactSpeedMs >= LOOK.strongImpactMs ? 'strong' : 'weak';
+            const profile = impactProfile(quality, reduced);
+            const word = profile.words.length ? profile.words[Math.floor(Math.random() * profile.words.length)]! : null;
+            this.impactTimeline.bodyImpact(reduced, profile);
+            this.effects.impact(p.x, p.y, profile, d.shot.dirX, 0, reduced, word);
+            this.cameraRig.impact(profile.shakePx * 0.6, profile.shakeSeconds, FX.shakeHz, d.shot.dirX, 0, profile.zoomPunch * 0.6, FX.punchSeconds);
+            a.ball.squash(Math.atan2(0, d.shot.dirX), 1);
+            this.audioManager.playHit(quality);
+            a.jonh.triggerHit(d.shot.impactSpeedMs, this.reactionSelector.selectTitle(true),
+              quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak', d.shot.dirX);
+            a.recoverIn = FLOW.attractRecoverSeconds;
+          }
+          d.ball = { x: p.x, y: p.y, vx: -d.shot.dirX * 95, vy: -210 };
+        }
+      } else if (d.ball) {
+        // The ball bounces away cosmetically, as in play.
+        const b = d.ball;
+        const r = PROJECTILE.radiusMetres * WORLD.pixelsPerMetre;
+        b.vy += levelPhysics(a.level).gravity * WORLD.pixelsPerMetre * reaction;
+        b.x += b.vx * reaction;
+        b.y += b.vy * reaction;
+        const floor = simYToWorldY(a.level.ground.maxY, WORLD.designHeightPx, WORLD.pixelsPerMetre) - r;
+        if (b.y > floor) { b.y = floor; b.vy = Math.abs(b.vy) > 60 ? -Math.abs(b.vy) * 0.42 : 0; b.vx *= 0.75; }
+        a.ball.draw(b.x, b.y, b.vx, b.vy, reaction, reduced, 1);
+        if (d.t > 1.6) {
+          a.ball.setVisible(false);
+          a.demo = null;
+          a.timer = FLOW.attractShotEverySeconds + Math.random() * 4;
+        }
+      }
+    }
+    if (a.recoverIn !== null) {
+      a.recoverIn -= dt;
+      if (a.recoverIn <= 0) { a.recoverIn = null; a.jonh.resetToIdle(); }
+    }
+    a.cannon.update(dt);
+    a.cannon.setRecoil(recoil, a.angle);
+    a.cannon.draw(a.angle, null);
+    a.jonh.update(reaction);
+    this.cameraRig.update(dt, aimFrame(this.view), 3.5, reduced);
+  }
 
   private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null): void {
     this.hideAttract();
@@ -710,9 +865,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.online?.update(Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND)));
     if (this.activeMode === 'none' && this.attract) {
       const dt = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
-      const reduced = this.attract.jonh.isReducedMotionActive();
-      this.attract.scenery.update(dt, reduced);
-      this.attract.jonh.update(dt);
+      this.updateAttract(dt, this.attract.jonh.isReducedMotionActive());
       return;
     }
     if (this.sessionCoordinator?.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine) return;

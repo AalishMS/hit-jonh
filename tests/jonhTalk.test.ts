@@ -3,7 +3,7 @@ import { JONH_TALK } from '../src/config/tuning';
 import { MAPS } from '../src/levels';
 import {
   FIRST_SHOT_LINES, HAT_LINES, HECKLE_AFTER_MISSES, HECKLE_LINES, HIT_STREAK_LINES, MAP_LINES, MISS_STREAK_LINES,
-  OBSTACLE_LINES, STRONG_HIT_LINES, TRICK_HIT_LINES,
+  OBSTACLE_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES,
 } from '../src/rules/jonhLines';
 import { HeckleTimer } from '../src/rules/heckleTimer';
 import { JONH_REACTIONS, JonhReactionSelector } from '../src/rules/reactions';
@@ -78,6 +78,7 @@ describe('Jonh lines data', () => {
     ...Object.values(JONH_REACTIONS).flat(), ...MISS_STREAK_LINES, ...FIRST_SHOT_LINES, ...HIT_STREAK_LINES,
     ...STRONG_HIT_LINES, ...TRICK_HIT_LINES, ...Object.values(HAT_LINES).flat(), ...OBSTACLE_LINES.flatMap(e => e.lines),
     ...Object.values(MAP_LINES).flatMap(m => [...m.arrival, ...m.miss, ...m.hit]), ...HECKLE_LINES, ...HECKLE_AFTER_MISSES,
+    ...TITLE_LINES, ...TITLE_HIT_LINES,
   ];
 
   it('every line fits a speech bubble and spells his name right', () => {

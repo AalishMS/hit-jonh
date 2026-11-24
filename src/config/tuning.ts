@@ -133,6 +133,11 @@ export const FLOW = {
   roundResultSeconds: 2.4,
   /** Ignore background-tab catch-up for presentation timers. */
   maxFrameSeconds: 0.1,
+  /** Title screen [TUNE]: first demo shot, then one every this many seconds (plus up to 4 s). */
+  attractFirstShotSeconds: 4,
+  attractShotEverySeconds: 11,
+  /** Seconds Jonh lies there after a title-screen bonk before climbing back into his chair. */
+  attractRecoverSeconds: 3.4,
 } as const;
 
 /** Reversible art direction: a quiet, sunlit garden with inked cartoon figures. */
