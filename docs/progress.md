@@ -894,3 +894,28 @@ The wardrobe screen and the scene wiring are a separate task; this item delivers
 - **Browser:** the real `JonhRenderer.setOutfit` and `CannonRenderer.setSkin` were run on every id in a throwaway Phaser scene after `loadArt(ALL_ART)`: all seven outfits and six skins drew, no page errors. The inline preview figures were checked on a contact sheet.
 
 **Not verified:** the wardrobe screen and scene wiring (parent task); how the skins look in the full game scene at the 1.8× hit zoom and on zoomed-out maps; real-device performance.
+
+### 8b. Cosmetics wired into the game — done (item 8 complete)
+
+**Done**
+- **Wardrobe** (`ui/wardrobe.ts`): Hats, Outfits and Cannons tabs, each with a count. Outfits preview as Jonh in the outfit and your current hat; cannons preview their skin (inline SVG from the art code). Locked items show how to earn them.
+  - Picking an item saves it and immediately re-dresses the title-screen Jonh or cannon.
+  - The home button reads "Wardrobe n/21".
+- **Worn everywhere.**
+  - The selected outfit is on Jonh in solo, hot-seat, online, the title screen and the winning-shot replay.
+  - The selected skin is on the solo and title cannon. Multiplayer stays classic by design (player colour bands).
+- **Unlocks.** Every shot and solo finish checks hats, outfits and skins, using the campaign star totals before and after the result (computed in memory, since the save is deferred past the contact frame).
+  - One compact card on the result screen lists all new items ("New cannon: Admiral. Try it on in the wardrobe.").
+  - Multiplayer and online show a caption instead. Online only checks feats (online play doesn't change campaign stars).
+
+**Verified**
+- Browser, with a save holding 18 stars and the feats:
+  - the wardrobe showed Hats 7/8, Outfits 7/7 and Cannons 5/6;
+  - choosing the Hawaiian shirt and the Pirate skin saved both;
+  - Continue opened Bounce House with Jonh in the Hawaiian shirt and fez and the Pirate cannon.
+- Browser, from 5 stars: a first-shot Rooftop clear showed "Campaign ★ 8 / 24", "Unlocked: Rubber Yard" and "New cannon: Admiral".
+- No page errors.
+- The figures' chairs no longer overlap their captions.
+
+**Not verified:** how skins look at the 1.8× hit zoom on a real screen (seen only at the screenshot scale above).
+

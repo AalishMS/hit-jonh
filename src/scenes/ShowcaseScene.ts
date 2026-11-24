@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { AudioManager } from '../audio/audioManager';
 import type { HatId } from '../art/jonhArt';
+import type { OutfitId } from '../rules/cosmetics';
 import { FLOW } from '../config/tuning';
 import type { LevelData } from '../levels/types';
 import type { RecordedShot } from '../physics/shotRecorder';
@@ -19,6 +20,7 @@ export interface ShowcaseData {
   color: number;
   pattern: string;
   hatId: HatId;
+  outfitId: OutfitId;
   reducedMotion: boolean;
   /** Jonh's line when it lands again. */
   line: string;
@@ -60,7 +62,7 @@ export class ShowcaseScene extends Phaser.Scene {
     this.effects = new ShotEffectsRenderer(this);
     this.stage = new DemoStage(this, data.level,
       { audio: data.audio, effects: this.effects, camera: new CameraRig(this.cameras.main), timeline: this.timeline },
-      { hatId: data.hatId, reducedMotion: data.reducedMotion, color: data.color, pattern: data.pattern, textBoost: data.textBoost });
+      { hatId: data.hatId, outfitId: data.outfitId, reducedMotion: data.reducedMotion, color: data.color, pattern: data.pattern, textBoost: data.textBoost });
     this.overlay = new ReplayOverlay(document.getElementById('game') ?? document.body);
     this.overlay.setText(`Winning shot · ${data.playerName}`, 'Tap or press Enter to skip');
     this.overlay.show();

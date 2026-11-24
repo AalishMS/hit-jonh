@@ -9,6 +9,12 @@ import { clamp01 } from '../fx/easing';
 import { recordShot as recordDemoShot, type RecordedShot } from '../physics/shotRecorder';
 import { DemoStage } from '../render/demoStage';
 import { buildWardrobe, type WardrobeSection } from '../ui/wardrobe';
+import {
+  CANNON_SKIN_ORDER, CANNON_SKIN_RULES, cosmeticContext, newlyUnlockedCannonSkins, newlyUnlockedOutfits, OUTFIT_ORDER, OUTFIT_RULES,
+  unlockedCannonSkins, unlockedOutfits, type CannonSkinId, type OutfitId,
+} from '../rules/cosmetics';
+import { outfitFigureSvg } from '../art/outfitArt';
+import { cannonSkinFigureSvg } from '../art/cannonArt';
 import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
 import { campaignOrder } from '../rules/campaign';
@@ -65,6 +71,9 @@ const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
   ricochet_body: 'Ricochet hit', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
 };
 
+/** An earned cosmetic: a hat, an outfit or a cannon skin. */
+type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | { kind: 'cannon'; id: CannonSkinId };
+
 /** Keys that adjust the aim; pressing one during a solo miss's result goes straight back to aiming. */
 const AIM_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 
@@ -107,7 +116,8 @@ export class PrototypeScene extends Phaser.Scene {
   private readonly recordedShots = new Map<string, RecordedShot>();
   private soloResultExtras: SoloResultExtras = {};
   private progress: Progress = freshProgress();
-  private pendingUnlocks: HatName[] = [];
+  /** Cosmetics unlocked since the last solo result screen (shown as one card there). */
+  private pendingUnlocks: Unlock[] = [];
   /** Set while playing today's Daily Bonk (never overwrites solo bests). */
   private daily: { key: string; positionId: string } | null = null;
   private readonly hatImages = new Map<string, string>();
@@ -518,7 +528,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.hideAttract();
     const stage = new DemoStage(this, this.pickAttractLevel(),
       { audio: this.audioManager, effects: this.effects, camera: this.cameraRig, timeline: this.impactTimeline },
-      { hatId: this.progress.selectedHat, reducedMotion: loadSaveData().settings.reducedMotion, textBoost: this.textBoost });
+      { hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit, skin: this.progress.selectedCannon,
+        reducedMotion: loadSaveData().settings.reducedMotion, textBoost: this.textBoost });
     this.view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
     this.attract = { stage, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2 };
   }
@@ -658,9 +669,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
 
-    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
+    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys, this.progress.selectedCannon);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
     this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
 
@@ -1108,39 +1119,43 @@ export class PrototypeScene extends Phaser.Scene {
       return;
     }
 
-    // Retention: hits, streak, three-star maps, daily results and hat unlocks.
+    // Retention: hits, streak, three-star maps, daily results and cosmetic unlocks.
     const before = this.progress;
     let after = recordShot(before, classification.outcome, this.activeMode === 'solo');
-    if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
+    const soloFinished = this.activeMode === 'solo' && this.soloMachine.state === 'solo_result';
+    if (soloFinished) {
       const res = this.soloMachine.result!;
       if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0);
       else if (res.success) after = recordSoloFinish(after, this.currentLevel.id, res.stars);
     }
-    const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
+    // The solo bests before and after this result (the save itself is written after the contact
+    // frame), for campaign stars and star-gated cosmetics.
+    const soloBefore = { ...loadSaveData().solo };
+    const soloAfter = { ...soloBefore };
+    if (soloFinished && this.soloMachine.result!.success && !this.daily) {
+      const res = this.soloMachine.result!;
+      const prior = soloAfter[this.currentLevel.id];
+      soloAfter[this.currentLevel.id] = { lastAngle: this.currentAngleDeg, lastPower: this.currentPowerPercent, ...prior,
+        bestShots: prior?.bestShots != null ? Math.min(prior.bestShots, res.shotsUsed) : res.shotsUsed,
+        hasStyle: Boolean(prior?.hasStyle) || res.hasStyle };
+    }
+    const unlocks = this.newUnlocks(before, after, soloBefore, soloAfter);
     this.progress = after;
     // Storage writes wait until after the contact frame so the hit-stop starts on time.
     setTimeout(() => saveProgress(after), 0);
     this.pendingUnlocks.push(...unlocks);
     if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
     if (unlocks.length && this.activeMode === 'multi') {
-      this.htmlControls.setFeedback(`New hat for Jonh: ${HAT_RULES[unlocks[0]!].name}!`, 'hit');
+      this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
     }
 
-    if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
+    if (soloFinished) {
       const res = this.soloMachine.result!;
-      const solo = { ...loadSaveData().solo };
       const mapId = this.currentLevel.id;
-      const previous = solo[mapId]?.bestShots ?? null;
-      const hadTrick = solo[mapId]?.hasStyle ?? false;
-      // Campaign view of this result (the save itself is written after the contact frame).
-      const campaignBefore = campaignStatus(MAP_IDS, solo);
-      if (res.success && !this.daily) {
-        const prior = solo[mapId];
-        solo[mapId] = { lastAngle: this.currentAngleDeg, lastPower: this.currentPowerPercent, ...prior,
-          bestShots: prior?.bestShots != null ? Math.min(prior.bestShots, res.shotsUsed) : res.shotsUsed,
-          hasStyle: Boolean(prior?.hasStyle) || res.hasStyle };
-      }
-      const campaignAfter = campaignStatus(MAP_IDS, solo);
+      const previous = soloBefore[mapId]?.bestShots ?? null;
+      const hadTrick = soloBefore[mapId]?.hasStyle ?? false;
+      const campaignBefore = campaignStatus(MAP_IDS, soloBefore);
+      const campaignAfter = campaignStatus(MAP_IDS, soloAfter);
       const nextMapId = !this.daily && res.success ? nextCampaignMap(campaignAfter, mapId) : null;
       const wasLocked = nextMapId !== null && !campaignBefore.find(e => e.mapId === nextMapId)?.unlocked;
       this.soloResultExtras = {
@@ -1180,26 +1195,46 @@ export class PrototypeScene extends Phaser.Scene {
     return url;
   }
 
-  private unlockHtml(hats: readonly HatName[]): string {
-    const unique = [...new Set(hats)];
+  /** Everything earned by going from `before` to `after` (stars come from the solo bests). */
+  private newUnlocks(before: Progress, after: Progress, soloBefore: ReturnType<typeof loadSaveData>['solo'], soloAfter: ReturnType<typeof loadSaveData>['solo']): Unlock[] {
+    const ctxBefore = cosmeticContext(MAP_IDS, soloBefore);
+    const ctxAfter = cosmeticContext(MAP_IDS, soloAfter);
+    return [
+      ...newlyUnlocked(before, after, MAP_IDS).map(id => ({ kind: 'hat' as const, id })),
+      ...newlyUnlockedOutfits(before, after, ctxBefore, ctxAfter).map(id => ({ kind: 'outfit' as const, id })),
+      ...newlyUnlockedCannonSkins(before, after, ctxBefore, ctxAfter).map(id => ({ kind: 'cannon' as const, id })),
+    ];
+  }
+
+  private unlockName(u: Unlock): string {
+    return u.kind === 'hat' ? HAT_RULES[u.id].name : u.kind === 'outfit' ? OUTFIT_RULES[u.id].name : CANNON_SKIN_RULES[u.id].name;
+  }
+
+  /** Preview art for an unlock (generated by our own code, so safe to embed). */
+  private unlockArt(u: Unlock): string {
+    if (u.kind === 'outfit') return outfitFigureSvg(u.id, this.progress.selectedHat);
+    if (u.kind === 'cannon') return cannonSkinFigureSvg(u.id);
+    const img = document.createElement('img');
+    img.src = this.hatImage(u.id);
+    img.alt = '';
+    return img.outerHTML;
+  }
+
+  private unlockHtml(list: readonly Unlock[]): string {
+    const unique = list.filter((u, i) => list.findIndex(v => v.kind === u.kind && v.id === u.id) === i);
     if (unique.length === 0) return '';
-    // One compact card, however many hats a single shot unlocks.
+    // One compact card, however many things a single shot unlocks.
     const card = document.createElement('div');
     card.className = `unlock-card${unique.length > 1 ? ' unlock-many' : ''}`;
     const images = document.createElement('div');
     images.className = 'unlock-images';
-    for (const id of unique) {
-      const img = document.createElement('img');
-      img.src = this.hatImage(id);
-      img.alt = '';
-      images.appendChild(img);
-    }
+    images.innerHTML = unique.slice(0, 4).map(u => `<span class="unlock-art unlock-${u.kind}">${this.unlockArt(u)}</span>`).join('');
     const text = document.createElement('div');
     const title = document.createElement('strong');
-    const names = unique.map(id => HAT_RULES[id].name);
-    title.textContent = unique.length === 1 ? `New hat: ${names[0]}` : `${unique.length} new hats!`;
-    text.append(title, document.createTextNode(unique.length === 1 ? 'Put it on Jonh in the hat locker.'
-      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}. See the hat locker.`));
+    const names = unique.map(u => this.unlockName(u));
+    title.textContent = unique.length === 1 ? `New ${unique[0]!.kind}: ${names[0]}` : `${unique.length} new things for Jonh!`;
+    text.append(title, document.createTextNode(unique.length === 1 ? 'Try it on in the wardrobe.'
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}. See the wardrobe.`));
     card.append(images, text);
     return card.outerHTML;
   }
@@ -1215,7 +1250,9 @@ export class PrototypeScene extends Phaser.Scene {
     const hats = document.createElement('button');
     hats.type = 'button';
     hats.className = 'btn';
-    hats.textContent = `Hats ${unlockedHats(this.progress, MAPS.map(m => m.id)).length}/${HAT_ORDER.length}`;
+    const ctx = cosmeticContext(MAP_IDS, loadSaveData().solo);
+    const owned = unlockedHats(this.progress, MAP_IDS).length + unlockedOutfits(this.progress, ctx).length + unlockedCannonSkins(this.progress, ctx).length;
+    hats.textContent = `Wardrobe ${owned}/${HAT_ORDER.length + OUTFIT_ORDER.length + CANNON_SKIN_ORDER.length}`;
     hats.addEventListener('click', () => this.showLocker(), { signal });
     row.append(daily, hats);
   }
@@ -1270,17 +1307,32 @@ export class PrototypeScene extends Phaser.Scene {
   private showLocker(): void {
     const mapIds = MAPS.map(m => m.id);
     const unlockedHatIds = new Set(unlockedHats(this.progress, mapIds));
+    const ctx = cosmeticContext(MAP_IDS, loadSaveData().solo);
+    const outfits = new Set(unlockedOutfits(this.progress, ctx));
+    const skins = new Set(unlockedCannonSkins(this.progress, ctx));
+    const choose = (patch: Partial<Progress>) => {
+      this.progress = { ...this.progress, ...patch };
+      saveProgress(this.progress);
+      this.showLocker();
+    };
     const sections: WardrobeSection[] = [{
       id: 'hats',
       title: 'Hats',
       items: HAT_ORDER.map(id => ({ id, name: HAT_RULES[id].name, hint: HAT_RULES[id].hint, unlocked: unlockedHatIds.has(id),
         selected: this.progress.selectedHat === id, image: this.hatImage(id) })),
-      onSelect: id => {
-        this.progress = { ...this.progress, selectedHat: id as HatName };
-        saveProgress(this.progress);
-        this.attract?.stage.jonh.setHat(id as HatName);
-        this.showLocker();
-      },
+      onSelect: id => { this.attract?.stage.jonh.setHat(id as HatName); choose({ selectedHat: id as HatName }); },
+    }, {
+      id: 'outfits',
+      title: 'Outfits',
+      items: OUTFIT_ORDER.map(id => ({ id, name: OUTFIT_RULES[id].name, hint: OUTFIT_RULES[id].hint, unlocked: outfits.has(id),
+        selected: this.progress.selectedOutfit === id, svg: outfitFigureSvg(id, this.progress.selectedHat) })),
+      onSelect: id => { this.attract?.stage.jonh.setOutfit(id as OutfitId); choose({ selectedOutfit: id as OutfitId }); },
+    }, {
+      id: 'cannons',
+      title: 'Cannons',
+      items: CANNON_SKIN_ORDER.map(id => ({ id, name: CANNON_SKIN_RULES[id].name, hint: CANNON_SKIN_RULES[id].hint, unlocked: skins.has(id),
+        selected: this.progress.selectedCannon === id, svg: cannonSkinFigureSvg(id) })),
+      onSelect: id => { this.attract?.stage.cannon.setSkin(id as CannonSkinId); choose({ selectedCannon: id as CannonSkinId }); },
     }];
     const campaign = campaignTotals(campaignStatus(MAP_IDS, loadSaveData().solo));
     this.menuOverlay.showCustom('locker', (content, signal) => buildWardrobe(content, signal, {
@@ -1624,7 +1676,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.slotsRenderer = new CannonSlotsRenderer(this);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
     this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
@@ -1771,7 +1823,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
-      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat });
+      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
     this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
@@ -1828,7 +1880,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.scene.launch('ShowcaseScene', {
       level, shot, angleDeg: best.angle, powerPercent: best.power,
       playerName: player.name, color: player.color, pattern: player.pattern,
-      hatId: this.progress.selectedHat, reducedMotion: false,
+      hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit, reducedMotion: false,
       line: this.reactionSelector.selectWinningShot(),
       textBoost: this.textBoost,
       audio: this.audioManager,
@@ -1935,11 +1987,13 @@ export class PrototypeScene extends Phaser.Scene {
   private recordOnlineProgress(outcome: ClassifiedOutcome): void {
     const before = this.progress;
     const after = recordShot(before, outcome, false);
-    const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
+    const solo = loadSaveData().solo;
+    const unlocks = this.newUnlocks(before, after, solo, solo);
     this.progress = after;
     setTimeout(() => saveProgress(after), 0);
-    if (unlocks.length) this.htmlControls.setFeedback(`New hat for Jonh: ${HAT_RULES[unlocks[0]!].name}!`, 'hit');
+    if (unlocks.length) this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
   }
+
 
 }
 

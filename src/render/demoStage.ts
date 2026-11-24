@@ -9,6 +9,7 @@ import type { LevelData } from '../levels/types';
 import { sampleRecorded, type RecordedShot } from '../physics/shotRecorder';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import type { HatId } from '../art/jonhArt';
+import type { CannonSkinId, OutfitId } from '../rules/cosmetics';
 import { BallRenderer } from './ballRenderer';
 import type { CameraRig } from './cameraRig';
 import { CannonRenderer } from './cannonRenderer';
@@ -27,6 +28,9 @@ export interface DemoStageDeps {
 
 export interface DemoStageOptions {
   hatId: HatId;
+  outfitId?: OutfitId;
+  /** Cannon skin (solo/title look; a painted multiplayer cannon stays classic). */
+  skin?: CannonSkinId;
   reducedMotion: boolean;
   /** Cannon paint (multiplayer colour + pattern); null keeps the solo cannon. */
   color?: number | null;
@@ -71,9 +75,9 @@ export class DemoStage {
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
     this.scenery = new SceneryRenderer(scene, ppm, h, w);
     this.scenery.draw(level);
-    this.jonh = new JonhRenderer(scene, level.jonhSpawn, ppm, h, { level, hatId: options.hatId });
+    this.jonh = new JonhRenderer(scene, level.jonhSpawn, ppm, h, { level, hatId: options.hatId, ...(options.outfitId ? { outfitId: options.outfitId } : {}) });
     this.jonh.setReducedMotion(options.reducedMotion);
-    this.cannon = new CannonRenderer(scene, level.cannonSpawn, ppm, h, levelPhysics(level));
+    this.cannon = new CannonRenderer(scene, level.cannonSpawn, ppm, h, levelPhysics(level), options.skin);
     this.cannon.setAimAids(false, 50);
     this.color = options.color ?? null;
     this.pattern = options.pattern ?? 'solid';

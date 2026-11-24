@@ -290,6 +290,11 @@ The owner asked for the game to look and feel polished and shareable, with art, 
 - **Camera.** It is fixed while aiming. In flight it follows and zooms gently; at impact it punches in on Jonh; on reset it snaps back to the original full view. It is presentation only.
 - **Reduced motion (§10.1, §10.2).** The comic word fades in place and sound plays. Poses cut to their settled state. Freeze, slow motion, shake, zoom, flash, flying particles, smear, replay, ambient drift and CSS animation are all off.
 - **Retention (cosmetic only; not the deferred "upgrades/economy" of §4.2).** There are unlockable hats for Jonh, a date-seeded Daily Bonk on an authored multiplayer target position, and a solo hit streak. All are stored as an optional `progress` field in `hitJonh.v1`. Daily runs never affect solo bests.
+- **Cannon skins and Jonh outfits [DECIDED by owner 2026-11-24: unlockable cannons and Jonh outfits; thresholds PROPOSED in `COSMETIC_GATES`].**
+  - There are 6 cannon skins and 7 outfits, earned by campaign stars and feats and never bought. They are chosen in Jonh's wardrobe (tabs: Hats, Outfits, Cannons) and stored as `progress.selectedCannon` and `progress.selectedOutfit`.
+  - A locked or unknown selection falls back to the default.
+  - Outfits show everywhere. A skin shows on the solo and title cannon only; multiplayer cannons stay classic so player colours and patterns read.
+  - New unlocks appear on the solo result card (or as a multiplayer caption).
 - **Multiplayer colours.** Saved colour values are unchanged identifiers. They are drawn with the art-direction palette (tomato, sky, leaf, grape), always paired with patterns.
 
 ## 11. Maps [PROPOSED geometry, TUNE]

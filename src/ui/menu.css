@@ -310,4 +310,11 @@
 .wardrobe-tab { min-height: 40px; padding: 8px 16px 6px; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper);
   box-shadow: 0 3px 0 var(--ink); font: 400 17px/1 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--ink); }
 .wardrobe-tab.active { background: var(--zap); transform: translateY(-2px); }
+/* Jonh's figure draws its chair and feet a little below its box: leave room under it. */
+.wardrobe-art { display: grid; place-items: center; width: 96px; height: 76px; margin-bottom: 20px; }
+.wardrobe-art svg { width: 100%; height: 100%; overflow: visible; }
+.hat-card.locked .wardrobe-art svg { filter: brightness(0) opacity(.25); }
+.unlock-art { display: inline-grid; place-items: center; width: 64px; height: 56px; }
+.unlock-art svg, .unlock-art img { width: 100%; height: 100%; object-fit: contain; }
+.unlock-many .unlock-art { width: 46px; margin-right: -8px; }
 
