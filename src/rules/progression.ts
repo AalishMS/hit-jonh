@@ -3,6 +3,11 @@
  * persisted by storage.ts. Nothing here affects physics or scoring.
  */
 
+import {
+  DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, sanitizeCannonSkin, sanitizeOutfit,
+  type CannonSkinId, type CosmeticContext, type OutfitId,
+} from './cosmetics';
+
 export const HAT_ORDER = ['boater', 'bowler', 'fez', 'party', 'propeller', 'chef', 'viking', 'crown'] as const;
 export type HatName = typeof HAT_ORDER[number];
 
@@ -17,10 +22,14 @@ export interface Progress {
   /** Daily results by local date key (YYYY-MM-DD): stars (0 = attempted, failed). */
   daily: Record<string, number>;
   selectedHat: HatName;
+  /** Cannon skin worn in solo and on the title screen (rules/cosmetics.ts). */
+  selectedCannon: CannonSkinId;
+  /** Jonh's outfit (rules/cosmetics.ts). */
+  selectedOutfit: OutfitId;
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, selectedHat: 'boater' };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
@@ -111,8 +120,12 @@ export function dailyStreak(p: Progress, today: Date): number {
   return count;
 }
 
-/** Validates untrusted saved data, falling back field by field. */
-export function sanitizeProgress(raw: unknown, mapIds: readonly string[]): Progress {
+/**
+ * Validates untrusted saved data, falling back field by field. `ctx` (campaign stars and gardens
+ * cleared, from the saved solo bests) is needed to tell whether a selected cannon skin or outfit
+ * is really unlocked; without it only feat-gated items can be kept.
+ */
+export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: CosmeticContext = NO_COSMETIC_CONTEXT): Progress {
   const p = freshProgress();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return p;
   const r = raw as Record<string, unknown>;
@@ -132,5 +145,7 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[]): Progr
     const hat = r.selectedHat as HatName;
     p.selectedHat = HAT_RULES[hat].unlocked(p, mapIds) ? hat : 'boater';
   }
+  p.selectedCannon = sanitizeCannonSkin(r.selectedCannon, p, ctx);
+  p.selectedOutfit = sanitizeOutfit(r.selectedOutfit, p, ctx);
   return p;
 }

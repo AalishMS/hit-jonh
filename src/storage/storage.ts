@@ -1,5 +1,6 @@
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
+import { cosmeticContext } from '../rules/cosmetics';
 import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
 import { sanitizePlayerName } from '../rules/playerName';
 export { sanitizePlayerName };
@@ -194,7 +195,10 @@ export function loadSaveData(): SaveData {
     // Validate lastMP
     const validSetups = sanitizePlayerSetups(parsedObj.lastMP);
     if (validSetups) data.lastMP = validSetups;
-    if (parsedObj.progress !== undefined) data.progress = sanitizeProgress(parsedObj.progress, MAPS.map(m => m.id));
+    if (parsedObj.progress !== undefined) {
+      const mapIds = MAPS.map(m => m.id);
+      data.progress = sanitizeProgress(parsedObj.progress, mapIds, cosmeticContext(mapIds, data.solo));
+    }
 
     // Validate online profile
     if (parsedObj.online && typeof parsedObj.online === 'object' && !Array.isArray(parsedObj.online)) {
@@ -267,7 +271,8 @@ export function loadProgress(): Progress {
 
 export function saveProgress(progress: Progress): void {
   const data = loadSaveData();
-  data.progress = sanitizeProgress(progress, MAPS.map(m => m.id));
+  const mapIds = MAPS.map(m => m.id);
+  data.progress = sanitizeProgress(progress, mapIds, cosmeticContext(mapIds, data.solo));
   writeSaveData(data);
 }
 
