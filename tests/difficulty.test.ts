@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTY } from '../src/config/tuning';
-import { mapDifficulty, robustHits } from '../src/dev/difficulty';
+import { hasMechanics, mapDifficulty, robustHits } from '../src/dev/difficulty';
 import { levelAtMultiplayerPosition } from '../src/levels/multiplayerPositions';
 import { runHeadlessShot } from '../src/physics/headlessShot';
 import { MAPS } from '../src/levels';
@@ -30,6 +30,11 @@ describe.skipIf(REPORT)('map difficulty (coarse grid)', () => {
         if (minTrick !== undefined && map.hits > 0) {
           expect(map.ricochetHits / map.hits, `${base.id}/${positionId} trick-shot share`).toBeGreaterThanOrEqual(minTrick);
         }
+        const minMechanic = DIFFICULTY.minMechanicShare[base.id];
+        if (minMechanic !== undefined) {
+          expect(map.hits, `${base.id}/${positionId} has hits`).toBeGreaterThan(0);
+          expect(map.mechanicHits / map.hits, `${base.id}/${positionId} breakable/portal share`).toBeGreaterThanOrEqual(minMechanic);
+        }
       }
     }, 120_000);
   }
@@ -45,8 +50,9 @@ describe.runIf(REPORT)('map difficulty report', () => {
         const others = base.multiplayerPositions.filter(p => p.id !== positionId).map(p => levelAtMultiplayerPosition(base, p.id));
         const refs = robustHits(map).filter(h => others.every(level => !['body', 'ricochet_body'].includes(runHeadlessShot(level, h.angle, h.power).outcome)))
           .slice(0, 4).map(h => `${h.angle}/${h.power}(${h.neighbours})`).join(' ');
+        const mechanic = hasMechanics(base) ? `, mechanic ${map.mechanicHits}` : '';
         report(`${base.id}/${positionId}: ${(map.hitFraction * 100).toFixed(2)}% (${map.hits}/${map.total}), ` +
-          `ricochet ${map.ricochetHits}, widest run ${map.widestRun} | refs ${refs}`);
+          `ricochet ${map.ricochetHits}${mechanic}, widest run ${map.widestRun} | refs ${refs}`);
       }
     }, 3_600_000);
   }

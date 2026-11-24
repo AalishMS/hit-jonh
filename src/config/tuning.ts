@@ -194,6 +194,11 @@ export const DIFFICULTY = {
    * 1 = no direct line to Jonh at all.
    */
   minTrickShare: { bankshot: 1, trampoline: 0.9 } as Readonly<Record<string, number>>,
+  /**
+   * Mechanic maps: the least share of hits that must smash a breakable prop or go through a portal
+   * first (coarse grid, every target position).
+   */
+  minMechanicShare: {} as Readonly<Record<string, number>>,
 } as const;
 
 export interface MaterialProps {
@@ -220,6 +225,9 @@ export const MATERIALS = {
   rug: { restitution: 0.15, friction: 0.9, rollingDamping: 0.88 },
   /** Moon dust: dead landings, and a rolling ball stops within a metre or two. */
   regolith: { restitution: 0.15, friction: 0.8, rollingDamping: 0.95 },
+  /** Mechanic maps [PROPOSED][TUNE]: unbroken glass is hard and slick; velvet drapes swallow a ball. */
+  glass: { restitution: 0.35, friction: 0.2 },
+  velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;

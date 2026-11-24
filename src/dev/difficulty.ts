@@ -17,6 +17,8 @@ export interface SolutionMap {
   hitFraction: number;
   /** Body hits that bounced off a ricochet surface first. */
   ricochetHits: number;
+  /** Body hits that smashed a breakable prop or went through a portal first. */
+  mechanicHits: number;
   /** Longest run of adjacent grid hits along either axis. */
   widestRun: number;
   /** Every hit as `angle/power`, for picking reference solutions. */
@@ -29,6 +31,11 @@ export interface SolutionMap {
 
 const isHit = (o: ClassifiedOutcome) => o === 'body' || o === 'ricochet_body';
 
+/** Whether a map has breakable props or portals (its hits are worth splitting by mechanic use). */
+export function hasMechanics(level: LevelData): boolean {
+  return level.obstacles.some(o => o.breakable) || (level.portals?.length ?? 0) > 0;
+}
+
 export function solutionMap(level: LevelData, angleStep: number, powerStep: number): SolutionMap {
   const angles: number[] = [];
   for (let a = AIM.minAngleDeg; a <= AIM.maxAngleDeg; a += angleStep) angles.push(a);
@@ -37,15 +44,17 @@ export function solutionMap(level: LevelData, angleStep: number, powerStep: numb
   const grid: boolean[][] = [];
   const hitAims: SolutionMap['hitAims'] = [];
   let ricochetHits = 0;
+  let mechanicHits = 0;
   for (const angle of angles) {
     const row: boolean[] = [];
     for (const power of powers) {
-      const { outcome } = runHeadlessShot(level, angle, power);
+      const { outcome, brokenObstacleIds, portalsUsed } = runHeadlessShot(level, angle, power);
       const hit = isHit(outcome);
       row.push(hit);
       if (hit) {
         hitAims.push({ angle, power, outcome });
         if (outcome === 'ricochet_body') ricochetHits++;
+        if (brokenObstacleIds.length > 0 || portalsUsed.length > 0) mechanicHits++;
       }
     }
     grid.push(row);
@@ -60,7 +69,7 @@ export function solutionMap(level: LevelData, angleStep: number, powerStep: numb
     for (let i = 0; i < angles.length; i++) { run = grid[i]![j] ? run + 1 : 0; widestRun = Math.max(widestRun, run); }
   }
   const total = angles.length * powers.length;
-  return { angleStep, powerStep, total, hits: hitAims.length, hitFraction: hitAims.length / total, ricochetHits, widestRun, hitAims, angles, powers, grid };
+  return { angleStep, powerStep, total, hits: hitAims.length, hitFraction: hitAims.length / total, ricochetHits, mechanicHits, widestRun, hitAims, angles, powers, grid };
 }
 
 /**

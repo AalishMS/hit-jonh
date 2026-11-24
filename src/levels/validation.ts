@@ -1,4 +1,5 @@
-import type { Box2D } from '../sim/swept';
+import { AIM, PROJECTILE } from '../config/tuning';
+import type { Box2D, Point2D } from '../sim/swept';
 import { levelPhysics } from './levelPhysics';
 import type { LevelData } from './types';
 
@@ -6,6 +7,18 @@ export interface ValidationConfig {
   maxSpeedMs: number;
   dtSeconds: number;
   minThicknessMetres: number;
+  /** Cannonball radius for portal clearance checks; PROJECTILE.radiusMetres when omitted. */
+  ballRadiusMetres?: number;
+}
+
+/** Free space (metres) a portal exit keeps around the ball, so it never reappears touching anything. */
+const PORTAL_EXIT_CLEARANCE_METRES = 0.05;
+
+/** Distance from a point to a box (0 inside it). */
+function distanceToBox(p: Point2D, box: Box2D): number {
+  const dx = Math.max(box.minX - p.x, 0, p.x - box.maxX);
+  const dy = Math.max(box.minY - p.y, 0, p.y - box.maxY);
+  return Math.hypot(dx, dy);
 }
 
 export interface ValidationResult {
@@ -76,6 +89,54 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
   // 6. Reference solutions
   if (!level.referenceSolutions || level.referenceSolutions.length === 0) {
     errors.push('Level has no reference solutions');
+  }
+
+  // 7. Obstacle ids are unique (breakables are tracked by id), breakable values in range.
+  const obstacleIds = new Set<string>();
+  for (const obs of level.obstacles) {
+    if (obstacleIds.has(obs.id)) errors.push(`Duplicate obstacle id "${obs.id}"`);
+    obstacleIds.add(obs.id);
+    const b = obs.breakable;
+    if (b && !(b.minImpactSpeedMs > 0)) errors.push(`Breakable "${obs.id}" needs a positive minImpactSpeedMs`);
+    if (b && !(b.speedKept > 0 && b.speedKept <= 1)) errors.push(`Breakable "${obs.id}" speedKept must be in (0, 1]`);
+  }
+
+  // 8. Portals: the exit never puts the ball inside a collider, Jonh or another entry (no loops), and
+  //    no entry is within the muzzle's reach.
+  const portals = level.portals ?? [];
+  const r = config.ballRadiusMetres ?? PROJECTILE.radiusMetres;
+  const solids: Array<{ name: string; box: Box2D }> = [
+    { name: 'ground', box: level.ground },
+    { name: 'Jonh', box: level.jonhSpawn.bodyBox },
+    ...(level.jonhSpawn.hatBox ? [{ name: "Jonh's hat", box: level.jonhSpawn.hatBox }] : []),
+    ...level.obstacles.map(o => ({ name: `obstacle "${o.id}"`, box: o.box })),
+  ];
+  const portalIds = new Set<string>();
+  const muzzleReach = AIM.barrelLengthMetres + AIM.muzzleGapMetres + 2 * r;
+  for (const portal of portals) {
+    if (portalIds.has(portal.id)) errors.push(`Duplicate portal id "${portal.id}"`);
+    portalIds.add(portal.id);
+    const { entry, exit } = portal;
+    if (!(entry.radius > 0)) errors.push(`Portal "${portal.id}" entry needs a positive radius`);
+    for (const [name, p] of [['entry', entry], ['exit', exit]] as const) {
+      if (p.x < level.bounds.minX || p.x > level.bounds.maxX || p.y < level.bounds.minY || p.y > level.bounds.maxY) {
+        errors.push(`Portal "${portal.id}" ${name} is outside level bounds`);
+      }
+    }
+    if (!Number.isFinite(exit.angleDeg)) errors.push(`Portal "${portal.id}" exit needs an angle`);
+    for (const solid of solids) {
+      if (distanceToBox(exit, solid.box) < r + PORTAL_EXIT_CLEARANCE_METRES) {
+        errors.push(`Portal "${portal.id}" exit overlaps ${solid.name}`);
+      }
+    }
+    for (const other of portals) {
+      if (Math.hypot(exit.x - other.entry.x, exit.y - other.entry.y) < other.entry.radius + r + PORTAL_EXIT_CLEARANCE_METRES) {
+        errors.push(`Portal "${portal.id}" exit is inside the entry of "${other.id}"`);
+      }
+    }
+    if (Math.hypot(entry.x - level.cannonSpawn.x, entry.y - level.cannonSpawn.y) < entry.radius + muzzleReach + PORTAL_EXIT_CLEARANCE_METRES) {
+      errors.push(`Portal "${portal.id}" entry is within reach of the cannon muzzle`);
+    }
   }
 
   return {
