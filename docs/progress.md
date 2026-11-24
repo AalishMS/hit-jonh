@@ -835,3 +835,7 @@ The wardrobe screen and the scene wiring are a separate task; this item delivers
 
 **Verified**
 - `tests/cosmetics.test.ts`: every gate boundary, feats, the `newlyUnlocked*` helpers, `cosmeticContext`, sanitising (old saves, unknown ids, locked and unlocked selections), art registered under the documented keys with unique keys, identical sizes and pivots, and preview figures. `tests/storage.test.ts`: a selection is dropped until the saved solo bests unlock it. Existing `jonhPose` tests unchanged.
+- **Texture budget (measured in Chromium via the dev server):** 39 new textures (15 cannon + 24 outfit), about 0.64 Mpx ≈ 2.45 MB of the 33.5 MB all art occupies (180 textures); rasterizing them took about 64 ms on a loaded machine. The full `npm run check` and `npm run build` passed.
+- **Browser:** the real `JonhRenderer.setOutfit` and `CannonRenderer.setSkin` were run on every id in a throwaway Phaser scene after `loadArt(ALL_ART)`: all seven outfits and six skins drew, no page errors. The inline preview figures were checked on a contact sheet.
+
+**Not verified:** the wardrobe screen and scene wiring (parent task); how the skins look in the full game scene at the 1.8× hit zoom and on zoomed-out maps; real-device performance.
