@@ -815,3 +815,23 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 - How the drumroll sounds.
 - Online taunts were exercised only through shared code (`applyOfficialOutcome` records the shooter); there was no live online room.
 
+
+### 8a. Cosmetic unlocks: cannon skins and Jonh outfits (art, rules, saved selection, renderer API) — done
+
+The wardrobe screen and the scene wiring are a separate task; this item delivers everything they need.
+
+**Done**
+- **Rules** (`src/rules/cosmetics.ts`, pure): `CANNON_SKIN_RULES` and `OUTFIT_RULES`, each with a name, a hint and `unlocked(progress, ctx)`, where `ctx = { stars, cleared }` comes from `cosmeticContext(mapIds, solo)` (built on `campaignStatus`/`campaignTotals`). Helpers: `unlockedCannonSkins`, `unlockedOutfits`, `newlyUnlockedCannonSkins`, `newlyUnlockedOutfits`, `sanitizeCannonSkin`, `sanitizeOutfit`. All thresholds are [PROPOSED] (`COSMETIC_GATES`).
+  - Cannon skins: Classic iron (always) · Admiral (6 stars) · Garden Party (clear 4 gardens) · Pirate (3 trick hits) · Moonshot (12 stars) · Golden Bonk (24 stars).
+  - Outfits: Cardigan (always) · Argyle jumper (best streak of 5) · Hawaiian shirt (12 stars) · Tracksuit (50 total hits) · Stripy pyjamas (3 stars in a Daily Bonk) · Tuxedo (18 stars) · Sunday best (Daily Bonk on 3 different days).
+- **Saved selection:** `Progress.selectedCannon` and `selectedOutfit`. `sanitizeProgress(raw, mapIds, ctx)` falls back to the default for an unknown or locked id and old saves get the defaults. `storage.ts` passes the real star context (from the saved solo bests) on load and on `saveProgress`.
+- **Art:** `src/art/cannonSkins.ts` (themes and decals), `cannonArt.ts` (parameterised barrel/carriage/wheel), `src/art/outfitArt.ts` (torso, trousers and both arms per outfit). Every variant has exactly the canvas size, pivot and silhouette of the original, so every pose and the muzzle/recoil/fuse maths are unchanged (a test asserts the sizes and pivots). Six new palette tokens (`coal`, `coalLight`, `silver`, `silverDark`, `grape`, `grapeDark`) in `palette.ts`; nothing else adds a colour.
+- **Renderers:** `JonhRenderer` has an `outfitId` option and `setOutfit(id)`; `CannonRenderer` has a sixth constructor argument `skin` and `setSkin(id)`. Switching only swaps textures; everything is rasterized at boot.
+
+**Decisions**
+- A skin shows only on the solo/title cannon (`draw()` with no colour). In multiplayer the whole cannon (barrel, carriage, wheel) stays classic so the player's colour and pattern band read exactly as before; the alternative (skin × 4 colours × 4 patterns) would be about 96 more barrel textures.
+- Jonh holds a newspaper over most of his torso at rest, so the outfit reads mainly through sleeves and trousers; torsos show fully on hit reactions. The wardrobe figure omits the paper by default.
+- Texture keys: `cannonSkinKeys(id)` → `{ barrel, carriage, wheel }`, `outfitKeys(id)` → `{ torso, legs, armFront, armBack }` (classic and cardigan keep the original keys). Inline-SVG preview figures that need no boot: `cannonSkinFigureSvg(id, angleDeg?)` and `outfitFigureSvg(id, hat?, withPaper?)`.
+
+**Verified**
+- `tests/cosmetics.test.ts`: every gate boundary, feats, the `newlyUnlocked*` helpers, `cosmeticContext`, sanitising (old saves, unknown ids, locked and unlocked selections), art registered under the documented keys with unique keys, identical sizes and pivots, and preview figures. `tests/storage.test.ts`: a selection is dropped until the saved solo bests unlock it. Existing `jonhPose` tests unchanged.

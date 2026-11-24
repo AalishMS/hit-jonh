@@ -31,6 +31,13 @@ export const PAL = {
   ironLight: '#5C6391',
   brass: '#F2B33D',
   brassDark: '#C27F1C',
+  /* Cosmetic unlocks (cannon skins, Jonh outfits). */
+  coal: '#2F2A36',
+  coalLight: '#554C5F',
+  silver: '#D5D9E8',
+  silverDark: '#9AA0BE',
+  grape: '#9B6BE0',
+  grapeDark: '#7448B8',
   jonhShirt: '#F2643C',
   jonhShirtDark: '#C4442A',
   jonhTrousers: '#3B4A7A',

@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import type { HatId } from '../art/jonhArt';
+import { outfitKeys } from '../art/outfitArt';
+import { DEFAULT_OUTFIT, type OutfitId } from '../rules/cosmetics';
 import { PAL, hex } from '../art/palette';
 import { HIT_TIMING, RIG, jonhPose, type HitStrength, type JonhPose, type ReactionKind } from '../fx/jonhPose';
 import { clamp01, easeOutBack } from '../fx/easing';
@@ -27,13 +29,14 @@ class JonhRig {
   private readonly hatOn: Phaser.GameObjects.Image;
   private readonly hatFree: Phaser.GameObjects.Image;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, hatId: HatId) {
+  constructor(scene: Phaser.Scene, x: number, y: number, hatId: HatId, outfitId: OutfitId) {
     const img = (key: string, px = 0, py = 0) => makeArtImage(scene, px, py, key);
+    const outfit = outfitKeys(outfitId);
     this.chair = img('jonh-chair', RIG.chair.x, RIG.chair.y);
-    this.legs = img('jonh-legs');
-    this.torsoImg = img('jonh-torso');
-    this.armFront = img('jonh-arm-front', RIG.armFront.x, RIG.armFront.y);
-    this.armBack = img('jonh-arm-back', RIG.armBack.x, RIG.armBack.y);
+    this.legs = img(outfit.legs);
+    this.torsoImg = img(outfit.torso);
+    this.armFront = img(outfit.armFront, RIG.armFront.x, RIG.armFront.y);
+    this.armBack = img(outfit.armBack, RIG.armBack.x, RIG.armBack.y);
     this.paperOn = img('jonh-paper', RIG.paper.x, RIG.paper.y);
     this.paperFree = img('jonh-paper');
     this.face = img('jonh-face-bored');
@@ -53,6 +56,15 @@ class JonhRig {
   setHat(hatId: HatId): void {
     setArt(this.hatOn, `hat-${hatId}`);
     setArt(this.hatFree, `hat-${hatId}`);
+  }
+
+  /** Swaps torso, trousers and arms; same sizes and pivots, so no pose is affected. */
+  setOutfit(outfitId: OutfitId): void {
+    const keys = outfitKeys(outfitId);
+    setArt(this.torsoImg, keys.torso);
+    setArt(this.legs, keys.legs);
+    setArt(this.armFront, keys.armFront);
+    setArt(this.armBack, keys.armBack);
   }
 
   apply(pose: JonhPose): void {
@@ -163,6 +175,8 @@ class SpeechBubble {
 
 export interface JonhRendererOptions {
   hatId?: HatId;
+  /** Jonh's clothes (rules/cosmetics.ts); defaults to the cardigan. */
+  outfitId?: OutfitId;
   level?: LevelData;
 }
 
@@ -204,9 +218,9 @@ export class JonhRenderer {
 
     this.shadow = scene.add.image(this.originX + 4, this.originY + 1, 'fx-shadow').setScale(0.5 * 1.15, 0.5).setDepth(14);
     const hatId = options.hatId ?? 'boater';
-    this.ghost = new JonhRig(scene, this.originX, this.originY, hatId);
+    this.ghost = new JonhRig(scene, this.originX, this.originY, hatId, options.outfitId ?? DEFAULT_OUTFIT);
     this.ghost.root.setDepth(14.5).setAlpha(0.35).setVisible(false);
-    this.rig = new JonhRig(scene, this.originX, this.originY, hatId);
+    this.rig = new JonhRig(scene, this.originX, this.originY, hatId, options.outfitId ?? DEFAULT_OUTFIT);
     this.rig.root.setDepth(15);
     for (let i = 0; i < 3; i++) this.stars.push(scene.add.image(0, 0, 'fx-star').setScale(0.5).setDepth(16).setVisible(false));
     for (let i = 0; i < 3; i++) this.speedLines.push(scene.add.image(0, 0, 'fx-speedline').setScale(0.5).setDepth(14.4).setVisible(false));
@@ -217,6 +231,9 @@ export class JonhRenderer {
   get position(): { x: number; y: number } { return { x: this.originX, y: this.originY }; }
 
   setHat(hatId: HatId): void { this.rig.setHat(hatId); this.ghost.setHat(hatId); }
+
+  /** Changes his clothes at runtime (all outfit textures are rasterized at boot). */
+  setOutfit(outfitId: OutfitId): void { this.rig.setOutfit(outfitId); this.ghost.setOutfit(outfitId); }
 
   setReducedMotion(enabled: boolean): void { this.reducedMotion = enabled; }
 
