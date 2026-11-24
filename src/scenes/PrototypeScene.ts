@@ -12,7 +12,8 @@ import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
-import { MAPS } from '../levels';
+import { MAP_IDS, MAPS } from '../levels';
+import { campaignStatus, campaignTotals, nextCampaignMap } from '../rules/campaign';
 import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
@@ -1005,12 +1006,30 @@ export class PrototypeScene extends Phaser.Scene {
 
     if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
       const res = this.soloMachine.result!;
-      const previous = loadSaveData().solo[this.currentLevel.id]?.bestShots ?? null;
+      const solo = { ...loadSaveData().solo };
+      const mapId = this.currentLevel.id;
+      const previous = solo[mapId]?.bestShots ?? null;
+      const hadTrick = solo[mapId]?.hasStyle ?? false;
+      // Campaign view of this result (the save itself is written after the contact frame).
+      const campaignBefore = campaignStatus(MAP_IDS, solo);
+      if (res.success && !this.daily) {
+        const prior = solo[mapId];
+        solo[mapId] = { lastAngle: this.currentAngleDeg, lastPower: this.currentPowerPercent, ...prior,
+          bestShots: prior?.bestShots != null ? Math.min(prior.bestShots, res.shotsUsed) : res.shotsUsed,
+          hasStyle: Boolean(prior?.hasStyle) || res.hasStyle };
+      }
+      const campaignAfter = campaignStatus(MAP_IDS, solo);
+      const nextMapId = !this.daily && res.success ? nextCampaignMap(campaignAfter, mapId) : null;
+      const wasLocked = nextMapId !== null && !campaignBefore.find(e => e.mapId === nextMapId)?.unlocked;
       this.soloResultExtras = {
         newBest: !this.daily && res.success && (previous === null || res.shotsUsed < previous),
         quote,
         streak: after.currentStreak,
         unlockHtml: this.unlockHtml(this.pendingUnlocks),
+        nextMapId,
+        unlockedMapId: wasLocked ? nextMapId : null,
+        campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
+        newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
       };
       this.pendingUnlocks = [];
       if (res.success && !this.daily) {
@@ -1040,19 +1059,27 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private unlockHtml(hats: readonly HatName[]): string {
-    return [...new Set(hats)].map(id => {
-      const card = document.createElement('div');
-      card.className = 'unlock-card';
+    const unique = [...new Set(hats)];
+    if (unique.length === 0) return '';
+    // One compact card, however many hats a single shot unlocks.
+    const card = document.createElement('div');
+    card.className = `unlock-card${unique.length > 1 ? ' unlock-many' : ''}`;
+    const images = document.createElement('div');
+    images.className = 'unlock-images';
+    for (const id of unique) {
       const img = document.createElement('img');
       img.src = this.hatImage(id);
       img.alt = '';
-      const text = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = `New hat: ${HAT_RULES[id].name}`;
-      text.append(title, document.createTextNode('Put it on Jonh in the hat locker.'));
-      card.append(img, text);
-      return card.outerHTML;
-    }).join('');
+      images.appendChild(img);
+    }
+    const text = document.createElement('div');
+    const title = document.createElement('strong');
+    const names = unique.map(id => HAT_RULES[id].name);
+    title.textContent = unique.length === 1 ? `New hat: ${names[0]}` : `${unique.length} new hats!`;
+    text.append(title, document.createTextNode(unique.length === 1 ? 'Put it on Jonh in the hat locker.'
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}. See the hat locker.`));
+    card.append(images, text);
+    return card.outerHTML;
   }
 
   private addHomeExtras(row: HTMLElement, signal: AbortSignal): void {

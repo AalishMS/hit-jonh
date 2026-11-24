@@ -1,4 +1,5 @@
-import { DEFAULT_MAP_SET, MAPS } from '../levels';
+import { DEFAULT_MAP_SET, MAP_IDS, MAPS } from '../levels';
+import { campaignStatus, campaignTotals, continueTarget, type CampaignEntry } from '../rules/campaign';
 import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
@@ -41,7 +42,17 @@ export interface SoloResultExtras {
   /** HTML for unlocked items (already escaped / static). */
   unlockHtml?: string;
   streak?: number;
+  /** Campaign: the garden "Next map" opens (unlocked), or null/undefined for none (e.g. Daily Bonk). */
+  nextMapId?: string | null;
+  /** Campaign: this win unlocked that garden for the first time. */
+  unlockedMapId?: string | null;
+  /** Campaign star total after this result (none for Daily Bonk). */
+  campaignStars?: { stars: number; maxStars: number } | undefined;
+  /** First trick-shot badge on this garden. */
+  newTrick?: boolean;
 }
+
+
 
 export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
 
@@ -51,6 +62,27 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text 
   if (text) node.textContent = text;
   return node;
 };
+
+const mapName = (id: string): string => MAPS.find(m => m.id === id)?.name ?? id;
+
+/** "★★☆" plus an accessible label. */
+function starRow(stars: number, className = 'stars'): HTMLElement {
+  const row = el('span', className, '★'.repeat(stars) + '☆'.repeat(Math.max(0, 3 - stars)));
+  row.setAttribute('aria-label', `${stars} of 3 stars`);
+  return row;
+}
+
+/** The per-garden trick-shot badge: filled when earned. */
+function trickBadge(earned: boolean): HTMLElement {
+  const badge = el('span', `trick-badge${earned ? ' earned' : ''}`, 'Trick');
+  badge.setAttribute('aria-label', earned ? 'Trick shot landed' : 'No trick shot yet');
+  return badge;
+}
+
+/** Campaign status from the current save. */
+function currentCampaign(): CampaignEntry[] {
+  return campaignStatus(MAP_IDS, loadSaveData().solo);
+}
 
 export class MenuOverlay {
   private container: HTMLElement;
@@ -139,7 +171,23 @@ export class MenuOverlay {
     this.content.innerHTML = `
       <div class="logo" aria-label="Hit Jonh"><span class="hit">Hit</span><span class="jonh">Jonh!</span><span class="bonk">BONK!</span></div>
       <p class="tagline">He just wants to read the paper.<br>You have a cannon.</p>`;
-    const play = this.button("Play", 'btn-primary btn-play', () => this.showMainMenu(), signal);
+    // Returning players continue the campaign in one tap; "Play" opens every mode.
+    const campaign = currentCampaign();
+    const played = Object.values(loadSaveData().solo).some(record => record !== undefined);
+    const target = played ? continueTarget(campaign) : null;
+    let play: HTMLButtonElement;
+    if (target) {
+      play = this.button('', 'btn-primary btn-play btn-continue', () => this.startMap(target), signal);
+      play.innerHTML = '<span class="continue-word">Continue</span><small></small>';
+      play.querySelector('small')!.textContent = mapName(target);
+      const totals = campaignTotals(campaign);
+      const modes = this.button('All modes', 'btn-modes', () => this.showMainMenu(), signal);
+      const tally = el('span', 'home-stars', `★ ${totals.stars} / ${totals.maxStars}`);
+      tally.setAttribute('aria-label', `${totals.stars} of ${totals.maxStars} campaign stars`);
+      modes.appendChild(tally);
+    } else {
+      play = this.button('Play', 'btn-primary btn-play', () => this.showMainMenu(), signal);
+    }
     const row = el('div', 'home-row');
     this.content.appendChild(row);
     this.callbacks.onHomeExtras?.(row, signal);
@@ -243,37 +291,69 @@ export class MenuOverlay {
   showMapSelect(): void {
     const signal = this.open('map_select');
     const data = loadSaveData();
+    const campaign = currentCampaign();
+    const totals = campaignTotals(campaign);
     this.content.appendChild(el('h2', '', 'Choose a garden'));
+    const tally = el('div', 'campaign-tally');
+    const starTotal = el('span', 'tally-stars', `★ ${totals.stars} / ${totals.maxStars}`);
+    starTotal.setAttribute('aria-label', `${totals.stars} of ${totals.maxStars} stars`);
+    tally.append(starTotal, el('span', '', `Trick shots ${totals.tricks} / ${totals.count}`), el('span', '', `${totals.cleared} of ${totals.count} gardens cleared`));
+    const bar = el('div', 'tally-bar');
+    bar.style.setProperty('--fill', `${totals.maxStars ? (totals.stars / totals.maxStars) * 100 : 0}%`);
+    tally.appendChild(bar);
+    this.content.appendChild(tally);
     const list = el('div', 'map-list');
-    for (const map of MAPS) {
+    const target = continueTarget(campaign);
+    let focus: HTMLElement | null = null;
+    for (const entry of campaign) {
+      const map = MAPS.find(m => m.id === entry.mapId);
+      if (!map) continue;
       const score = data.solo[map.id];
-      const btn = el('button', 'map-btn');
+      const btn = el('button', `map-btn${entry.unlocked ? '' : ' locked'}`);
       btn.type = 'button';
       btn.dataset.map = map.id;
       btn.innerHTML = mapPreview(map.id);
       const name = el('div', 'map-name', map.name);
+      const number = el('span', 'map-number', String(entry.index + 1));
+      number.setAttribute('aria-hidden', 'true');
+      btn.prepend(number);
       const pips = el('small', 'difficulty-pips', difficultyPips(map));
       pips.setAttribute('aria-label', `difficulty ${map.difficulty} of 3`);
       name.appendChild(pips);
       btn.appendChild(name);
-      btn.appendChild(el('small', '', mapDescription(map.id)));
       const scoreDiv = el('div', 'map-score');
-      if (score && score.bestShots !== null) {
-        const stars = 4 - score.bestShots;
-        const s = el('span', 'stars', '★'.repeat(stars) + '☆'.repeat(3 - stars));
-        scoreDiv.append(s, document.createTextNode(` Best: ${score.bestShots} shot${score.bestShots > 1 ? 's' : ''}${score.hasStyle ? ' · trick' : ''}`));
+      if (!entry.unlocked) {
+        btn.disabled = true;
+        btn.setAttribute('aria-label', `${map.name}, locked. Clear ${mapName(entry.lockedBy ?? '')} to unlock.`);
+        btn.appendChild(el('small', 'lock-note', `Clear ${mapName(entry.lockedBy ?? '')} to unlock`));
+        const lock = el('span', 'lock-badge');
+        lock.setAttribute('aria-hidden', 'true');
+        btn.appendChild(lock);
       } else {
-        scoreDiv.textContent = 'Unplayed';
+        btn.appendChild(el('small', '', mapDescription(map.id)));
+        if (score && score.bestShots !== null) {
+          scoreDiv.append(starRow(entry.stars), document.createTextNode(` Best: ${score.bestShots} shot${score.bestShots > 1 ? 's' : ''}`));
+        } else {
+          scoreDiv.textContent = entry.mapId === target ? 'Up next' : 'Unplayed';
+        }
+        scoreDiv.appendChild(trickBadge(entry.trick));
       }
       btn.appendChild(scoreDiv);
-      btn.addEventListener('click', () => { this.callbacks.onMapSelected(map.id); this.hide(); }, { signal });
+      btn.addEventListener('click', () => { if (entry.unlocked) this.startMap(map.id); }, { signal });
       list.appendChild(btn);
+      if (entry.mapId === target || (!focus && entry.unlocked)) focus = btn;
     }
     this.content.appendChild(list);
     const actions = el('div', 'menu-actions');
     this.content.appendChild(actions);
     this.button('Back', '', () => { this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
-    (list.firstElementChild as HTMLElement | null)?.focus();
+    focus?.focus();
+  }
+
+  /** Opens a garden for solo play, with the iris transition into play. */
+  private startMap(mapId: string): void {
+    this.callbacks.onMapSelected(mapId);
+    this.hide(true);
   }
 
   showMultiSetup(): void {
@@ -440,9 +520,20 @@ export class MenuOverlay {
       this.content.appendChild(el('p', '', `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}.`));
       const ribbons = el('div');
       if (extras.newBest) ribbons.appendChild(el('span', 'ribbon', 'New best!'));
-      if (hasStyle) ribbons.appendChild(el('span', 'ribbon pow', 'Trick shot!'));
+      if (hasStyle) ribbons.appendChild(el('span', 'ribbon pow', extras.newTrick ? 'Trick badge!' : 'Trick shot!'));
       if (extras.streak && extras.streak >= 2) ribbons.appendChild(el('span', 'ribbon', `${extras.streak} in a row!`));
       if (ribbons.childElementCount) this.content.appendChild(ribbons);
+      if (extras.campaignStars) {
+        const tally = el('p', 'result-tally', `Campaign ★ ${extras.campaignStars.stars} / ${extras.campaignStars.maxStars}`);
+        this.content.appendChild(tally);
+      }
+      if (extras.unlockedMapId) {
+        const card = el('div', 'unlock-card map-unlock');
+        const text = el('div');
+        text.append(el('strong', '', `Unlocked: ${mapName(extras.unlockedMapId)}`), document.createTextNode('A new garden. Jonh thinks he is safe there.'));
+        card.append(el('span', 'unlock-key'), text);
+        this.content.appendChild(card);
+      }
     } else {
       this.content.appendChild(el('p', '', 'Three shots, zero Jonhs. He has resumed reading.'));
     }
@@ -455,11 +546,19 @@ export class MenuOverlay {
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
     const retry = () => { this.hide(); this.callbacks.onRetry(); };
-    const retryBtn = this.button('Retry map', 'btn-retry', retry, signal, actions);
+    const next = success && extras.nextMapId ? extras.nextMapId : null;
+    let nextBtn: HTMLButtonElement | null = null;
+    if (next) {
+      const goNext = () => this.startMap(next);
+      nextBtn = this.button('Next garden ›', 'btn-primary btn-next', goNext, signal, actions);
+      this.keyHint(nextBtn, 'N');
+      this.shortcut('KeyN', goNext, signal);
+    }
+    const retryBtn = this.button(success ? 'Retry' : 'Retry map', next ? 'btn-retry-quiet' : 'btn-retry', retry, signal, actions);
     this.keyHint(retryBtn, 'R');
     this.shortcut('KeyR', retry, signal);
-    this.button('Change map', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
-    retryBtn.focus();
+    this.button('Map select', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
+    (nextBtn ?? retryBtn).focus();
   }
 
   showPauseMenu(quitLabel = 'Quit to menu'): void {
@@ -480,8 +579,8 @@ export class MenuOverlay {
     this.content.scrollTop = this.refreshScroll;
   }
 
-  hide(): void {
-    const enteringPlay = this.currentView === 'map_select' || this.currentView === 'multi_setup' || this.currentView === 'daily';
+  hide(intoPlay = false): void {
+    const enteringPlay = intoPlay || this.currentView === 'map_select' || this.currentView === 'multi_setup' || this.currentView === 'daily';
     this.currentView = 'none';
     this.container.style.display = 'none';
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();

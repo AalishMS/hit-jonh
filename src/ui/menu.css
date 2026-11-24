@@ -229,3 +229,36 @@
 .online-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; gap: 10px; align-items: center; max-width: calc(100vw - 32px);
   padding: 6px 14px; font: 900 14px var(--ui); color: var(--ink); background: var(--paper); border: 3px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow); }
 .online-banner .btn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+
+/* ---------- Campaign (real game pass) ---------- */
+.campaign-tally { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 16px; margin: -4px auto 6px; max-width: 620px; font: 900 13px var(--ui); color: var(--muted); }
+.campaign-tally .tally-stars { font: 400 22px/1 var(--display); color: var(--ink); }
+.tally-bar { flex-basis: 100%; height: 12px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper-2); overflow: hidden; }
+.tally-bar::before { content: ''; display: block; height: 100%; width: var(--fill, 0%); background: linear-gradient(90deg, var(--hat), var(--zap)); border-right: 3px solid var(--ink); }
+.map-btn { position: relative; }
+.map-number { position: absolute; top: 8px; left: 8px; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; padding: 0 !important; border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); font: 400 16px/1 var(--display); box-shadow: 0 2px 0 var(--ink); }
+.map-btn.locked { cursor: not-allowed; background: #EFE4CF; }
+.map-btn.locked:hover { transform: none; }
+.map-btn.locked .map-preview { filter: grayscale(1) brightness(.75) contrast(.9); }
+.map-btn.locked .map-name { color: var(--muted); }
+.map-btn .lock-note { color: var(--ink); }
+.lock-badge { position: absolute; top: 14%; left: 50%; width: 46px; height: 46px; padding: 0 !important; transform: translateX(-50%) rotate(-6deg); border: 3px solid var(--ink); border-radius: 12px; background: var(--hat); box-shadow: 0 3px 0 var(--ink); }
+.lock-badge::before { content: ''; position: absolute; left: 50%; top: -14px; width: 20px; height: 20px; transform: translateX(-50%); border: 4px solid var(--ink); border-bottom: 0; border-radius: 12px 12px 0 0; }
+.lock-badge::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 12px; transform: translate(-50%, -40%); border-radius: 4px; background: var(--ink); }
+.trick-badge { display: inline-block; margin-left: 8px; padding: 2px 8px 1px; vertical-align: 2px; border: 2px dashed var(--muted); border-radius: 999px; font: 400 12px/1.2 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.trick-badge.earned { border: 2px solid var(--ink); background: var(--pow); color: var(--paper); }
+.result-tally { font: 400 20px/1 var(--display) !important; color: var(--ink) !important; letter-spacing: .5px; margin: 8px 0 0 !important; }
+.map-unlock .unlock-key { flex: 0 0 auto; position: relative; width: 52px; height: 52px; border: 3px solid var(--ink); border-radius: 12px; background: var(--sky); box-shadow: 0 3px 0 var(--ink); }
+.map-unlock .unlock-key::before { content: '›'; position: absolute; inset: 0; display: grid; place-items: center; font: 400 36px/1 var(--display); color: var(--paper); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.btn-next { font-size: 17px; }
+.btn-retry-quiet { background: var(--paper); }
+/* Home: Continue the campaign in one tap. */
+.menu-content .btn-continue { display: inline-grid; justify-items: center; gap: 4px; }
+.btn-continue .continue-word { font: inherit; }
+.btn-continue small { font: 900 14px/1.1 var(--ui); letter-spacing: 0; text-transform: none; text-shadow: none; opacity: .95; }
+.btn-modes { display: inline-flex; align-items: center; gap: 10px; margin-top: 12px; }
+.home-stars { padding: 3px 8px; border: 2px solid var(--ink); border-radius: 999px; background: var(--zap); font: 900 12px var(--ui); }
+.unlock-images { display: flex; flex: 0 0 auto; }
+.unlock-many .unlock-images img { width: 44px; margin-right: -10px; }
+/* Short screens: the result buttons stay in reach while the celebration scrolls. */
+.view-solo_result .result-actions { position: sticky; bottom: -28px; z-index: 1; margin: 16px -32px -28px; padding: 12px 16px 16px; background: linear-gradient(#FFF7E600, var(--paper) 24%); }

@@ -81,7 +81,13 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
 
 ## 5. Solo rules
 
-- Choose any map (all unlocked). Three attempts. **[DECIDED]**
+- ~~Choose any map (all unlocked).~~ Three attempts. **[DECIDED]**
+- **Campaign [DECIDED by owner 2026-11-24: a campaign through the maps with star ratings and unlockable maps; order and unlock rule PROPOSED]:**
+  - Solo is a campaign through every map in a fixed order (`rules/campaign.ts` `CAMPAIGN_ORDER`; maps not listed join at the end).
+  - A garden unlocks when the previous one is cleared (any star). A garden that already has a saved record stays open, so older saves lose nothing.
+  - Each garden shows its stars (by shots used, below) and a separate **trick badge**, earned once a ricochet body hit lands there. The map screen and the win screen show the campaign star total.
+  - A win offers **Next garden** (N, focused) as well as Retry (R) and Map select. The title offers **Continue** to the first uncleared garden (then the first one short of three stars).
+  - Hot-seat, online and Daily Bonk keep every map available.
 - A valid **body hit** ends the challenge immediately as a success. **[DECIDED]**
 - Hat-only hits do **not** count as success in solo **[PROPOSED]**.
 - After three non-successful attempts: short failure result with immediate Retry.
@@ -331,6 +337,7 @@ stateDiagram-v2
     RoundResult --> Handover : automatic / skip, next map
     RoundResult --> MatchResult : automatic / skip, last round
     SoloResult --> Aiming : Retry (clean state)
+    SoloResult --> Aiming : Next garden (campaign)
     SoloResult --> SoloSetup
     MatchResult --> Handover : Rematch (clean state)
     MatchResult --> MainMenu

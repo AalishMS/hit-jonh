@@ -707,3 +707,39 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** how the mutter sounds (no listening possible); only its scheduling runs.
 
+### 4. Campaign — done
+
+**Done**
+- `src/rules/campaign.ts` (pure) derives everything from the existing solo bests in `hitJonh.v1`, so there is no new save field:
+  - `CAMPAIGN_ORDER` [PROPOSED]: Backyard → Fence → Rooftop → Rubber Yard → Bank Shot → Lunar Picnic → Bounce House → Valley. Other maps join at the end.
+  - Stars by shots used (3/2/1, unchanged), a per-garden trick badge, totals, unlocks, the next garden and the Continue target.
+  - Unlock rule [PROPOSED]: clear the previous garden (any star). A garden with an existing record stays open, so saves from before the campaign keep every map they had played.
+- **Map select:** numbered cards in campaign order; a star tally with a progress bar, trick shots and gardens cleared; locked cards (greyed preview, padlock, "Clear X to unlock", disabled with an aria-label); "Up next" on the Continue target, which also gets focus; a trick badge on every unlocked card.
+- **Win screen:**
+  - "Next garden ›" is primary and focused (N); Retry (R) and Map select follow.
+  - It shows the campaign star total, an "Unlocked: …" card on a first clear, and a "Trick badge!" ribbon the first time.
+  - Several hat unlocks from one shot collapse into one compact card.
+  - The buttons stay pinned while the celebration scrolls on short screens.
+- **Title:** returning players get a big "Continue · {garden}" button and "All modes ★ n / 24". First-time players still see "Play".
+- Daily Bonk, hot-seat and online are not gated. Daily wins show no Next button and no campaign total.
+
+**Decisions:** SPEC §5 "Choose any map (all unlocked)" is superseded by the owner's request. Stars stay "shots used" (SPEC §5 [PROPOSED]). The trick shot is a separate badge rather than a fourth star, so the existing 3/2/1 rating and the crown hat rule ("three stars on every garden") are unchanged.
+
+**Verified**
+- `tests/campaign.test.ts` (6 tests):
+  - order covers every map, and new maps join at the end;
+  - star mapping;
+  - a fresh save unlocks only the first garden;
+  - clearing unlocks the next, a failed try does not;
+  - old records stay open;
+  - totals, Next and Continue targets.
+- Browser, from a fresh save:
+  - only Backyard was open, with 7 padlocks and unlock hints;
+  - a Backyard 56°/32% first-shot trick hit showed "Next garden ›" (focused), "Campaign ★ 3 / 24", "Unlocked: The Fence Dispute" and "Trick badge!";
+  - N loaded The Fence Dispute;
+  - Home then showed "Continue · The Fence Dispute" and "All modes ★ 3 / 24";
+  - at 844×390 the result buttons stayed pinned and visible;
+  - no page errors.
+
+**Not verified:** touch on a real phone.
+
