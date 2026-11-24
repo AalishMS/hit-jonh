@@ -25,7 +25,8 @@ import { JonhRenderer } from '../render/jonhRenderer';
 import { SceneryRenderer } from '../render/sceneryRenderer';
 import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
 import { PlayerHistory } from '../rules/playerHistory';
-import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
+import { classifyShotOutcome, JonhReactionSelector, type ReactionContext } from '../rules/reactions';
+import { HeckleTimer } from '../rules/heckleTimer';
 import { SessionCoordinator } from '../rules/sessionCoordinator';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { SoloChallengeMachine } from '../rules/soloChallenge';
@@ -106,6 +107,10 @@ export class PrototypeScene extends Phaser.Scene {
   private skipOffered = false;
   /** Solo: Jonh's line about the last miss stays in his bubble while the player re-aims. */
   private lastMissQuote: string | null = null;
+  /** Shots in a row (this session) that did not hit Jonh's body: his lines escalate. */
+  private missStreak = 0;
+  /** Jonh heckles a player who takes ages to aim. */
+  private readonly heckles = new HeckleTimer();
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -567,7 +572,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
 
     this.reset();
-    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
+    this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
   }
 
@@ -576,6 +581,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
     if (res) {
+      if (res.angle !== this.currentAngleDeg) this.heckles.activity();
       this.currentAngleDeg = res.angle;
       this.drawCannon();
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
@@ -587,6 +593,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, 0, power - this.currentPowerPercent);
     if (res) {
+      if (res.power !== this.currentPowerPercent) this.heckles.activity();
       this.currentPowerPercent = res.power;
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
     }
@@ -602,6 +609,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
     this.lastMissQuote = null;
+    this.heckles.reset();
 
     this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
@@ -668,6 +676,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeReactionQuote = null;
 
     this.ballRenderer.setVisible(false);
+    this.heckles.reset();
     this.jonhRenderer.resetToIdle();
     this.jonhRenderer.draw(false);
     // Solo: his line about the miss stays up while you re-aim (the result window is short).
@@ -731,6 +740,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (advance === 'round') { this.nextMultiplayerRound(); return; }
 
     this.jonhRenderer.setAware(this.canvasAim.isDragging);
+    if (this.canAimNow() && !this.canvasAim.isDragging && this.heckles.advance(dtSeconds)) {
+      this.jonhSays(this.reactionSelector.selectHeckle(this.missStreak));
+    }
     this.jonhRenderer.setAlarm(replayFrameNow?.phase === 'pre' ? this.replayAlarm(replayFrameNow) : this.incomingAlarm());
     this.jonhRenderer.update(reactionSeconds);
     // A missed ball that is only rolling to a stop is fast-forwarded: scaled real time is fed to
@@ -797,12 +809,12 @@ export class PrototypeScene extends Phaser.Scene {
 
     if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
       this.hatReactionTriggered = true;
-      this.activeReactionQuote = this.reactionSelector.selectReaction('hat');
+      this.activeReactionQuote = this.reactionSelector.selectReaction('hat', this.talkContext(state));
       this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
       this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
     } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
       this.overheadReactionTriggered = true;
-      this.activeReactionQuote = this.reactionSelector.selectReaction('overhead');
+      this.activeReactionQuote = this.reactionSelector.selectReaction('overhead', { ...this.talkContext(state), missStreak: this.missStreak + 1 });
       this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
     }
 
@@ -816,6 +828,21 @@ export class PrototypeScene extends Phaser.Scene {
     if (!result.resolved) return false;
     this.handleResolution(result, state);
     return true;
+  }
+
+  /** What Jonh knows about this shot so far (for lines that fit the moment). */
+  private talkContext(state: ProjectileState): ReactionContext {
+    return {
+      mapId: this.currentLevel.id,
+      hatId: this.progress.selectedHat,
+      obstacles: state.obstacleContacts.map(o => ({ id: o.id, material: o.material })),
+    };
+  }
+
+  /** Jonh says a line (speech bubble plus a quiet mutter). */
+  private jonhSays(line: string): void {
+    this.jonhRenderer.triggerArrival(line);
+    this.audioManager.playMutter(line.length);
   }
 
   /** How fast presentation time runs this frame: faster only while a landed miss rolls to a stop. */
@@ -907,10 +934,19 @@ export class PrototypeScene extends Phaser.Scene {
       { classifiedOutcome: classification.outcome, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
     );
 
+    this.missStreak = isBodyHit ? 0 : this.missStreak + 1;
+    const talk: ReactionContext = {
+      ...this.talkContext(state),
+      missStreak: this.missStreak,
+      strength: quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak',
+      // Solo/daily only: multiplayer turns are shared, so streaks and "first shot" would mislead.
+      ...(this.activeMode === 'solo' ? { firstShot: this.soloMachine.attemptsLeft === 2, hitStreak: this.progress.currentStreak + 1 } : {}),
+    };
     const quote = isBodyHit
-      ? this.reactionSelector.selectReaction(feedback.category)
-      : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category));
+      ? this.reactionSelector.selectReaction(feedback.category, talk)
+      : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category, talk));
     this.lastMissQuote = isBodyHit ? null : quote;
+    if (!isBodyHit) this.audioManager.playMutter(quote.length);
 
     const landing = !isBodyHit ? state.firstGroundContact : null;
     this.trailRenderer.setLandingMarker(
@@ -1447,7 +1483,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
-    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
+    this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
@@ -1568,7 +1604,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
-    this.jonhRenderer.triggerArrival(this.reactionSelector.selectReaction('moved'));
+    this.jonhSays(this.reactionSelector.selectReaction('moved'));
   }
 
   private beginMultiplayerTurn(): void {

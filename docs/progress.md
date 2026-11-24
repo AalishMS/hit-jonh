@@ -678,3 +678,32 @@ Skip makes any landed miss instant. The remaining long tails are legitimate: low
 
 **Not verified:** a real phone. Safe-area insets were not exercised on a notched device.
 
+### 3. Jonh's personality — done
+
+**Done**
+- `src/rules/jonhLines.ts` holds about 120 new lines, in these groups:
+  - miss-streak, first-shot, hit-streak, strong and trick hits;
+  - per-hat lines for all 8 hats;
+  - obstacle complaints matched by id or material (fence, shed, planters, awning, billboard, carport, silo, trampoline, rubber, leaves, rock, concrete, wood);
+  - per-garden arrival, miss and hit lines;
+  - heckles.
+- `JonhReactionSelector.selectReaction(category, context?)` tries the fitting context pools in priority order with cosmetic odds (`JONH_TALK` [PROPOSED]), then falls back to the plain pool.
+  - A line does not return within the last 8 picks while the pool has fresh ones. Consecutive repeats are still never allowed (SPEC §10.1).
+  - Without a context it behaves as before (existing tests unchanged).
+- Added `selectArrival(mapId)` (per-garden opening lines; the level's `arrivalLine` is the fallback) and `selectHeckle(missStreak)`.
+- The "Take your time. Apparently you need it." line now belongs to the miss-streak pool, as SPEC §10.1 intended ("several consecutive misses"). Before, it was a random overhead/over line.
+- `HeckleTimer` (pure): first heckle after 9 s of untouched aim, then every 15 s, at most twice per aim. Any aim change restarts it.
+- `AudioManager.playMutter`: a quiet low formant babble with 2–5 syllables, played with miss lines, arrival lines, heckles and "moved" lines. Hits keep the yelp.
+- The scene passes the context: map, hat, obstacles touched and a session miss streak. Solo also passes first shot and hit streak (multiplayer turns are shared, so those two are left out there).
+
+**Verified**
+- `tests/jonhTalk.test.ts` (12 tests) covers:
+  - each context pool, the miss-streak threshold, and the obstacle id/material match;
+  - the fallback when the odds say no;
+  - the 8-pick recency window over 200 picks;
+  - per-garden arrivals, heckle escalation and the HeckleTimer rules;
+  - every line ≤ 60 characters with no "John", and `MAP_LINES` naming only real maps.
+- Browser (frame clock): Lunar Picnic opened with "Finally. Some peace and quiet."; after 9 s of untouched aim Jonh said "Lovely afternoon for doing nothing."; no page errors.
+
+**Not verified:** how the mutter sounds (no listening possible); only its scheduling runs.
+

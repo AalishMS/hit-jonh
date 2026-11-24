@@ -1,4 +1,8 @@
-import { SCORING } from '../config/tuning';
+import { JONH_TALK, SCORING } from '../config/tuning';
+import {
+  FIRST_SHOT_LINES, HAT_LINES, HECKLE_AFTER_MISSES, HECKLE_LINES, HIT_STREAK_LINES, MAP_LINES, MISS_STREAK_LINES,
+  OBSTACLE_LINES, STRONG_HIT_LINES, TRICK_HIT_LINES,
+} from './jonhLines';
 
 export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss' | 'moved';
 
@@ -17,18 +21,22 @@ export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
     'Right in the marmalade.',
     "I'm sure that violates local bylaws.",
     'Uncalled for, frankly.',
+    "I'll be writing to the council.",
+    "That's going to leave a mark on my afternoon.",
   ],
   hat: [
     'Was that meant for me?',
     'My hat!',
     'Mind the haberdashery.',
     'Close, but no tea.',
+    "I'll need a new hat. Again.",
   ],
   overhead: [
     'Low-flying iron today.',
     'Going for the neighbours, are we?',
-    'Take your time. Apparently you need it.',
     'Mind the gutters!',
+    'I heard that one go over.',
+    'Lovely weather for it.',
   ],
   fence: [
     'That was my good fence.',
@@ -39,13 +47,16 @@ export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
     'Grass needed aerating anyway.',
     'Not even close.',
     'A rather timid effort.',
+    'Is that it?',
+    'The worms thank you.',
   ],
   over: [
     'Low-flying iron today.',
     'Going for the neighbours, are we?',
-    'Take your time. Apparently you need it.',
     'Mind the gutters!',
     'Flew straight to the next county.',
+    "That's the Hendersons' problem now.",
+    "Wrong garden, I'm afraid.",
   ],
   miss: [
     'Was that meant for me?',
@@ -55,35 +66,99 @@ export const JONH_REACTIONS: Record<ReactionCategory, readonly string[]> = {
   ],
 };
 
+/** What Jonh knows about the moment, so his line can fit it. Every field is optional. */
+export interface ReactionContext {
+  /** Base map id (per-garden flavour lines). */
+  mapId?: string;
+  /** Shots in a row that did not hit his body, including this one. */
+  missStreak?: number;
+  /** Body hits in a row, including this one. */
+  hitStreak?: number;
+  /** This hit came on the first shot of a challenge. */
+  firstShot?: boolean;
+  strength?: 'weak' | 'strong' | 'trick';
+  /** The hat he is wearing. */
+  hatId?: string;
+  /** Obstacles the ball touched this shot. */
+  obstacles?: ReadonlyArray<{ id: string; material: string }>;
+}
+
+/** Lines that must not come back within this many picks (consecutive repeats are never allowed). */
+const RECENT_LINES = 8;
+
+function obstacleLines(obstacles: ReadonlyArray<{ id: string; material: string }>): readonly string[] {
+  for (const entry of OBSTACLE_LINES) {
+    const hit = obstacles.some(o => (entry.match.id !== undefined && o.id.toLowerCase().includes(entry.match.id)) ||
+      (entry.match.material !== undefined && o.material === entry.match.material));
+    if (hit) return entry.lines;
+  }
+  return [];
+}
+
 /**
- * Manages Jonh's dry dialogue reaction pool.
- * Guaranteed not to repeat the same line on consecutive selections (SPEC §10.1).
- * Uses a cosmetic random generator completely decoupled from simulation physics.
+ * Manages Jonh's dry dialogue.
+ * - Never repeats the same line on consecutive selections, and avoids the last few (SPEC §10.1).
+ * - With a context, a fitting line (a miss streak, a third hit, his hat, the garden) is preferred
+ *   with the cosmetic odds in `JONH_TALK`; otherwise the plain category pool is used.
+ * - Uses a cosmetic random generator, completely decoupled from simulation physics.
  */
 export class JonhReactionSelector {
   private lastSelectedLine: string | null = null;
+  private readonly recent: string[] = [];
 
   constructor(private readonly rng: () => number = Math.random) {}
 
-  selectReaction(category: ReactionCategory): string {
+  selectReaction(category: ReactionCategory, context?: ReactionContext): string {
+    if (context) {
+      for (const { pool, chance } of this.contextPools(category, context)) {
+        if (pool.length > 0 && this.rng() < chance) return this.pick(pool);
+      }
+    }
     const pool = JONH_REACTIONS[category];
-    if (!pool || pool.length === 0) {
-      return '...';
+    return pool && pool.length > 0 ? this.pick(pool) : '...';
+  }
+
+  /** His opening line on a garden. */
+  selectArrival(mapId: string, fallback?: string): string {
+    const pool = MAP_LINES[mapId]?.arrival ?? [];
+    if (pool.length === 0) return fallback ?? this.pick(JONH_REACTIONS.miss);
+    return this.pick(pool);
+  }
+
+  /** A heckle while the player takes ages to aim; sharper after a few misses. */
+  selectHeckle(missStreak = 0): string {
+    return this.pick(missStreak >= 2 ? [...HECKLE_AFTER_MISSES, ...HECKLE_LINES] : HECKLE_LINES);
+  }
+
+  private contextPools(category: ReactionCategory, c: ReactionContext): Array<{ pool: readonly string[]; chance: number }> {
+    const map = c.mapId ? MAP_LINES[c.mapId] : undefined;
+    if (category === 'hit') {
+      return [
+        { pool: c.strength === 'trick' ? TRICK_HIT_LINES : [], chance: JONH_TALK.trick },
+        { pool: c.firstShot ? FIRST_SHOT_LINES : [], chance: JONH_TALK.firstShot },
+        { pool: (c.hitStreak ?? 0) >= 3 ? HIT_STREAK_LINES : [], chance: JONH_TALK.hitStreak },
+        { pool: c.strength === 'strong' || c.strength === 'trick' ? STRONG_HIT_LINES : [], chance: JONH_TALK.strong },
+        { pool: map?.hit ?? [], chance: JONH_TALK.mapLine },
+      ];
     }
+    if (category === 'hat') return [{ pool: (c.hatId && HAT_LINES[c.hatId]) || [], chance: JONH_TALK.hat }];
+    if (category === 'moved') return [];
+    return [
+      { pool: (c.missStreak ?? 0) >= JONH_TALK.missStreakFrom ? MISS_STREAK_LINES : [], chance: JONH_TALK.missStreak },
+      { pool: category === 'overhead' ? [] : obstacleLines(c.obstacles ?? []), chance: JONH_TALK.obstacle },
+      { pool: map?.miss ?? [], chance: JONH_TALK.mapLine },
+    ];
+  }
 
-    if (pool.length === 1) {
-      const line = pool[0]!;
-      this.lastSelectedLine = line;
-      return line;
-    }
-
-    // Filter out the line used on the immediate previous shot
-    const available = pool.filter((line) => line !== this.lastSelectedLine);
-    const candidates = available.length > 0 ? available : pool;
-
+  private pick(pool: readonly string[]): string {
+    const fresh = pool.filter(line => !this.recent.includes(line));
+    const notLast = pool.filter(line => line !== this.lastSelectedLine);
+    const candidates = fresh.length > 0 ? fresh : notLast.length > 0 ? notLast : pool;
     const index = Math.floor(this.rng() * candidates.length);
-    const selected = candidates[index] ?? candidates[0]!;
+    const selected = candidates[Math.min(index, candidates.length - 1)] ?? candidates[0]!;
     this.lastSelectedLine = selected;
+    this.recent.push(selected);
+    if (this.recent.length > RECENT_LINES) this.recent.shift();
     return selected;
   }
 
@@ -93,6 +168,7 @@ export class JonhReactionSelector {
 
   reset(): void {
     this.lastSelectedLine = null;
+    this.recent.length = 0;
   }
 }
 

@@ -351,6 +351,43 @@ export class AudioManager {
     vibrato.stop(start + duration + 0.02);
   }
 
+  /**
+   * Jonh muttering a line: a few low, quick formant syllables (a deadpan "hm-mm-hmph"), quiet
+   * enough to sit under music. `length` is the line's character count.
+   */
+  playMutter(length = 24): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const syllables = Math.max(2, Math.min(5, Math.round(length / 9)));
+    const vowels: Array<[number, number]> = [[640, 1190], [480, 1720], [560, 920], [390, 2000], [700, 1100]];
+    let t = ctx.currentTime + 0.02;
+    const base = 128 * this.vary(0.06);
+    for (let i = 0; i < syllables; i++) {
+      const d = 0.07 + this.rng() * 0.06;
+      const last = i === syllables - 1;
+      const voice = ctx.createOscillator();
+      voice.type = 'sawtooth';
+      const pitch = base * (1 + (this.rng() - 0.5) * 0.18) * (last ? 0.86 : 1);
+      voice.frequency.setValueAtTime(pitch, t);
+      voice.frequency.exponentialRampToValueAtTime(pitch * (last ? 0.8 : 0.95), t + d);
+      const [f1, f2] = vowels[Math.floor(this.rng() * vowels.length)]!;
+      for (const [freq, level] of [[f1, 0.11], [f2, 0.05]] as const) {
+        const f = ctx.createBiquadFilter();
+        f.type = 'bandpass';
+        f.Q.value = 6;
+        f.frequency.value = freq;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(level, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        voice.connect(f).connect(g).connect(this.sfxBus!);
+      }
+      voice.start(t);
+      voice.stop(t + d + 0.02);
+      t += d + 0.025;
+    }
+  }
+
   private slideWhistle(start: number, from: number, to: number, duration: number, gain: number): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();

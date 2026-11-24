@@ -245,6 +245,13 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
 
 - Weak vs strong hit threshold: impact speed **10 m/s** **[PROPOSED][TUNE]**.
 - Never repeat the same line on consecutive shots. Dialogue randomness uses a cosmetic RNG **separate from simulation**; it must never affect collisions or outcomes. **[DECIDED]**
+- **Context lines [PROPOSED 2026-11-24, odds in `JONH_TALK`]:**
+  - Jonh prefers a fitting line when one applies: a miss streak (from 3 in a row), a first-shot hit, a third hit in a row, a strong or trick hit, the hat he is wearing, the bit of his property the ball hit, or a per-garden line.
+  - Each garden has its own opening lines.
+  - He heckles a player who leaves the aim untouched for 9 s (at most twice per aim).
+  - A line does not return within the last 8 picks while fresh lines remain.
+  - He mutters (a quiet synthesized formant babble) when he speaks.
+  - Lines live in `src/rules/jonhLines.ts`.
 - Comic synthesized vocal yelps accompany body hits; a voiced FAAH cue plays once per shot when the ball leaves any visible canvas edge. Leaving the top still allows the ball to return and never changes scoring/end conditions. Mute and master volume apply to all cues. **[DECIDED sound triggers, PROPOSED synthesis]**
 - Reactions are brief (≤ 1.5 s before Continue is offered) and skippable. Reduced-motion disables camera shake and large screen-space effects.
 

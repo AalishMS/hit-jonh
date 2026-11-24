@@ -161,6 +161,27 @@ export const LOOK = {
   overheadAltitudeMarginMetres: 2.8,
 } as const;
 
+/**
+ * Jonh's chatter [PROPOSED, cosmetic only]: the odds that a fitting context line (rules/jonhLines.ts)
+ * replaces a plain one, and when he starts heckling a slow aimer. Never affects the simulation.
+ */
+export const JONH_TALK = {
+  trick: 0.7,
+  firstShot: 0.6,
+  hitStreak: 0.65,
+  strong: 0.45,
+  hat: 0.6,
+  /** Misses in a row before he comments on the streak. */
+  missStreakFrom: 3,
+  missStreak: 0.6,
+  obstacle: 0.75,
+  mapLine: 0.25,
+  /** Idle aiming before the first heckle, between heckles, and at most this many per aim. */
+  heckleFirstSeconds: 9,
+  heckleRepeatSeconds: 15,
+  heckleMaxPerAim: 2,
+} as const;
+
 export const SCORING = {
   ricochetBodyPoints: 125,
   bodyPoints: 100,
