@@ -7,6 +7,7 @@ import type { LevelData } from '../levels/types';
 import { arcShape } from '../sim/arc';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import { artImage, artMeta, artScale } from './artTextures';
+import { MagnetRenderer } from './magnetRenderer';
 import { MechanicsRenderer } from './mechanicsRenderer';
 import { WindRenderer } from './windRenderer';
 import { drawRoute } from './routeRenderer';
@@ -37,6 +38,8 @@ export class SceneryRenderer {
   readonly mechanics: MechanicsRenderer;
   /** The level's constant wind: windsock, caption and streaks (nothing on a calm level). */
   readonly wind: WindRenderer;
+  /** The level's electromagnet: cable, field rings, glow (nothing on a level without one). */
+  readonly magnet: MagnetRenderer;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -46,6 +49,7 @@ export class SceneryRenderer {
   ) {
     this.mechanics = new MechanicsRenderer(scene, ppm, worldHeightPx);
     this.wind = new WindRenderer(scene, ppm, worldHeightPx, worldWidthPx);
+    this.magnet = new MagnetRenderer(scene, ppm, worldHeightPx);
   }
 
   draw(level: LevelData): void {
@@ -169,6 +173,7 @@ export class SceneryRenderer {
 
     this.mechanics.draw(level);
     this.wind.draw(level);
+    this.magnet.draw(level);
     // Walking Jonh: his route painted on the path (none on other maps).
     for (const o of drawRoute(s, level, this.ppm, this.worldHeightPx, DEPTH.prop)) add(o);
   }
@@ -177,6 +182,7 @@ export class SceneryRenderer {
   update(dt: number, reduced: boolean, heardGust: number | null = null): void {
     this.mechanics.update(dt, reduced);
     this.wind.update(dt, reduced, heardGust);
+    this.magnet.update(dt, reduced);
     if (reduced || !(dt > 0)) return;
     this.time += dt;
     this.rays?.setRotation(this.time * 0.05);
@@ -204,11 +210,13 @@ export class SceneryRenderer {
     this.rays = null;
     this.mechanics.clear();
     this.wind.clear();
+    this.magnet.clear();
   }
 
   destroy(): void {
     this.clear();
     this.mechanics.destroy();
     this.wind.destroy();
+    this.magnet.destroy();
   }
 }

@@ -106,6 +106,7 @@ export class DemoStage {
 
   update(dt: number, reduced: boolean): void {
     const { audio, effects, camera, timeline } = this.deps;
+    this.scenery.magnet.follow(this.ball.drawnAt); // the magnet glows as the recorded ball nears
     this.scenery.update(dt, reduced);
     const reaction = timeline.advance(dt, false, reduced);
     const recoil = effects.update(reaction, reduced, dt);

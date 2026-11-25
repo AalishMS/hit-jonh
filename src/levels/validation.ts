@@ -1,5 +1,6 @@
-import { AIM, JONH_WALK, MATERIALS, PROJECTILE, RAMP, WIND } from '../config/tuning';
+import { AIM, JONH_WALK, MAGNET, MATERIALS, PROJECTILE, RAMP, WIND } from '../config/tuning';
 import { arcCorners, arcOverlapsBox, arcPoint, arcShape, closestOnArc, type ArcShape } from '../sim/arc';
+import { magnetMaxSpeed } from '../sim/magnet';
 import type { Box2D, Point2D } from '../sim/swept';
 import { routeLegs, routeSweptBoxes } from './jonhRoute';
 import { levelPhysics } from './levelPhysics';
@@ -41,8 +42,10 @@ function boxThickness(box: Box2D): { width: number; height: number; minThickness
 export function validateLevel(level: LevelData, config: ValidationConfig): ValidationResult {
   const errors: string[] = [];
   // A map that scales the cannon up needs thicker colliders than the global top speed implies.
-  // Wind keeps accelerating the ball in flight, so its speed can exceed the cannon's.
-  const maxSpeed = Math.max(config.maxSpeedMs, levelPhysics(level).maxSpeedMs) +
+  // Wind keeps accelerating the ball in flight, so its speed can exceed the cannon's. A magnet's
+  // field is conservative, so it can add at most √(2·A·R) (v² ≤ v₀² + 2·A·R).
+  const cannonMax = Math.max(config.maxSpeedMs, levelPhysics(level).maxSpeedMs);
+  const maxSpeed = (level.magnet ? magnetMaxSpeed(cannonMax, level.magnet) : cannonMax) +
     Math.abs(level.wind?.accelerationMs2 ?? 0) * WIND.thicknessFlightSeconds;
   const requiredThickness = Math.max(
     config.minThicknessMetres,
@@ -123,6 +126,10 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     if (!(sockX > level.bounds.minX && sockX < level.bounds.maxX)) errors.push('Windsock is outside level bounds');
   }
 
+  // 7c. Magnet: a bounded pull, always weaker than gravity (so the ball can never hover or orbit),
+  //     a reach that stays clear of the cannon, and a solid housing round its centre.
+  if (level.magnet) errors.push(...validateMagnet(level, config.ballRadiusMetres ?? PROJECTILE.radiusMetres));
+
   // 8. Portals: the exit never puts the ball inside a collider, Jonh or another entry (no loops), and
   //    no entry is within the muzzle's reach.
   const portals = level.portals ?? [];
@@ -176,6 +183,38 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     valid: errors.length === 0,
     errors,
   };
+}
+
+/** Magnet rules [PROPOSED 2026-11-25]: see validateLevel step 7c. */
+function validateMagnet(level: LevelData, ballRadius: number): string[] {
+  const m = level.magnet!;
+  const errors: string[] = [];
+  const b = level.bounds;
+  if (!(Number.isFinite(m.x) && Number.isFinite(m.y) && m.x > b.minX && m.x < b.maxX && m.y > b.minY && m.y < b.maxY)) {
+    errors.push('Magnet centre must be inside the level bounds');
+  }
+  if (!(Number.isFinite(m.radius) && m.radius > 0 && m.radius <= MAGNET.maxRadiusMetres)) {
+    errors.push(`Magnet reach ${m.radius} must be in (0, ${MAGNET.maxRadiusMetres}] m`);
+  }
+  const gravity = levelPhysics(level).gravity;
+  const maxPull = Math.min(MAGNET.maxAccelerationMs2, MAGNET.maxShareOfGravity * gravity);
+  if (!(Number.isFinite(m.accelerationMs2) && m.accelerationMs2 > 0 && m.accelerationMs2 <= maxPull)) {
+    errors.push(`Magnet pull ${m.accelerationMs2} must be positive and at most ${maxPull.toFixed(2)} m/s² (weaker than gravity)`);
+  }
+  const housing = level.obstacles.find(o => o.id === m.housingId);
+  if (!housing) {
+    errors.push(`Magnet housing "${m.housingId}" is not an obstacle`);
+  } else {
+    const h = housing.box;
+    if (!(m.x > h.minX && m.x < h.maxX && m.y > h.minY && m.y < h.maxY)) errors.push(`Magnet centre must be inside its housing "${m.housingId}"`);
+    if (housing.breakable) errors.push(`Magnet housing "${m.housingId}" cannot be breakable`);
+  }
+  // The cannon and the ball's spawn point (at any angle) stand outside the reach.
+  const muzzleReach = AIM.barrelLengthMetres + AIM.muzzleGapMetres + 2 * ballRadius;
+  if (Math.hypot(m.x - level.cannonSpawn.x, m.y - level.cannonSpawn.y) < m.radius + muzzleReach) {
+    errors.push('Magnet reach must stay clear of the cannon');
+  }
+  return errors;
 }
 
 /** Route rules [PROPOSED 2026-11-25]: see validateLevel step 9. */

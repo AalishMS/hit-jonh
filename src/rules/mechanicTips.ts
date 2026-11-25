@@ -9,7 +9,7 @@ import type { MechanicId } from '../levels/types';
 
 export type { MechanicId };
 
-export const MECHANIC_IDS: readonly MechanicId[] = ['glass', 'wind', 'rubber', 'bank', 'portal', 'walking', 'lowGravity', 'trampoline', 'longShot', 'ramp'];
+export const MECHANIC_IDS: readonly MechanicId[] = ['glass', 'wind', 'rubber', 'bank', 'portal', 'walking', 'lowGravity', 'trampoline', 'longShot', 'ramp', 'magnet'];
 
 export function isMechanicId(v: unknown): v is MechanicId {
   return typeof v === 'string' && (MECHANIC_IDS as readonly string[]).includes(v);
@@ -27,6 +27,7 @@ export const MECHANIC_TIPS: Record<MechanicId, string> = {
   trampoline: 'Drop it on the trampoline and let it spring up to him.',
   longShot: 'A long way off. Every bit of power counts here.',
   ramp: 'Land it in the half-pipe. It rolls back out the low side.',
+  magnet: 'The magnet pulls the ball. Aim to one side and let it curve in.',
 };
 
 export interface TipContext {

@@ -598,6 +598,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.titleCardPending = false;
     this.loadToken++; // a garden still loading its art must not build itself after this
     this.audioManager.setWindBed(null);
+    this.audioManager.setMagnetHum(null);
     this.footsteps.reset();
     this.missStreak = 0;
     this.daily = null;
@@ -1080,6 +1081,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
+    this.sceneryRenderer.magnet.follow(this.ballRenderer.drawnAt); // glow follows the drawn ball (live or replay)
     this.sceneryRenderer.update(dtSeconds, reduced, this.audioManager.windGust());
     this.coachHand?.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
@@ -1133,6 +1135,7 @@ export class PrototypeScene extends Phaser.Scene {
     const rolling = flying && this.lastProjectileState!.rampRolling !== null;
     this.audioManager.setRampRumble(rolling
       ? clamp01((this.lastProjectileState!.speedMs - RAMP.rumbleFromMs) / (RAMP.rumbleFullMs - RAMP.rumbleFromMs)) : null);
+    this.audioManager.setMagnetHum(flying && this.sceneryRenderer.magnet.active ? this.sceneryRenderer.magnet.proximity : null);
     this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
@@ -1910,6 +1913,7 @@ export class PrototypeScene extends Phaser.Scene {
   private resetEffects(): void {
     this.audioManager?.setFlightWhoosh(null);
     this.audioManager?.setRampRumble(null);
+    this.audioManager?.setMagnetHum(null);
     this.impactTimeline.reset();
     this.settleClock.reset();
     this.replay = null;

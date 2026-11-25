@@ -80,9 +80,9 @@ describe('Skate Park art and words', () => {
     expect(mapPreview('skatepark')).toContain(`A${(ramp.radius * 300 / 25.6).toFixed(2)}`);
   });
 
-  it('is registered last, with its mechanic, tip, lines and description', () => {
-    expect(MAPS.at(-1)).toBe(SKATEPARK_LEVEL);
-    expect(CAMPAIGN_ORDER.at(-1)).toBe('skatepark');
+  it('is registered after the first four chapters, with its mechanic, tip, lines and description', () => {
+    expect(MAPS).toContain(SKATEPARK_LEVEL);
+    expect(CAMPAIGN_ORDER.indexOf('skatepark')).toBeGreaterThan(CAMPAIGN_ORDER.indexOf('valley'));
     expect(SKATEPARK_LEVEL.mechanic).toBe('ramp');
     expect(MECHANIC_TIPS.ramp).toMatch(/half-pipe/);
     expect(MAP_LINES.skatepark?.arrival).toContain(SKATEPARK_LEVEL.arrivalLine);

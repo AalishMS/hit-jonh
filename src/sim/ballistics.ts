@@ -77,9 +77,20 @@ export function analyticLandingX(
 }
 
 /**
- * The launch preview's dots (SPEC §10.3): the first `seconds` of the analytic arc from the muzzle,
- * in world pixels (+y down), bent by the level's constant wind. Dot `i` (1-based) is at time
- * seconds·i/count. Never goes as far as a landing point.
+ * A position-dependent pull on the ball for the preview (a level's magnet): `accel` gives m/s² (+y up)
+ * at an offset (metres, +y up) from the muzzle. The preview then steps the flight at `dtSeconds`.
+ */
+export interface PreviewPull {
+  accel: (dx: number, dy: number) => Point2D;
+  dtSeconds: number;
+}
+
+/**
+ * The launch preview's dots (SPEC §10.3): the first `seconds` of the arc from the muzzle, in world
+ * pixels (+y down), bent by the level's constant wind. Dot `i` (1-based) is at time seconds·i/count.
+ * Never goes as far as a landing point. Analytic, unless the level has a magnet (`pull`): then the
+ * flight is stepped at the fixed step the way the physics does (semi-implicit Euler, the pull taken
+ * where the ball was at the start of each step), so the dots bend towards the magnet as the ball will.
  */
 export function previewDotsPx(
   muzzle: Point2D,
@@ -90,13 +101,44 @@ export function previewDotsPx(
   pixelsPerMetre: number,
   seconds: number,
   count: number,
+  pull?: PreviewPull,
 ): Point2D[] {
   const rad = (angleDeg * Math.PI) / 180;
   const dots: Point2D[] = [];
+  const vx0 = Math.cos(rad) * speedMs;
+  const vy0 = Math.sin(rad) * speedMs;
+  const offsets = pull ? steppedOffsets(vx0, vy0, gravityMs2, windMs2, pull, seconds, count) : null;
   for (let i = 1; i <= count; i++) {
     const t = (seconds * i) / count;
-    const p = analyticPosition(t, 0, 0, Math.cos(rad) * speedMs, Math.sin(rad) * speedMs, gravityMs2, windMs2);
+    const p = offsets ? offsets[i - 1]! : analyticPosition(t, 0, 0, vx0, vy0, gravityMs2, windMs2);
     dots.push({ x: muzzle.x + p.x * pixelsPerMetre, y: muzzle.y - p.y * pixelsPerMetre });
   }
   return dots;
+}
+
+/** The preview's offsets from the muzzle (metres, +y up) at seconds·i/count, stepped with a pull. */
+function steppedOffsets(vx0: number, vy0: number, gravityMs2: number, windMs2: number, pull: PreviewPull,
+  seconds: number, count: number): Point2D[] {
+  const dt = pull.dtSeconds;
+  const steps = Math.ceil(seconds / dt - 1e-9);
+  const path: Point2D[] = [{ x: 0, y: 0 }];
+  let x = 0, y = 0, vx = vx0, vy = vy0;
+  for (let k = 0; k < steps; k++) {
+    const a = pull.accel(x, y);
+    vx += (windMs2 + a.x) * dt;
+    vy += (a.y - gravityMs2) * dt;
+    x += vx * dt;
+    y += vy * dt;
+    path.push({ x, y });
+  }
+  const out: Point2D[] = [];
+  for (let i = 1; i <= count; i++) {
+    const s = (seconds * i) / count / dt;
+    const k = Math.min(steps - 1, Math.floor(s));
+    const f = Math.min(1, s - k);
+    const a = path[k]!;
+    const b = path[k + 1]!;
+    out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+  }
+  return out;
 }

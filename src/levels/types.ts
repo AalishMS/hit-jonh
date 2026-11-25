@@ -74,6 +74,27 @@ export interface WindData {
 }
 
 /**
+ * A scrapyard electromagnet [PROPOSED 2026-11-25]: pulls the (iron) cannonball towards (x, y) while
+ * it is within `radius`, strongest at the magnet and fading smoothly to nothing at the edge of its
+ * reach (sim/magnet.ts). It acts on the ball only (never Jonh, obstacles or contacts), is applied in
+ * the fixed step the way wind is, and is skipped while the ball rests on a surface. Its pull is
+ * always weaker than gravity, so the ball can never hover or orbit in the field. The magnet's
+ * housing is a solid obstacle round the centre, listed in `obstacles`: a ball that touches it is held
+ * there for the rest of the shot (so it settles, a miss), never left clinging or sliding.
+ */
+export interface MagnetData {
+  /** Centre of the pull (metres): the middle of the magnet, inside its housing obstacle. */
+  x: number;
+  y: number;
+  /** Reach (metres): no pull at or beyond this distance from the centre. */
+  radius: number;
+  /** Strongest pull (m/s²), at the magnet; less than the level's gravity (validated). */
+  accelerationMs2: number;
+  /** The obstacle that is the magnet's housing (it contains the centre). A ball that touches it sticks there: the shot is over. */
+  housingId: string;
+}
+
+/**
  * One stop on Jonh's walking route [PROPOSED 2026-11-25]. Offsets are metres from his spawn, so a
  * multiplayer target position (which shifts the spawn) shifts the whole route with him.
  */
@@ -119,7 +140,7 @@ export interface MultiplayerPosition {
 }
 
 /** The one new thing a garden introduces, for its first-meeting tip (rules/mechanicTips.ts). */
-export type MechanicId = 'glass' | 'wind' | 'rubber' | 'bank' | 'portal' | 'walking' | 'lowGravity' | 'trampoline' | 'longShot' | 'ramp';
+export type MechanicId = 'glass' | 'wind' | 'rubber' | 'bank' | 'portal' | 'walking' | 'lowGravity' | 'trampoline' | 'longShot' | 'ramp' | 'magnet';
 
 export interface LevelData {
   id: string;
@@ -149,4 +170,6 @@ export interface LevelData {
   wind?: WindData;
   /** Jonh walks this route during the shot (see JonhRouteData); he stands still when omitted. */
   jonhRoute?: JonhRouteData;
+  /** An electromagnet pulling the ball (see MagnetData); none when omitted, and the map plays exactly as before. */
+  magnet?: MagnetData;
 }

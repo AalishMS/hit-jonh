@@ -1,12 +1,14 @@
 import { AIM, PHYSICS, PROJECTILE } from '../config/tuning';
 import { powerToLaunchSpeed } from '../sim/units';
-import type { LevelData } from './types';
+import type { LevelData, MagnetData } from './types';
 
 export interface LevelPhysics {
   /** m/s², downward. */
   gravity: number;
   /** m/s², horizontal, signed (+ towards +x); 0 when the level has no wind. */
   windMs2: number;
+  /** The level's electromagnet (SI level data); null when it has none. */
+  magnet: MagnetData | null;
   minSpeedMs: number;
   maxSpeedMs: number;
   /** Launch speed (m/s) for a 0–100 power setting on this map. */
@@ -15,14 +17,15 @@ export interface LevelPhysics {
   launchImpulse(powerPercent: number): number;
 }
 
-/** Gravity, wind and cannon speed range for a map: the global tuning unless the level overrides it. */
-export function levelPhysics(level: Pick<LevelData, 'gravityMs2' | 'launchSpeedScale' | 'wind'>): LevelPhysics {
+/** Gravity, wind, magnet and cannon speed range for a map: the global tuning unless the level overrides it. */
+export function levelPhysics(level: Pick<LevelData, 'gravityMs2' | 'launchSpeedScale' | 'wind' | 'magnet'>): LevelPhysics {
   const scale = level.launchSpeedScale ?? 1;
   const launchSpeed = (powerPercent: number) =>
     powerToLaunchSpeed(powerPercent, AIM.minImpulseNs, AIM.maxImpulseNs, PROJECTILE.massKg) * scale;
   return {
     gravity: level.gravityMs2 ?? PHYSICS.gravity,
     windMs2: level.wind?.accelerationMs2 ?? 0,
+    magnet: level.magnet ?? null,
     minSpeedMs: launchSpeed(0),
     maxSpeedMs: launchSpeed(100),
     launchSpeed,
