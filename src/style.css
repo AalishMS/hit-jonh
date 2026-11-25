@@ -147,6 +147,8 @@ body.in-game .hud-icons { margin-right: clamp(48px, 5.2cqw, 66px); }
   font: 800 1em/1.3 var(--ui); opacity: 0; pointer-events: none;
 }
 .feedback-banner.show { opacity: 1; animation: caption-pop 360ms cubic-bezier(.2, 1.6, .4, 1); }
+/* A garden with something important at the top centre (The Scrapyard's magnet) keeps the caption low. */
+.feedback-banner.caption-low { top: auto; bottom: 24%; }
 .feedback-hit { background: var(--zap); }
 .feedback-simulating { opacity: 0 !important; }
 @keyframes caption-pop { from { transform: translateX(-50%) translateY(-30%) scale(.7) rotate(-3deg); opacity: 0; } }

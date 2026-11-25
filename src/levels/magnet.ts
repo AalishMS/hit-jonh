@@ -27,6 +27,8 @@ export const MAGNET_LEVEL: LevelData = {
   ],
   magnet: { x: 13.0, y: 9.6, radius: 7, accelerationMs2: 8, housingId: 'magnet' },
   arrivalLine: 'Peace and quiet. Apart from the magnet.',
+  // The magnet hangs at the top centre, right where the caption would cover it.
+  captionLow: true,
   // References [TUNE]: "dive" shots go up over the magnet and are hauled down onto Jonh; "lift" shots
   // would die on the stack but are carried over it. Each hits only with the magnet (tested).
   multiplayerPositions: [

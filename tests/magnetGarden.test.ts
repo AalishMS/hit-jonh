@@ -44,6 +44,7 @@ describe('magnet garden: The Scrapyard', () => {
     expect(MAP_PRESETS.find(p => p.id === 'new')!.maps).toContain('magnet');
     expect(MAGNET_LEVEL.multiplayerPositions).toHaveLength(3);
     expect(MAGNET_LEVEL.ground.material).toBe('gravel');
+    expect(MAGNET_LEVEL.captionLow).toBe(true); // the tip must not cover the magnet at the top centre
     expect(MECHANIC_TIPS.magnet).toBe('The magnet pulls the ball. Aim to one side and let it curve in.');
     for (const kind of ['arrival', 'miss', 'hit'] as const) expect(MAP_LINES.magnet![kind].length).toBeGreaterThan(0);
     expect(OBSTACLE_LINES.find(e => e.match.material === 'magnet')!.lines.length).toBeGreaterThan(0);

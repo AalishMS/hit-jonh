@@ -4,7 +4,9 @@ _Last updated: 2026-11-25_
 
 ## Current milestone
 
-**Current (2026-11-25, second round): the next proposed 10 are done on branch `real-game-pass` (not merged or pushed).** Online play was tested live against the Convex dev deployment (pushed with a dev deploy key; production not deployed), and the real-phone pass ran on a OnePlus Nord. Per-item notes, measurements, owner decisions and the next proposal are in "Next 10, round 2 (2026-11-25)" at the end of this file.
+**Current (2026-11-25, third round): the round-2 proposal is done on branch `real-game-pass` (PR #2 to `main`).** Chapter 5 (Frozen Pond, Skate Park, The Scrapyard), the Daily Bonk friends board, shared online lines, save links and QR, online clips, gust visuals, next-garden warm-up, a landscape phone pass, a listening page and preview-safe Vercel builds. Notes, measurements and decisions are in "Next 10, round 3 (2026-11-25)" at the end of this file.
+
+**Earlier (2026-11-25, second round): the next proposed 10 are done on branch `real-game-pass`.** Online play was tested live against the Convex dev deployment (pushed with a dev deploy key; production not deployed), and the real-phone pass ran on a OnePlus Nord. Per-item notes, measurements, owner decisions and the next proposal are in "Next 10, round 2 (2026-11-25)" at the end of this file.
 
 **Earlier (2026-11-25): "next 10" pass complete on branch `real-game-pass` (not merged or pushed).** All ten proposed items are done: six built here and four in parallel worktrees, merged after review. Along the way a physics bug was found and fixed: the shipped game did not run the physics the tests prove. Per-item notes, evidence, owner decisions and the next proposal are in the "Next 10 (2026-11-25)" section at the end of this file. Online rooms need a Convex redeploy before they can use emotes and the two new gardens.
 
@@ -1688,6 +1690,30 @@ The owner also asked for every subagent to run on Opus. The three Chapter 5 gard
 ### 8. Online winning-shot clip — done
 - Save clip is now on the online match result too. The card is refreshed every second during the rematch countdown; it now updates only its ready list, countdown and Rematch button in place (`updateMPMatchOnline`), so a recording carries on (and focus and scroll stay put).
 - Verified live against the dev deployment: after a full match on two browsers, the host recorded the winning shot while the guest's Rematch press drove the countdown (29 s → 22 s during the recording): "Saved hit-jonh-jonh-s-backyard.mp4", 6.3 s, VP9 1280×560 with Opus audio (`ffprobe`).
+
+### 9. Chapter 5: three new gardens — done (three worktrees, merged)
+The owner chose the mechanics (ice pond, big magnet, skate ramp); names, layouts, rules and numbers are [PROPOSED]/[TUNE]. Chapter 5 is **Nowhere to Hide** (`rules/chapters.ts`): Frozen Pond, Skate Park, The Scrapyard, ordered easiest first by the difficulty report. Every mode has fifteen maps; the Trick shots preset holds all three.
+
+| Garden | Mechanic (SPEC) | Idea | 1° grid hit rate (near / middle / far) |
+| --- | --- | --- | --- |
+| Frozen Pond (`pond`) | Ice slide surfaces (§8.11) | Jonh ice-fishes in a hut whose door is frozen 0.35 m above the ice; land short on the open ice and skid under it. Snow round the pond stops a ball dead. | 6.66 / 5.45 / 4.46 % |
+| Skate Park (`skatepark`) | Curved ramps (§8.9) | His shelter is walled and roofed on the cannon's side; land in the half-pipe behind it and the ball rolls back over the lip into him. | 2.51 / 2.55 / 2.58 % |
+| The Scrapyard (`magnet`) | Electromagnet field (§8.10) | A crane magnet lifts soft lobs over a car stack or pulls high lobs down onto Jonh; touching its housing holds the ball (a miss). | 1.70 / 2.38 / 4.29 % |
+
+- **Physics, per garden** (each opt-in, so a map without it is untouched):
+  - **Ramp:** an exact thick arc swept by the guard; Matter carries sensor pieces only. A gentle ball rolls with load-proportional drag and launches off the lip; a trapped ball gets extra drag so it settles.
+  - **Magnet:** a pull applied after each fixed step like wind, at most 8 m/s² and 0.85 g, so the ball can never hover or orbit; a smooth fade at the reach, no singularity at the centre.
+  - **Ice:** no Matter friction and a constant 1.5 m/s² slide friction (a frictionless ice made every landing slide into every target spot, so no position could have its own reference shot). A gliding ball rides the top exactly, and the guard skips the slab under it for that step. Snow keeps 20 % of a landing's speed and stops a ball under 0.3 m/s. Jonh's corner of the pond moves with him at each target position (`followsJonh`).
+- **Proof that the old maps did not change:** each branch digested the twelve earlier maps on an aim grid at every target position (26,208 to 27,831 shots) before and after: identical outcomes, end positions and step counts.
+- **Proof that each mechanic matters:** without the ramp no aim hits Skate Park; without the magnet each Scrapyard reference misses and 56 % of its hits need the magnet; with the pond made of snow nothing hits Frozen Pond.
+- **No timeouts:** the slowest aim on each garden's grid resolves well inside 15 s (9.0 s Scrapyard, 9.1 s Frozen Pond); ramps and ice each needed a fix for balls that otherwise rocked or jittered until the timeout.
+- **Each garden has:** art drawn on its colliders, a map card, a first-meeting tip, Jonh's lines, and a sound on an existing bus (ramp rumble and lip clack, magnet hum, ice scrape and knock), measured on the level report but **not listened to**.
+- **Merging:** the three branches changed the same swept-guard step. Skate Park moved box bounces into `reflect()`; the magnet's hold-on-contact now runs just before it, and the ice's own low bounce and the snow rule live inside it. A ball rolling on a ramp or gliding on ice counts as supported for wind and the magnet.
+- **Trick shots [OPEN]:** neither a ramp roll nor an ice skid makes a trick shot by default (both 100 points; every hit on those gardens uses the mechanic). A magnet never does, like wind. One data flag each would change it.
+- **Pushed to the dev deployment** (the server validates map ids against the shared list).
+- **Lead's follow-up:** on arrival at The Scrapyard the tip banner covered the magnet, the very thing it explains. A level may now ask for a low caption (`LevelData.captionLow`), and The Scrapyard does; checked at 844×390 and 1280×800 (magnet and rings clear), portrait is unchanged, and the next garden resets it.
+- Known: in phone landscape the Fire button covers the top of Skate Park's tall half-pipe wall while aiming (the camera keeps it clear in flight). Moving the ramp would mean re-deriving the garden.
+- **Verified here after the merge:** headless Chromium at 844×390, a save with chapters 1–4 cleared: Frozen Pond's title card reads "Chapter 5 · Nowhere to Hide · Garden 13"; each garden shows its tip on arrival and its reference shot gives "DIRECT HIT +100" and "Bullseye!". **Live online against the dev deployment:** a two-browser match on the three gardens, 18 shots with misses and hits, every result and Jonh line identical on both screens, "It's a tie!" 800–800 on both, no console errors.
 
 ### 10. Daily Bonk friends board — done (branch `t3/daily-bonk-friends-board`, merged)
 - A private board by a 5-character code or `?board=CODE` link (SPEC §6.2, [PROPOSED]; numbers in `FRIENDS_BOARD` [TUNE]). "Friends board" on the Daily screen and the Daily result card; a hub with your boards, Create, Join by code; "Join this board?" from a link. No listing, search or global ranking: a non-member with a code sees only that the board exists and its size.

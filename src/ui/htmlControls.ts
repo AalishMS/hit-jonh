@@ -40,6 +40,7 @@ export class HTMLControls {
   private pauseButton!: HTMLButtonElement;
   private debugToggle!: HTMLInputElement;
   private feedbackBanner!: HTMLElement;
+  private captionLow = false;
   private homeButton: HTMLButtonElement;
   private matchStatus!: HTMLElement;
   private attemptsEl!: HTMLElement;
@@ -287,6 +288,12 @@ export class HTMLControls {
     this.muteButton.setAttribute('aria-pressed', String(muted));
   }
 
+  /** Puts the caption low on screen (a garden with something important at the top centre) or back near the top. */
+  setCaptionLow(low: boolean): void {
+    this.feedbackBanner.classList.toggle('caption-low', low);
+    this.captionLow = low;
+  }
+
   /** Short caption on screen; `spoken` adds detail for screen readers only (e.g. Jonh's quote). */
   setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' | 'coach' = 'info', spoken = ''): void {
     this.feedbackBanner.replaceChildren(document.createTextNode(message));
@@ -296,7 +303,7 @@ export class HTMLControls {
       sr.textContent = ` ${spoken}`;
       this.feedbackBanner.appendChild(sr);
     }
-    this.feedbackBanner.className = `feedback-banner feedback-${type}`;
+    this.feedbackBanner.className = `feedback-banner feedback-${type}${this.captionLow ? ' caption-low' : ''}`;
     if (message) {
       void this.feedbackBanner.offsetWidth;
       this.feedbackBanner.classList.add('show');

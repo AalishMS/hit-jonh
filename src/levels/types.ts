@@ -162,6 +162,11 @@ export interface LevelData {
   /** Exactly MULTIPLAYER.shotsPerRound target positions: every map is playable in every mode. */
   multiplayerPositions: MultiplayerPosition[];
   arrivalLine?: string;
+  /**
+   * The caption (tips, results) sits low on screen instead of near the top, to keep something the player must
+   * see clear (The Scrapyard's magnet hangs at the top centre). Presentation only; false when omitted.
+   */
+  captionLow?: boolean;
   /** Shown as pips in the map pickers: 1 easy, 3 hardest. */
   difficulty: 1 | 2 | 3;
   /** Gravity on this map (m/s²); PHYSICS.gravity when omitted. */

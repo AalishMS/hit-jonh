@@ -1,5 +1,22 @@
 # Changelog
 
+## Next 10, round 3 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the next proposed 10. The three new gardens and the friends board were built in parallel worktrees and merged.
+- **Chapter 5: Nowhere to Hide.** Three new gardens, each with a new mechanic and its own tip:
+  - **Frozen Pond:** land short on the ice and skid under Jonh's frozen hut door.
+  - **Skate Park:** Jonh's shelter is only open at the back, so land the ball in the half-pipe and it comes back out at him.
+  - **The Scrapyard:** a crane magnet lifts soft lobs over the car stack or pulls high ones down onto Jonh, and a ball that touches it sticks.
+- **Daily Bonk friends board.** Make a private board, send the code or link, and see today's (and yesterday's) results ranked as your friends play.
+- **Same line on every screen.** Online, everyone now reads the same Jonh line for the same shot.
+- **Save link and QR code.** Settings → Your progress can copy a link or show a QR code to scan with another phone. Opening it asks before loading.
+- **Online clips.** Save clip now works on the online match result too, even while the rematch countdown runs.
+- **Gusts you can see.** On Windy Washday the windsock and streaks swell with the gusts you hear (the ball's wind never changes).
+- **No wait for the next garden.** Its art is prepared while you aim.
+- **Phone check, landscape.** 60 fps on a real phone in landscape. Edge smoothing stays on: turning it off made no measurable difference.
+- **Listening page** (`listen.html`, dev only): play every sound and mix, adjust by ear, copy the result.
+- **Shipping.** Vercel previews now build the site only; production still deploys the backend with the site.
+
 ## Next 10, round 2 (branch `real-game-pass`, 25 November 2026)
 
 The owner approved the next proposed 10. Chapters, sound and the winning-shot clip were built in parallel worktrees and merged.

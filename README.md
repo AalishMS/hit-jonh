@@ -5,11 +5,11 @@
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
 **Status:** Playable. It has:
-- a solo campaign of four chapters (twelve gardens), including smashable glass, a magician's portal hoops, a windy washing line and Jonh out for a walk, with stars, trick-shot badges, unlocks that stay earned and practice on cleared gardens;
-- a first-garden coach and a one-line tip for each new mechanic, a Feats screen of 22 long-term goals, a Daily Bonk you can share, and save codes to move progress between devices;
+- a solo campaign of five chapters (fifteen gardens), including smashable glass, a magician's portal hoops, a windy washing line, Jonh out for a walk, a frozen pond, a skate ramp and a scrapyard magnet, with stars, trick-shot badges, unlocks that stay earned and practice on cleared gardens;
+- a first-garden coach and a one-line tip for each new mechanic, a Feats screen of 22 long-term goals, a Daily Bonk you can share and compare on a private friends board, and save codes (or a link or QR code) to move progress between devices;
 - 2–4 player hot-seat (with sudden death when it's still level) and online rooms with emotes, stakes callouts, taunts and a winning-shot replay;
 - a hand-drawn "Sunday Funnies" look, installable for offline play;
-- layered impact effects with slow-motion replays you can save as a video clip, an original soundtrack with garden ambience, and unlockable cosmetics;
+- layered impact effects with slow-motion replays you can save as a video clip (solo, hot-seat and online), an original soundtrack with garden ambience, and unlockable cosmetics;
 - remappable keys, screen-reader announcements, 44 px touch targets and colour-blind friendly player colours.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](docs/progress.md) for history.

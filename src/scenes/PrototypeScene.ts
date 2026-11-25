@@ -620,6 +620,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.trailHistory.clear();
     this.lastProjectileState = null;
     this.currentLevel = null as unknown as LevelData;
+    this.htmlControls?.setCaptionLow(false);
     this.attemptMachine = null as unknown as ShotAttemptMachine;
     this.shotShooterIndex = null;
 
@@ -839,6 +840,7 @@ export class PrototypeScene extends Phaser.Scene {
     // Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
+    this.htmlControls.setCaptionLow(Boolean(this.currentLevel.captionLow));
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys, this.progress.selectedCannon);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
@@ -2067,6 +2069,7 @@ export class PrototypeScene extends Phaser.Scene {
     // Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
+    this.htmlControls.setCaptionLow(Boolean(this.currentLevel.captionLow));
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
