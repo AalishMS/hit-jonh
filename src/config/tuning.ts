@@ -580,7 +580,7 @@ export const AUDIO = {
    * Ice skid [PROPOSED 2026-11-25][TUNE]: the scrape of a ball gliding on ice, on the surface cue's bus
    * (scenery tier): its gain at full strength (ICE_FX.fullSpeedMs).
    */
-  skid: { gain: 0.3 },
+  skid: { gain: 0.14 },
   /** Rate limits (seconds between sounds, and a cap per window) so bursts never stack into noise. */
   limits: {
     emoteIn: { minGapSeconds: 0.3, windowSeconds: 3, maxInWindow: 3 },

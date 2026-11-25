@@ -418,9 +418,9 @@ export class AudioManager {
         break;
       case 'ice':
         // Iron on ice: a hard, bright knock with a glassy ring and a short crackle.
-        this.kick(now, 380 * v, 150, 0.07, 0.42 * s);
-        this.tinkle(now, 3100 * v, 0.13 * s, 0.16);
-        this.noise(now, 0.07, 'highpass', 3600 * v, 0.8, 0.22 * s);
+        this.kick(now, 380 * v, 150, 0.07, 0.6 * s);
+        this.tinkle(now, 3100 * v, 0.18 * s, 0.16);
+        this.noise(now, 0.07, 'highpass', 3600 * v, 0.8, 0.3 * s);
         break;
       case 'rubber': {
         const osc = ctx.createOscillator();
