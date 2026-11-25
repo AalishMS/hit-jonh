@@ -6,7 +6,7 @@ export type Resolution = 'shooter' | 'witness' | 'timeout' | 'skipped';
 export type OnlineErrorCode =
   | 'NOT_FOUND' | 'NOT_MEMBER' | 'FULL' | 'ALREADY_STARTED' | 'NOT_HOST' | 'NOT_ENOUGH_PLAYERS'
   | 'INVALID_MAPS' | 'NOT_YOUR_TURN' | 'OUT_OF_ORDER' | 'INVALID_AIM' | 'IMPOSSIBLE_OUTCOME'
-  | 'STALE_MATCH' | 'CONFLICT';
+  | 'STALE_MATCH' | 'CONFLICT' | 'INVALID_EMOTE' | 'RATE_LIMITED';
 
 /** A room as clients and pure rules see it (no ids, no tokens). */
 export interface RoomState {
@@ -65,4 +65,18 @@ export interface RoomSnapshot {
   seats: SeatState[];
   shots: ShotRecord[];
   you: number | null;
+}
+
+/**
+ * One seat's latest emote, as `getEmotes` returns it. `sender` is an opaque, stable id for the seat's player
+ * (seat numbers can shift while the lobby is open); `seq` counts that player's emotes from 1; `mine` is true for
+ * the caller's own. Clients show only entries whose `seq` they have not seen.
+ */
+export interface EmoteEntry {
+  sender: string;
+  seat: number;
+  emote: string;
+  seq: number;
+  at: number;
+  mine: boolean;
 }

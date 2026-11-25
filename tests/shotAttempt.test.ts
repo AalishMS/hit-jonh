@@ -42,6 +42,22 @@ describe('ShotAttemptMachine', () => {
     expect(machine.state).toBe('resolved');
   });
 
+  it('resolves as out of bounds when the ball falls below the world floor (rolled off the ground)', () => {
+    const machine = new ShotAttemptMachine(worldWidth, 0.05, 0.5, 15, 1, 0);
+    machine.fire(45, 50);
+    // Still inside the side margins (x < width + 1 m), just past the end of the ground.
+    expect(machine.step(1 / 120, { x: 26.2, y: -0.5, speed: 6, hitBody: false }).resolved).toBe(false);
+    const res = machine.step(1 / 120, { x: 26.2, y: -1.2, speed: 7, hitBody: false });
+    expect(res).toMatchObject({ resolved: true, outcome: 'miss', reason: 'out_of_bounds' });
+  });
+
+  it('has no floor unless one is given (leaving the top is always allowed)', () => {
+    const machine = new ShotAttemptMachine(worldWidth);
+    machine.fire(45, 50);
+    expect(machine.step(1 / 120, { x: 12, y: -50, speed: 30, hitBody: false }).resolved).toBe(false);
+    expect(machine.step(1 / 120, { x: 12, y: 500, speed: 30, hitBody: false }).resolved).toBe(false);
+  });
+
   it('resolves as out of bounds when projectile flies past horizontal bounds', () => {
     const machine = new ShotAttemptMachine(worldWidth);
     machine.fire(45, 50);

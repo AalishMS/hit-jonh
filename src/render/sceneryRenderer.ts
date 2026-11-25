@@ -1,13 +1,21 @@
 import type Phaser from 'phaser';
-import { hex } from '../art/palette';
+import { hex, PAL } from '../art/palette';
+import { rampArtOrigin, rampKey, rampOutline, SHELTER_SIGN } from '../art/rampArt';
 import { obstacleKey, themeFor } from '../art/sceneryArt';
 import { hash01 } from '../fx/easing';
 import type { LevelData } from '../levels/types';
+import { arcShape } from '../sim/arc';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import { artImage, artMeta, artScale } from './artTextures';
+import { MagnetRenderer } from './magnetRenderer';
+import { MechanicsRenderer } from './mechanicsRenderer';
+import { WindRenderer } from './windRenderer';
+import { drawRoute } from './routeRenderer';
 
 /** Layer depths: background < playfield < actors. */
-const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
+const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, snow: -65, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
+/** Winter gardens: background snowflakes, their fall speed range (px/s) and sideways sway (px). */
+const SNOW = { count: 36, fallMin: 16, fallMax: 40, swayPx: 12 } as const;
 /** Horizontal extent drawn beyond the visible world (screen px) so camera zoom-outs never show an edge. */
 const OVERDRAW = 700;
 
@@ -23,18 +31,32 @@ export class SceneryRenderer {
   private clouds: Drifter[] = [];
   private birds: Drifter[] = [];
   private flora: Array<{ obj: Phaser.GameObjects.Image; phase: number }> = [];
+  private flakes: Array<{ obj: Phaser.GameObjects.Image; speed: number; phase: number; baseX: number }> = [];
+  /** Where falling snow starts and wraps (world y, px). */
+  private snowTop = 0;
+  private snowBottom = 0;
   private rays: Phaser.GameObjects.Image | null = null;
   private time = 0;
   /** World-x extent of the drawn layers for the current map. */
   private left = -OVERDRAW;
   private span = 2 * OVERDRAW + 1280;
+  /** Breakable props, portals and their effects: the scene forwards physics events and resets here. */
+  readonly mechanics: MechanicsRenderer;
+  /** The level's constant wind: windsock, caption and streaks (nothing on a calm level). */
+  readonly wind: WindRenderer;
+  /** The level's electromagnet: cable, field rings, glow (nothing on a level without one). */
+  readonly magnet: MagnetRenderer;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly ppm: number,
     private readonly worldHeightPx: number,
     private readonly worldWidthPx: number,
-  ) {}
+  ) {
+    this.mechanics = new MechanicsRenderer(scene, ppm, worldHeightPx);
+    this.wind = new WindRenderer(scene, ppm, worldHeightPx, worldWidthPx);
+    this.magnet = new MagnetRenderer(scene, ppm, worldHeightPx);
+  }
 
   draw(level: LevelData): void {
     this.clear();
@@ -71,6 +93,19 @@ export class SceneryRenderer {
       this.clouds.push({ obj, speed: 5 + hash01(i * 5.7) * 9, baseY: y, phase: 0 });
     }
 
+    // Winter: a gentle snowfall behind the playfield (still under reduced motion).
+    if (theme.winter) {
+      this.snowBottom = groundTop - 8;
+      this.snowTop = this.snowBottom - 620 * k;
+      for (let i = 0; i < Math.round(SNOW.count * k); i++) {
+        const x = LEFT + hash01(i * 4.1 + 2) * SPAN;
+        const y = this.snowTop + hash01(i * 2.3 + 1) * (this.snowBottom - this.snowTop);
+        const obj = add(s.add.image(x, y, 'snowflake').setScale(artScale('snowflake') * (0.6 + hash01(i * 5.3) * 0.8))
+          .setScrollFactor(0.9).setAlpha(0.85).setDepth(DEPTH.snow));
+        this.flakes.push({ obj, speed: SNOW.fallMin + hash01(i * 7.7) * (SNOW.fallMax - SNOW.fallMin), phase: hash01(i * 3.9) * Math.PI * 2, baseX: x });
+      }
+    }
+
     // 2. Far hills / skyline and 3. mid hills with trees. Solid fills continue downward
     //    so vertical parallax never opens a gap above the ground.
     const far = artMeta(`far-${theme.id}`);
@@ -98,8 +133,9 @@ export class SceneryRenderer {
     add(s.add.tileSprite(LEFT, groundTop - 1.5, SPAN, 40, groundKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
     add(s.add.tileSprite(LEFT, groundTop + 38, SPAN, 400, earthKey).setOrigin(0, 0).setTileScale(0.5).setDepth(DEPTH.ground));
 
-    // Obstacles: textures generated at their collider size.
+    // Obstacles: textures generated at their collider size. Breakables are drawn by `mechanics`.
     for (const obs of level.obstacles) {
+      if (obs.breakable) continue;
       const x = metresToPixels(obs.box.minX, this.ppm);
       const y = simYToWorldY(obs.box.maxY, this.worldHeightPx, this.ppm);
       if (obs.material === 'rubber') {
@@ -112,19 +148,41 @@ export class SceneryRenderer {
       add(s.add.image(x, y, obstacleKey(level.id, obs)).setOrigin(0, 0).setScale(artScale(obstacleKey(level.id, obs))).setDepth(DEPTH.obstacle));
     }
 
+    // Skate ramps: one texture each, drawn from the same arc as the collider (art/rampArt.ts; 2 px margin).
+    for (const ramp of level.ramps ?? []) {
+      const origin = rampArtOrigin(level, ramp);
+      const key = rampKey(level.id, ramp.id);
+      add(s.add.image(metresToPixels(origin.x, this.ppm) - 2, simYToWorldY(origin.y, this.worldHeightPx, this.ppm) - 2, key)
+        .setOrigin(0, 0).setScale(artScale(key)).setDepth(DEPTH.obstacle));
+    }
+    // The shelter's "NO BALL GAMES" board: live text over the board painted on the roof's face.
+    const signBox = level.obstacles.find(o => o.id === SHELTER_SIGN.obstacleId)?.box;
+    if (signBox) {
+      add(s.add.text(metresToPixels((signBox.minX + signBox.maxX) / 2, this.ppm), simYToWorldY((signBox.minY + signBox.maxY) / 2, this.worldHeightPx, this.ppm) + 1, SHELTER_SIGN.text, {
+        fontFamily: 'Nunito, system-ui, sans-serif', fontStyle: '900', fontSize: '13px', color: PAL.pow,
+      }).setOrigin(0.5, 0.5).setResolution(2).setDepth(DEPTH.obstacle + 0.5));
+    }
+
     // Jonh's tea table, kept on his support surface.
     const b = level.jonhSpawn.bodyBox;
     const jonhX = metresToPixels((b.minX + b.maxX) / 2, this.ppm);
     const baseY = simYToWorldY(b.minY, this.worldHeightPx, this.ppm);
     const support = level.obstacles.find(o => Math.abs(o.box.maxY - b.minY) < 1e-6 && o.box.minX <= b.minX && o.box.maxX >= b.maxX);
-    const rightEdge = support ? metresToPixels(support.box.maxX, this.ppm) : this.worldWidthPx;
+    // A ramp on his right is an edge too (the table never stands on the half-pipe).
+    const rampEdge = Math.min(...(level.ramps ?? []).map(r => metresToPixels(rampOutline(arcShape(r), level.ground.maxY).box.minX, this.ppm))
+      .filter(x => x > jonhX));
+    const rightEdge = Math.min(support ? metresToPixels(support.box.maxX, this.ppm) : this.worldWidthPx, rampEdge);
     const tableX = jonhX + 82 + 32 > rightEdge ? jonhX - 82 : jonhX + 82;
-    add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
+    // Walking Jonh is out on a stroll: no tea table for him to walk through. In his fishing hut (Frozen
+    // Pond) it would stand on the ice the ball skids across, looking solid without a collider.
+    if (!level.jonhRoute && !level.obstacles.some(o => o.followsJonh)) add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
 
     // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
+    const rampSpans = (level.ramps ?? []).map(r => rampOutline(arcShape(r), level.ground.maxY).box);
     const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
-      level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6);
-    for (let i = 0; i < (theme.space ? 0 : Math.ceil(26 * k)); i++) {
+      level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6) ||
+      rampSpans.some(b => x > metresToPixels(b.minX, this.ppm) - 16 && x < metresToPixels(b.maxX, this.ppm) + 16);
+    for (let i = 0; i < (theme.space || theme.winter ? 0 : Math.ceil(26 * k)); i++) {
       const x = 20 + i * 50 + hash01(i * 2.7 + level.id.length) * 30;
       if (blocked(x) || x > this.worldWidthPx - 10) continue;
       const key = i % 3 === 0 ? 'flower-a' : i % 3 === 1 ? 'tuft' : (i % 2 ? 'flower-b' : 'tuft');
@@ -132,10 +190,19 @@ export class SceneryRenderer {
       obj.setScale(obj.scaleX * (0.8 + hash01(i) * 0.4));
       this.flora.push({ obj, phase: hash01(i * 9.1) * Math.PI * 2 });
     }
+
+    this.mechanics.draw(level);
+    this.wind.draw(level);
+    this.magnet.draw(level);
+    // Walking Jonh: his route painted on the path (none on other maps).
+    for (const o of drawRoute(s, level, this.ppm, this.worldHeightPx, DEPTH.prop)) add(o);
   }
 
-  /** Ambient motion on the real-time clock (not the hit-stop clock). */
-  update(dt: number, reduced: boolean): void {
+  /** Ambient motion on the real-time clock (not the hit-stop clock); `heardGust`: see WindRenderer.update. */
+  update(dt: number, reduced: boolean, heardGust: number | null = null): void {
+    this.mechanics.update(dt, reduced);
+    this.wind.update(dt, reduced, heardGust);
+    this.magnet.update(dt, reduced);
     if (reduced || !(dt > 0)) return;
     this.time += dt;
     this.rays?.setRotation(this.time * 0.05);
@@ -152,6 +219,11 @@ export class SceneryRenderer {
       b.obj.scaleY = artScale('bird') * (Math.sin((this.time + b.phase) * 12) > 0 ? 1 : -0.7);
     }
     for (const f of this.flora) f.obj.setRotation(Math.sin(this.time * 1.4 + f.phase) * 0.08);
+    for (const f of this.flakes) {
+      f.obj.y += f.speed * dt;
+      if (f.obj.y > this.snowBottom) f.obj.y = this.snowTop;
+      f.obj.x = f.baseX + Math.sin(this.time * 0.8 + f.phase) * SNOW.swayPx;
+    }
   }
 
   private clear(): void {
@@ -160,8 +232,17 @@ export class SceneryRenderer {
     this.clouds = [];
     this.birds = [];
     this.flora = [];
+    this.flakes = [];
     this.rays = null;
+    this.mechanics.clear();
+    this.wind.clear();
+    this.magnet.clear();
   }
 
-  destroy(): void { this.clear(); }
+  destroy(): void {
+    this.clear();
+    this.mechanics.destroy();
+    this.wind.destroy();
+    this.magnet.destroy();
+  }
 }

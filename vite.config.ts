@@ -2,8 +2,10 @@
 import { defineConfig } from 'vite';
 
 import { fileURLToPath } from 'node:url';
+import { pwaPlugin } from './build/pwa.ts';
 
 export default defineConfig({
+  plugins: [pwaPlugin()],
   // Relative base so the static build works from any host sub-path.
   base: './',
   resolve: {

@@ -50,6 +50,36 @@ function toView(p: MPPlayerRecord): MPPlayerView {
   return { ...p, roundScores: [...p.roundScores] };
 }
 
+export interface MatchOptions {
+  /**
+   * Hot-seat sudden death [DECIDED request 2026-11-25; rules PROPOSED]: players still level after the
+   * tie-break (equal points and body hits) each take one shot on the last map, with Jonh at a fresh spot.
+   * The best outcome wins; those still level go again, up to MULTIPLAYER.suddenDeathRounds, after which
+   * the win is shared. Shoot-out shots never change totals. Off for online (the server's rules apply).
+   */
+  suddenDeath?: boolean;
+}
+
+/** The shoot-out, for presentation. */
+export interface SuddenDeathView {
+  /** 1-based shoot-out round. */
+  readonly round: number;
+  /** Player ids still in it, in this round's shooting order. */
+  readonly contenders: readonly number[];
+  /** This round's outcomes so far (a contender who has not shot yet is missing). */
+  readonly outcomes: ReadonlyMap<number, ClassifiedOutcome>;
+  /** Set once decided: the winner (or the players sharing it after the last round). */
+  readonly winners: readonly number[] | null;
+}
+
+interface SuddenDeathState {
+  round: number;
+  contenders: number[];
+  next: number;
+  outcomes: Map<number, ClassifiedOutcome>;
+  winners: number[] | null;
+}
+
 export class MultiplayerMatchMachine {
   private _state: MPState = 'handover';
   private _players: MPPlayerRecord[] = [];
@@ -60,9 +90,12 @@ export class MultiplayerMatchMachine {
   private positionSchedules: string[][] = [];
   private _moveCount = 0;
   private _movePending = false; // the last shot hit Jonh; he moves when the result is dismissed
+  private readonly suddenDeathEnabled: boolean;
+  private sd: SuddenDeathState | null = null;
 
   constructor(setups: readonly MPPlayerSetup[], private readonly maps: readonly string[] = MP_MAPS,
-    private readonly random: () => number = Math.random) {
+    private readonly random: () => number = Math.random, options: MatchOptions = {}) {
+    this.suddenDeathEnabled = options.suddenDeath ?? false;
     if (maps.length === 0 || maps.length > MP_MAPS.length ||
       new Set(maps).size !== maps.length || maps.some(id => !MP_MAPS.includes(id))) {
       throw new RangeError('Choose one or more distinct supported maps');
@@ -101,6 +134,8 @@ export class MultiplayerMatchMachine {
   get roundIndex(): number { return this._roundIndex; }
   get currentMapId(): string { return this.maps[this._roundIndex] ?? this.maps[0]!; }
   get roundCount(): number { return this.maps.length; }
+  /** The next round's map, or null in the last round. */
+  get nextMapId(): string | null { return this.maps[this._roundIndex + 1] ?? null; }
 
   /** Resolution advances the turn counter; keep the finished cycle until handover. */
   get activeCycleIndex(): number {
@@ -132,8 +167,15 @@ export class MultiplayerMatchMachine {
     });
   }
 
+  /** The shoot-out after a level match, or null (rules in MatchOptions.suddenDeath). */
+  get suddenDeath(): SuddenDeathView | null {
+    const sd = this.sd;
+    return sd ? { round: sd.round, contenders: [...sd.contenders], outcomes: new Map(sd.outcomes), winners: sd.winners ? [...sd.winners] : null } : null;
+  }
+
   // Who is currently shooting?
   get activePlayerIndex(): number {
+    if (this.sd) return this.sd.contenders[Math.min(this.sd.next, this.sd.contenders.length - 1)]!;
     const N = this._players.length;
     const startPlayer = this._roundIndex % N;
     return (startPlayer + this._shotIndex) % N;
@@ -146,8 +188,12 @@ export class MultiplayerMatchMachine {
   /** Who fired the latest shot (set at Fire; stays valid after the turn advances). */
   get lastShooterIndex(): number | null { return this._shooterIndex; }
 
-  // Which shot attempt is the current player taking in this round? (0, 1, 2)
+  /** Shots already taken this round, by all players (0 .. shotsPerRound × players). */
+  get shotIndexInRound(): number { return this._shotIndex; }
+
+  // Which shot attempt is the current player taking in this round? (0, 1, 2; always 0 in a shoot-out)
   get activePlayerShotNumber(): number {
+    if (this.sd) return 0;
     return Math.floor(this._shotIndex / this._players.length);
   }
 
@@ -157,7 +203,7 @@ export class MultiplayerMatchMachine {
   }
 
   get isMatchComplete(): boolean {
-    return this._roundIndex >= this.maps.length;
+    return this._state === 'match_result' || this._roundIndex >= this.maps.length;
   }
 
   startAiming(): void {
@@ -188,6 +234,14 @@ export class MultiplayerMatchMachine {
   resolveShot(outcome: ClassifiedOutcome): boolean {
     if (this._state !== 'simulating' || this._shooterIndex === null) return false;
 
+    if (this.sd) {
+      // Shoot-out: recorded for the decision only; totals, hits and round scores stay as they were.
+      this.sd.outcomes.set(this._shooterIndex, outcome);
+      this.sd.next++;
+      this._state = 'result';
+      return true;
+    }
+
     const player = this._players[this._shooterIndex]!;
     const points = OUTCOME_POINTS[outcome];
     player.roundScores[this._roundIndex] = (player.roundScores[this._roundIndex] ?? 0) + points;
@@ -204,6 +258,10 @@ export class MultiplayerMatchMachine {
 
   /** Result -> Handover (shots remain) or Result -> RoundResult (round complete). */
   continueFromResult(): void {
+    if (this._state === 'result' && this.sd) {
+      this.continueSuddenDeath(this.sd);
+      return;
+    }
     if (this._state === 'result') {
       if (this._movePending) {
         this._movePending = false;
@@ -215,6 +273,15 @@ export class MultiplayerMatchMachine {
 
   nextRound(): void {
     if (this._state === 'round_result') {
+      const level = this._roundIndex + 1 >= this.maps.length ? this.levelLeaders() : [];
+      if (this.suddenDeathEnabled && level.length > 1) {
+        // Still level after the tie-break: a shoot-out on this (the last) map, Jonh at a fresh spot.
+        this.sd = { round: 1, contenders: level, next: 0, outcomes: new Map(), winners: null };
+        this._shotIndex = 0;
+        this._moveCount++;
+        this._state = 'handover';
+        return;
+      }
       this._roundIndex++;
       this._shotIndex = 0;
       this._moveCount = 0;
@@ -226,7 +293,45 @@ export class MultiplayerMatchMachine {
     }
   }
 
+  /** The round summary on screen is the last round's, and the match is level: a shoot-out comes next. */
+  get suddenDeathNext(): boolean {
+    return this.suddenDeathEnabled && this.sd === null && this._state === 'round_result'
+      && this._roundIndex + 1 >= this.maps.length && this.levelLeaders().length > 1;
+  }
+
+  /** Players level on points and body hits at the top (more than one means still tied). */
+  private levelLeaders(): number[] {
+    const top = Math.max(...this._players.map(p => p.totalScore));
+    const scorers = this._players.filter(p => p.totalScore === top);
+    const hits = Math.max(...scorers.map(p => p.bodyHits));
+    return scorers.filter(p => p.bodyHits === hits).map(p => p.id);
+  }
+
+  /** After a shoot-out shot: next contender, a decision, or another round among those still level. */
+  private continueSuddenDeath(sd: SuddenDeathState): void {
+    if (sd.next < sd.contenders.length) {
+      this._state = 'handover';
+      return;
+    }
+    const points = (id: number) => OUTCOME_POINTS[sd.outcomes.get(id) ?? 'miss'];
+    const best = Math.max(...sd.contenders.map(points));
+    const leaders = sd.contenders.filter(id => points(id) === best);
+    if (leaders.length === 1 || sd.round >= MULTIPLAYER.suddenDeathRounds) {
+      sd.winners = leaders;
+      this._state = 'match_result';
+      return;
+    }
+    // Still level: those players go again from a fresh spot, the order rotating each round.
+    sd.round++;
+    sd.contenders = [...leaders.slice(1), leaders[0]!];
+    sd.next = 0;
+    sd.outcomes = new Map();
+    this._moveCount++;
+    this._state = 'handover';
+  }
+
   getWinners(): MPPlayerView[] {
+    if (this.sd?.winners) return this.sd.winners.map(id => toView(this._players[id]!));
     let maxScore = -1;
     for (const p of this._players) {
       if (p.totalScore > maxScore) {
@@ -253,6 +358,7 @@ export class MultiplayerMatchMachine {
     this._shooterIndex = null;
     this._moveCount = 0;
     this._movePending = false;
+    this.sd = null;
     this.shufflePositions();
     for (const p of this._players) {
       p.totalScore = 0;

@@ -8,6 +8,7 @@ import type { LevelData } from './types';
  */
 export const TRAMPOLINE_LEVEL: LevelData = {
   id: 'trampoline',
+  mechanic: 'trampoline',
   name: 'Bounce House',
   difficulty: 3,
   bounds: GARDEN_BOUNDS,

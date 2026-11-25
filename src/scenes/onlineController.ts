@@ -4,14 +4,17 @@ import { getConvexClient } from '../net/convexClient';
 import { OnlineSession } from '../net/onlineSession';
 import { errorCode } from '../net/retry';
 import type { MPState, MultiplayerMatchMachine } from '../rules/multiplayerMatch';
+import { EmoteBoard, EmoteTracker, emoteText, takeEmoteToken, type EmoteBucket, type EmoteId } from '../rules/onlineEmotes';
 import { OnlineMatchTracker, type PlaybackItem } from '../rules/onlineMatch';
-import type { RoomSnapshot } from '../rules/onlineTypes';
+import type { EmoteEntry, RoomSnapshot } from '../rules/onlineTypes';
 import { sanitizePlayerName } from '../rules/playerName';
 import { replayMatch } from '../rules/replayMatch';
 import { normalizeRoomCode } from '../rules/roomCode';
+import { missStreakBefore } from '../rules/sharedLines';
 import type { ClassifiedOutcome } from '../sim/classification';
 import { loadOnlineProfile, onlineToken, saveOnlineProfile, type OnlineProfile } from '../storage/storage';
 import type { MenuOverlay, OnlineResultExtras } from '../ui/menuOverlay';
+import { EmoteWidget, type EmoteBubbleView } from '../ui/emotes';
 import { OnlineBanner } from '../ui/onlineBanner';
 import { showOnlineLobby, showOnlineNotice, showOnlineSetup } from '../ui/onlineScreens';
 
@@ -31,6 +34,8 @@ export interface OnlineSceneHooks {
   presentSkippedTurn(seat: number, angle: number, power: number, text: string): void;
   applyOfficialOutcome(outcome: ClassifiedOutcome, mine: boolean): void;
   refreshPlayerPresence?(): void;
+  /** A soft pop for an emote: another player's, or (`own`) the one I just sent. */
+  playEmoteSound?(own?: boolean): void;
   refreshMatchResult(): void;
   refreshAimingControls(): void;
   leaveToMenu(): void;
@@ -69,6 +74,7 @@ const OFFLINE = "Couldn't reach the server. Check your connection and try again.
 const BAD_CODE = 'Room codes are 5 letters and numbers, like K7QPX.';
 const CUT_SHORT = 'This match ended unexpectedly.';
 const BANNER_TICK_SECONDS = 0.25;
+const EASY_THERE = 'Easy there!';
 
 function roomLink(code: string): string {
   const url = new URL(window.location.href);
@@ -114,23 +120,47 @@ export class OnlineController {
   private lastCanAct = false;
   private bannerClock = 0;
   private readonly banner: OnlineBanner;
+  /** Emotes (SPEC §6.1): what was already shown, the bubbles up now and my own send allowance. */
+  private emoteTracker = new EmoteTracker();
+  private emoteBoard = new EmoteBoard();
+  private emoteBucket: EmoteBucket | null = null;
+  private emoteClock = 0;
+  private emoteKey = '';
+  private readonly emotes: EmoteWidget;
 
   constructor(private readonly menu: MenuOverlay, private readonly hooks: OnlineSceneHooks) {
     this.banner = new OnlineBanner(document.body);
+    this.emotes = new EmoteWidget(document.body, id => this.sendEmote(id));
   }
 
   get inRoom(): boolean { return this.code !== null; }
   get inMatch(): boolean { return this.match; }
   get mySeat(): number | null { return this.tracker.mySeat; }
+
+  /**
+   * Where an online Jonh line comes from (rules/sharedLines.ts): this match and the moment, plus the shared miss
+   * streak before it, all the same on every client. A shot's moment is its seq; the other moments are numbered
+   * by the shots shown so far. Null outside a match.
+   */
+  lineMoment(kind: 'shot' | 'moved' | 'arrival' | 'winning'): { match: string; moment: string; missStreak: number } | null {
+    const snapshot = this.tracker.snapshot;
+    if (!this.match || !snapshot) return null;
+    const { room } = snapshot;
+    const seq = kind === 'shot' && this.current ? this.current.seq : this.tracker.presented;
+    return { match: `${room.code}/${room.seed}/${room.matchNumber}`, moment: `${kind}:${seq}`, missStreak: missStreakBefore(snapshot.shots, seq) };
+  }
   get playerPresence() {
     const snapshot = this.tracker.snapshot;
     const session = this.session;
     if (!this.match || !snapshot || !session) return null;
+    const emotes: Record<number, string> = {};
+    for (const view of this.emoteBubbles()) emotes[view.seat] = view.text;
     return {
       code: snapshot.room.code, mySeat: snapshot.you,
       connected: [...this.tracker.connectedSeats(session.serverNow)],
       left: snapshot.seats.filter(s => s.left).map(s => s.seat),
       reconnecting: !session.connected,
+      ...(Object.keys(emotes).length > 0 ? { emotes } : {}),
     };
   }
 
@@ -244,6 +274,7 @@ export class OnlineController {
     this.lobbyKey = '';
     this.lobbyError = null;
     this.lastCanAct = false;
+    this.resetEmotes();
     try {
       const session = this.ensureSession();
       session.enter(code, {
@@ -253,6 +284,7 @@ export class OnlineController {
           this.tracker.setPresence(entries);
           this.renderLobbyIfShown();
         },
+        onEmotes: entries => { if (epoch === this.epoch) this.onEmotes(entries); },
       });
       this.code = session.code ?? code;
     } catch (e) {
@@ -261,7 +293,70 @@ export class OnlineController {
       return e instanceof Error ? e.message : OFFLINE;
     }
     setRoomParam(this.code);
+    this.emotes.setVisible(true);
     return null;
+  }
+
+  private resetEmotes(): void {
+    this.emoteTracker = new EmoteTracker();
+    this.emoteBoard.clear();
+    this.emoteBucket = null;
+    this.emoteKey = '';
+    this.emotes.setEnabled(false);
+    this.emotes.setVisible(false);
+  }
+
+  /** The room's emote list changed: show what is new, play a soft sound for other players' emotes. */
+  private onEmotes(entries: EmoteEntry[]): void {
+    const session = this.session;
+    if (!session) return;
+    const shown = this.emoteTracker.ingest(entries, session.serverNow);
+    this.emotes.setEnabled(true);
+    for (const emote of shown) this.emoteBoard.add(emote, this.emoteClock);
+    if (shown.some(e => !e.mine)) this.hooks.playEmoteSound?.();
+    this.syncEmotes();
+  }
+
+  /** The emote button: my bubble appears at once, the server's echo is swallowed, a rejection takes it back. */
+  private sendEmote(id: EmoteId): void {
+    const session = this.session;
+    const seat = this.tracker.snapshot?.you ?? null;
+    if (!session || seat === null || !this.emoteTracker.ready) return;
+    const taken = takeEmoteToken(this.emoteBucket, Date.now());
+    if (!taken.ok) { this.emotes.notice(EASY_THERE); return; }
+    this.emoteBucket = taken.bucket;
+    const ticket = this.emoteTracker.beginOwn();
+    const key = `own#${ticket}`;
+    this.emoteBoard.add({ key, seat, emote: id, mine: true }, this.emoteClock);
+    this.hooks.playEmoteSound?.(true);
+    this.syncEmotes();
+    const epoch = this.epoch;
+    session.sendEmote(id).catch((e: unknown) => {
+      if (epoch !== this.epoch) return;
+      if (this.emoteTracker.cancelOwn(ticket)) { this.emoteBoard.remove(key); this.syncEmotes(); }
+      if (errorCode(e) === 'RATE_LIMITED') this.emotes.notice(EASY_THERE);
+    });
+  }
+
+  private emoteBubbles(): EmoteBubbleView[] {
+    const seats = this.tracker.snapshot?.seats ?? [];
+    return this.emoteBoard.active(this.emoteClock).flatMap(b => {
+      const seat = seats.find(s => s.seat === b.seat);
+      const text = emoteText(b.emote);
+      return seat && text ? [{ key: b.key, seat: b.seat, name: seat.name, color: seat.color, text, mine: b.mine }] : [];
+    });
+  }
+
+  /** Brings the dock and the player panel in line with the bubbles that are up (also expires old ones). */
+  private syncEmotes(): void {
+    const views = this.emoteBubbles();
+    // The player panel carries the bubbles itself while a match is on screen with no overlay over it.
+    const panelShown = this.match && this.menu.getView() === 'none';
+    const key = `${panelShown}|${views.map(v => v.key).join('|')}`;
+    if (key === this.emoteKey) return;
+    this.emoteKey = key;
+    this.emotes.render(views, panelShown);
+    if (this.match) this.hooks.refreshPlayerPresence?.();
   }
 
   private onRoom(snapshot: RoomSnapshot | null): void {
@@ -330,6 +425,7 @@ export class OnlineController {
   /** Called every frame by the scene. */
   update(dtSeconds: number): void {
     if (!this.code || !this.session) return;
+    this.emoteClock += dtSeconds;
     this.bannerClock -= dtSeconds;
     if (this.bannerClock <= 0) {
       this.bannerClock = BANNER_TICK_SECONDS;
@@ -513,6 +609,7 @@ export class OnlineController {
     const session = this.session;
     if (!session) return;
     this.renderLobbyIfShown();
+    this.syncEmotes();
     if (this.match) this.hooks.refreshPlayerPresence?.();
     if (!session.connected) { this.banner.setText('Reconnecting…'); return; }
     if (!this.match) { this.banner.setText(null); return; }
@@ -564,6 +661,7 @@ export class OnlineController {
     this.lastCanAct = false;
     this.banner.setBlocking(null);
     this.banner.setText(null);
+    this.resetEmotes();
     setRoomParam(null);
   }
 
@@ -587,5 +685,6 @@ export class OnlineController {
     this.outbox = null;
     this.session?.exit();
     this.banner.destroy();
+    this.emotes.destroy();
   }
 }

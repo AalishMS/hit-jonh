@@ -23,6 +23,21 @@ export function simYToWorldY(yMetres: number, worldHeightPx: number, pixelsPerMe
   return worldHeightPx - yMetres * pixelsPerMetre;
 }
 
+/**
+ * Where the ball spawns for a shot, in world px: `offsetMetres` from the cannon pivot (metres) along
+ * the aim. The game, the headless shot runner and the shot recorder must all use this one formula:
+ * the same maths written another way rounds differently in the last bit, and on a grazing bounce
+ * that is enough to change the outcome (Lunar Picnic's reference shot missed in the game).
+ */
+export function muzzleSpawnPx(pivot: { x: number; y: number }, angleDeg: number, offsetMetres: number,
+  pixelsPerMetre: number, worldHeightPx: number): { x: number; y: number } {
+  const angle = angleDeg * Math.PI / 180;
+  return {
+    x: metresToPixels(pivot.x + offsetMetres * Math.cos(angle), pixelsPerMetre),
+    y: simYToWorldY(pivot.y + offsetMetres * Math.sin(angle), worldHeightPx, pixelsPerMetre),
+  };
+}
+
 /** World y (down, pixels) → simulation y (up, metres). */
 export function worldYToSimY(yPx: number, worldHeightPx: number, pixelsPerMetre: number): number {
   return (worldHeightPx - yPx) / pixelsPerMetre;
@@ -35,6 +50,14 @@ export function worldYToSimY(yPx: number, worldHeightPx: number, pixelsPerMetre:
 export function matterGravityY(gravityMs2: number, pixelsPerMetre: number, gravityScale: number): number {
   const accelPxPerMs2 = (gravityMs2 * pixelsPerMetre) / (MS_PER_SECOND * MS_PER_SECOND);
   return accelPxPerMs2 / gravityScale;
+}
+
+/**
+ * Matter acceleration in px/ms² for `accelMs2` (m/s²): what `gravity.y * gravity.scale` equals for
+ * gravity. A force of `mass * this` on a body accelerates it by `accelMs2`, exactly as gravity does.
+ */
+export function accelerationToMatter(accelMs2: number, pixelsPerMetre: number): number {
+  return (accelMs2 * pixelsPerMetre) / (MS_PER_SECOND * MS_PER_SECOND);
 }
 
 /** Map a 0–100 power percentage to launch speed (m/s) via linear impulse mapping. */

@@ -1,7 +1,10 @@
+import { DEFAULT_KEYS, sanitizeKeys, type KeyBindings } from '../input/keyBindings';
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
-import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
+import { cosmeticContext } from '../rules/cosmetics';
+import { freshProgress, recordEarned, sanitizeProgress, type Progress } from '../rules/progression';
 import { sanitizePlayerName } from '../rules/playerName';
+import type { PlayerPalette } from '../art/palette';
 export { sanitizePlayerName };
 
 export interface LevelScore {
@@ -31,6 +34,10 @@ export interface Settings {
   reducedMotion: boolean;
   /** Background music loop (sound effects follow `muted`). */
   music: boolean;
+  /** Remappable gameplay keys (input/keyBindings.ts). */
+  keys: KeyBindings;
+  /** Player colours: the standard set or the colour-blind friendly one (art/palette.ts). */
+  playerColors: PlayerPalette;
 }
 
 export interface SaveData {
@@ -51,6 +58,8 @@ const DEFAULT_SETTINGS: Settings = {
   volume: 1.0,
   reducedMotion: false,
   music: true,
+  keys: DEFAULT_KEYS,
+  playerColors: 'standard',
 };
 
 function getFreshData(): SaveData {
@@ -158,6 +167,8 @@ export function loadSaveData(): SaveData {
         : DEFAULT_SETTINGS.volume;
       data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
       data.settings.music = typeof pSet.music === 'boolean' ? pSet.music : DEFAULT_SETTINGS.music;
+      data.settings.keys = sanitizeKeys(pSet.keys);
+      data.settings.playerColors = pSet.playerColors === 'colorblind' ? 'colorblind' : 'standard';
     }
 
     // Validate solo
@@ -194,7 +205,10 @@ export function loadSaveData(): SaveData {
     // Validate lastMP
     const validSetups = sanitizePlayerSetups(parsedObj.lastMP);
     if (validSetups) data.lastMP = validSetups;
-    if (parsedObj.progress !== undefined) data.progress = sanitizeProgress(parsedObj.progress, MAPS.map(m => m.id));
+    if (parsedObj.progress !== undefined) {
+      const mapIds = MAPS.map(m => m.id);
+      data.progress = sanitizeProgress(parsedObj.progress, mapIds, cosmeticContext(mapIds, data.solo));
+    }
 
     // Validate online profile
     if (parsedObj.online && typeof parsedObj.online === 'object' && !Array.isArray(parsedObj.online)) {
@@ -209,11 +223,14 @@ export function loadSaveData(): SaveData {
   }
 }
 
-export function writeSaveData(data: SaveData): void {
+/** Writes the save; false when the browser refused (storage full, or blocked in private browsing). */
+export function writeSaveData(data: SaveData): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
   } catch (e) {
     console.warn('Failed to write save data', e);
+    return false;
   }
 }
 
@@ -228,6 +245,11 @@ export function recordSoloResult(mapId: string, shots: number, isRicochet: boole
     existing.hasStyle = existing.hasStyle || isRicochet;
     existing.lastAngle = angle;
     existing.lastPower = power;
+  }
+  // New stars can unlock star-gated cosmetics: record them as earned now (rules/progression.ts).
+  if (data.progress) {
+    const mapIds = MAPS.map(m => m.id);
+    data.progress = recordEarned(data.progress, mapIds, cosmeticContext(mapIds, data.solo));
   }
   writeSaveData(data);
 }
@@ -267,7 +289,8 @@ export function loadProgress(): Progress {
 
 export function saveProgress(progress: Progress): void {
   const data = loadSaveData();
-  data.progress = sanitizeProgress(progress, MAPS.map(m => m.id));
+  const mapIds = MAPS.map(m => m.id);
+  data.progress = sanitizeProgress(progress, mapIds, cosmeticContext(mapIds, data.solo));
   writeSaveData(data);
 }
 

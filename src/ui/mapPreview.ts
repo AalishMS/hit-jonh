@@ -1,7 +1,11 @@
+import { backdropBox } from '../art/mechanicArt';
 import { PAL } from '../art/palette';
+import { rampOutline } from '../art/rampArt';
 import { THEMES } from '../art/sceneryArt';
+import { MAGNET, WIND } from '../config/tuning';
 import { MAPS } from '../levels';
-import type { Box2D, LevelData, ObstacleData } from '../levels/types';
+import type { Box2D, LevelData, ObstacleData, PortalData, RampData } from '../levels/types';
+import { arcShape } from '../sim/arc';
 
 const INK = `stroke="${PAL.ink}" stroke-width="3" stroke-linejoin="round"`;
 const PREVIEW_W = 300;
@@ -25,7 +29,18 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   const w = (b.maxX - b.minX) * f.s;
   const h = (b.maxY - b.minY) * f.s;
   const rect = (fill: string, extra = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" ${INK} stroke-width="2"${extra}/>`;
+  if (obs.id.startsWith('frame-')) return rect(PAL.paper);
+  if (obs.id.startsWith('brick-') || obs.id === 'shelter-wall') return rect(PAL.brick);
+  if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
+  // Frozen Pond: a snow-capped hut roof and a striped roll-down door frozen just off the ice.
+  if (obs.id === 'hut-roof') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.55)}" fill="${PAL.snow}"/>`;
+  if (obs.id === 'hut-door') {
+    const dw = Math.max(4, w);
+    return `<rect x="${x + w - dw}" y="${y}" width="${dw}" height="${h}" fill="${PAL.pow}" ${INK} stroke-width="1.5"/>`;
+  }
   switch (obs.material) {
+    case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
+    case 'velvet': return rect(PAL.velvet, ' rx="1.5"');
     case 'wood':
       return obs.id === 'garden-shed'
         ? `${rect(PAL.wood, ' rx="2"')}<rect x="${x}" y="${y}" width="${w}" height="${Math.min(6, h / 4)}" fill="#5B3A4A"/>`
@@ -42,8 +57,78 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'gravel': return rect('#A9A3B8');
     case 'sand': return rect('#F2D59B');
     case 'rug': return rect(PAL.pow);
+    case 'scrap': return `${rect(PAL.ironDark, ' rx="1.5"')}${[0.2, 0.45, 0.7].map((f, i) => `<rect x="${x + 1.5}" y="${y + h * f}" width="${Math.max(1, w - 3)}" height="${Math.max(2, h * 0.14)}" rx="1" fill="${[PAL.brick, PAL.hat, PAL.ironLight][i]}"/>`).join('')}`;
+    case 'magnet': return `${rect(PAL.iron, ' rx="1.5"')}<rect x="${x}" y="${y + h * 0.3}" width="${w}" height="${Math.max(1.5, h * 0.28)}" fill="${PAL.hat}"/>`;
+    case 'ice': {
+      // A thin slab at thumbnail scale: drawn at least 6 px deep (down into the snow), its top kept true.
+      const hh = Math.max(h, 6);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${PAL.iceDeep}" ${INK} stroke-width="1.5"/>` +
+        `<rect x="${x + 0.75}" y="${y + 0.75}" width="${w - 1.5}" height="${hh * 0.4}" fill="${PAL.ice}" class="map-ice"/>`;
+    }
     default: return rect(PAL.stone);
   }
+}
+
+/** The inside of the greenhouse (glass-tinted) or the tent (dark velvet), so they read as rooms. */
+function interiorSvg(level: LevelData, f: Frame): string {
+  const box = backdropBox(level);
+  if (!box) return '';
+  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"`
+    : level.id === 'pond' ? `fill="${PAL.woodDark}" opacity="0.8"` : `fill="${PAL.glass}" opacity="0.55"`;
+  return `<rect x="${f.x(box.minX)}" y="${f.y(box.maxY)}" width="${(box.maxX - box.minX) * f.s}" height="${(box.maxY - box.minY) * f.s}" ${fill}/>`;
+}
+
+/** A magic hoop: face-on at the entry, side-on (pointing the way out) at the exit. */
+function portalSvg(portal: PortalData, f: Frame): string {
+  const r = Math.max(4, portal.entry.radius * f.s * 1.25);
+  const hoop = (cx: number, cy: number, sx: number, rot: number) =>
+    `<g transform="translate(${cx} ${cy}) rotate(${rot}) scale(${sx} 1)"><circle r="${r}" fill="${PAL.magicDark}"/><circle r="${r * 0.45}" fill="${PAL.magic}"/><circle r="${r}" fill="none" stroke="${PAL.brass}" stroke-width="2.4"/></g>`;
+  return hoop(f.x(portal.entry.x), f.y(portal.entry.y), 1, 0) + hoop(f.x(portal.exit.x), f.y(portal.exit.y), 0.5, -portal.exit.angleDeg);
+}
+
+/** A skate ramp: its riding curve (the collider's arc) over a solid plywood side, down to the lawn. */
+function rampSvg(ramp: RampData, level: LevelData, f: Frame): string {
+  const shape = arcShape(ramp);
+  const { corners } = rampOutline(shape, level.ground.maxY);
+  const [startIn, startOut, endIn, endOut] = corners as [Box2DPoint, Box2DPoint, Box2DPoint, Box2DPoint];
+  const p = (q: Box2DPoint) => `${f.x(q.x).toFixed(1)} ${f.y(q.y).toFixed(1)}`;
+  const r = (shape.radius * f.s).toFixed(2);
+  const large = shape.end - shape.start > Math.PI ? 1 : 0;
+  const ground = f.y(level.ground.maxY).toFixed(1);
+  // Counter-clockwise in metres is counter-clockwise on screen too: SVG sweep flag 0.
+  const d = `M${f.x(startOut.x).toFixed(1)} ${ground} L${p(startOut)} L${p(startIn)} A${r} ${r} 0 ${large} 0 ${p(endIn)} L${p(endOut)} L${f.x(endOut.x).toFixed(1)} ${ground} Z`;
+  return `<path d="${d}" fill="${PAL.wood}" ${INK} stroke-width="2"/>` +
+    `<path d="M${p(startIn)} A${r} ${r} 0 ${large} 0 ${p(endIn)}" fill="none" stroke="${PAL.woodLight}" stroke-width="2.5"/>`;
+}
+
+type Box2DPoint = { x: number; y: number };
+
+/** The magnet's cable up out of the frame and its reach as faint rings, so the field reads in the thumbnail. */
+function magnetSvg(level: LevelData, f: Frame): string {
+  const m = level.magnet;
+  if (!m) return '';
+  const cx = f.x(m.x);
+  const cy = f.y(m.y);
+  const housing = level.obstacles.find(o => o.id === m.housingId)?.box;
+  const top = housing ? f.y(housing.maxY) : cy;
+  const ring = (r: number, extra: string) => `<circle cx="${cx}" cy="${cy}" r="${r * f.s}" fill="none" stroke="${PAL.field}" stroke-width="2" ${extra}/>`;
+  return `<g class="map-magnet"><path d="M${cx} 0 V${top}" stroke="${PAL.ink}" stroke-width="2"/>` +
+    ring(m.radius, `stroke-dasharray="5 4" opacity="0.7"`) + ring(m.radius * MAGNET.fullReachShare, 'opacity="0.85"') + '</g>';
+}
+
+/** The windsock (pointing downwind) and the wind arrow, so a windy garden reads in its thumbnail. */
+function windSvg(level: LevelData, f: Frame): string {
+  const wind = level.wind;
+  if (!wind) return '';
+  const dir = Math.sign(wind.accelerationMs2);
+  const x = f.x(wind.windsockX ?? WIND.defaultSockXMetres);
+  const base = f.y(level.ground.maxY);
+  const top = base - 34;
+  const droop = Math.max(0, 1 - Math.abs(wind.accelerationMs2) / WIND.sockFlatMs2) * 14;
+  const sock = (k: number, fill: string) => `<path d="M${x + dir * (2 + k * 9)} ${top - 4 + k * droop * 0.3} L${x + dir * (11 + k * 9)} ${top - 2.5 + (k + 1) * droop * 0.3} L${x + dir * (11 + k * 9)} ${top + 3 + (k + 1) * droop * 0.3} L${x + dir * (2 + k * 9)} ${top + 4 + k * droop * 0.3} Z" fill="${fill}" ${INK} stroke-width="1.6"/>`;
+  const arrow = `<path d="M${x - dir * 20} ${top - 18} h${dir * 34} m${-dir * 8} -6 l${dir * 8} 6 l${-dir * 8} 6" fill="none" stroke="${PAL.paper}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g class="map-wind"><path d="M${x} ${base} V${top}" stroke="${PAL.ink}" stroke-width="3" stroke-linecap="round"/>` +
+    sock(0, PAL.pow) + sock(1, PAL.paper) + sock(2, PAL.pow) + arrow + '</g>';
 }
 
 function jonhSvg(body: Box2D, hat: Box2D | undefined, f: Frame): string {
@@ -56,6 +141,21 @@ function jonhSvg(body: Box2D, hat: Box2D | undefined, f: Frame): string {
       <path d="M-10 -45 H10 M-6 -46 V-52 H6 V-46" fill="${PAL.hat}" stroke="${PAL.ink}" stroke-width="2.4"/>
       <rect x="-12" y="-28" width="14" height="11" fill="${PAL.paper}" stroke="${PAL.ink}" stroke-width="2"/>
     </g>`;
+}
+
+/** Walking Jonh: a dashed line along his route with an arrow the way he sets off. */
+function routeSvg(level: LevelData, f: Frame): string {
+  const route = level.jonhRoute;
+  if (!route || route.waypoints.length < 2) return '';
+  const b = level.jonhSpawn.bodyBox;
+  const cx = (b.minX + b.maxX) / 2;
+  const xs = route.waypoints.map(w => f.x(cx + w.dx));
+  const y = f.y(b.minY) + 3;
+  const first = xs[0]!;
+  const dir = Math.sign(xs[1]! - first) || 1;
+  const tip = first + dir * Math.min(Math.abs(xs[1]! - first), 18);
+  return `<path d="M${Math.min(...xs)} ${y} H${Math.max(...xs)}" stroke="${PAL.paper}" stroke-width="2.5" stroke-dasharray="4 3"/>` +
+    `<path d="M${tip} ${y} l${-dir * 6} -4 v8 Z" fill="${PAL.paper}" ${INK} stroke-width="1.5"/>`;
 }
 
 function cannonSvg(level: LevelData, f: Frame): string {
@@ -89,7 +189,13 @@ export function mapPreview(id: string): string {
     <rect x="0" y="${ground}" width="${PREVIEW_W}" height="${PREVIEW_H - ground}" fill="${t.groundEarth ?? PAL.earth}"/>
     <rect x="0" y="${ground}" width="${PREVIEW_W}" height="5" fill="${t.groundTop ?? PAL.grass}"/>
     <path d="M0 ${ground + 0.5} H${PREVIEW_W}" stroke="${PAL.ink}" stroke-width="3"/>
+    ${interiorSvg(level, f)}
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
+    ${(level.ramps ?? []).map(r => rampSvg(r, level, f)).join('')}
+    ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
+    ${magnetSvg(level, f)}
+    ${windSvg(level, f)}
+    ${routeSvg(level, f)}
     ${cannonSvg(level, f)}
     ${jonhSvg(level.jonhSpawn.bodyBox, level.jonhSpawn.hatBox, f)}
   </svg>`;
@@ -132,6 +238,13 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   trampoline: 'A hedge, a balcony and a trampoline. Drop it in and let it spring.',
   moon: 'Low gravity. Everything floats. Feather that power.',
   valley: 'He is a dot on a far mesa. Hope you brought the big cannon.',
+  greenhouse: 'Glass shrugs off a soft shot. Hit it hard enough and it smashes.',
+  magic: 'Through the floating hoop and out the other. Power decides where it lands.',
+  washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
+  stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
+  skatepark: 'Walled off and roofed over. Land it in the half-pipe and it rolls back out at him.',
+  magnet: 'A crane magnet pulls the ball towards it. Aim to one side and let it curve in.',
+  pond: 'Jonh is ice fishing in his hut. Land it short on the ice and let it slide in.',
 };
 
 export function mapDescription(id: string): string {

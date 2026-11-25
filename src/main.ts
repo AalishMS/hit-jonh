@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { PHYSICS, WORLD } from './config/tuning';
+import { WORLD } from './config/tuning';
 import { BootScene } from './scenes/BootScene';
 import { PrototypeScene } from './scenes/PrototypeScene';
-import { matterGravityY } from './sim/units';
+import { ShowcaseScene } from './scenes/ShowcaseScene';
+import { matterWorldConfig } from './config/matterWorld';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -17,18 +18,10 @@ const config: Phaser.Types.Core.GameConfig = {
   },
   physics: {
     default: 'matter',
-    matter: {
-      // Simulation is stepped manually from a fixed-step accumulator (SPEC.md §7).
-      autoUpdate: false,
-      gravity: {
-        x: 0,
-        y: matterGravityY(PHYSICS.gravity, WORLD.pixelsPerMetre, PHYSICS.matterGravityScale),
-      },
-      enableSleeping: false,
-      debug: import.meta.env.DEV && new URLSearchParams(location.search).has('debug'),
-    },
+    // Fixed-step, no sleeping, and the tested contact solver (config/matterWorld.ts).
+    matter: matterWorldConfig(import.meta.env.DEV && new URLSearchParams(location.search).has('debug')),
   },
-  scene: [BootScene, PrototypeScene],
+  scene: [BootScene, PrototypeScene, ShowcaseScene],
 };
 
 const statusEl = document.getElementById('game-status');
@@ -57,6 +50,13 @@ try {
       statusEl.setAttribute('hidden', '');
     }
   });
+
+  // Phaser only polls its parent's size every 500 ms of game time, so entering a game (the HUD and
+  // aim bar change the stage size) used to show a cropped canvas first. Refit the moment it changes.
+  const stage = document.getElementById('game');
+  if (stage && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => game.scale.getParentBounds() && game.scale.refresh()).observe(stage);
+  }
 
   // Expose for dev-only inspection in the browser console; `?tune` opens the FX tuning panel.
   if (import.meta.env.DEV) {

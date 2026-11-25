@@ -4,7 +4,7 @@ import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
-import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
+import { launchVelocityToWorld, matterGravityY, muzzleSpawnPx } from '../sim/units';
 import { MatterAdapter } from './matterAdapter';
 
 export interface HeadlessShotResult {
@@ -12,6 +12,14 @@ export interface HeadlessShotResult {
   endXSim: number;
   endYSim: number;
   steps: number;
+  /** Breakable props smashed before the shot resolved. */
+  brokenObstacleIds: string[];
+  /** Portals the ball went through before the shot resolved. */
+  portalsUsed: string[];
+  /** Ramps the ball launched off (rolled off a lip into the air) before the shot resolved. */
+  rampLaunches: string[];
+  /** Ramps the ball touched at all (rolled on, bounced off) before the shot resolved. */
+  rampsTouched: string[];
 }
 
 /** Runs one shot with real Matter and no rendering, classified exactly as the scene does. */
@@ -23,16 +31,16 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
   });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
-  const angle = angleDeg * Math.PI / 180;
   const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+  const start = muzzleSpawnPx(level.cannonSpawn, angleDeg, offset, ppm, WORLD.designHeightPx);
   adapter.spawnProjectile(
-    metresToPixels(level.cannonSpawn.x + offset * Math.cos(angle), ppm),
-    simYToWorldY(level.cannonSpawn.y + offset * Math.sin(angle), WORLD.designHeightPx, ppm),
+    start.x,
+    start.y,
     PROJECTILE.radiusMetres * ppm,
     launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm),
   );
   const attempt = new ShotAttemptMachine(level.bounds.maxX, SHOT.settledSpeedMs,
-    SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres);
+    SHOT.settledSeconds, SHOT.timeoutSeconds, SHOT.boundsMarginMetres, level.bounds.minY);
   attempt.fire(angleDeg, powerPercent);
   const classifier = new ShotClassifier();
   const maxSteps = Math.ceil(SHOT.timeoutSeconds / PHYSICS.fixedStepSeconds) + 1;
@@ -45,11 +53,16 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     });
     if (!result.resolved) continue;
     for (const obs of state.obstacleContacts) classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
+    for (const id of state.portalsUsed) classifier.recordContact({ role: 'portal', id });
     if (state.hitGround) classifier.recordContact({ role: 'ground' });
     if (state.hitHat || result.hadHatHit) classifier.recordContact({ role: 'jonhHat' });
     if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });
     if (state.passedOverhead) classifier.recordOverhead();
-    return { outcome: classifier.classify(true).outcome, endXSim: state.xSim, endYSim: state.ySim, steps: step };
+    return {
+      outcome: classifier.classify(true).outcome, endXSim: state.xSim, endYSim: state.ySim, steps: step,
+      brokenObstacleIds: state.brokenObstacleIds, portalsUsed: state.portalsUsed, rampLaunches: state.rampLaunches,
+      rampsTouched: state.obstacleContacts.filter(c => level.ramps?.some(r => r.id === c.id)).map(c => c.id),
+    };
   }
-  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps };
+  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps, brokenObstacleIds: [], portalsUsed: [], rampLaunches: [], rampsTouched: [] };
 }

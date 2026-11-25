@@ -1,17 +1,37 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { FootstepTracker } from '../audio/footsteps';
+import { AIM, CLIP, COACH, FLOW, FX, ICE_FX, LOOK, MATERIALS, MULTIPLAYER, PHYSICS, PROJECTILE, RAMP, SHOT, WORLD, type MaterialProps } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
+import { setPlayerPalette } from '../art/palette';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
 import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame, type Viewport } from '../fx/cameraDirector';
 import { clamp01 } from '../fx/easing';
+import { recordShot as recordDemoShot, type RecordedShot } from '../physics/shotRecorder';
+import { DemoStage } from '../render/demoStage';
+import { buildWardrobe, type WardrobeSection } from '../ui/wardrobe';
+import {
+  CANNON_SKIN_ORDER, CANNON_SKIN_RULES, cosmeticContext, newlyUnlockedCannonSkins, newlyUnlockedOutfits, OUTFIT_ORDER, OUTFIT_RULES,
+  unlockedCannonSkins, unlockedOutfits, type CannonSkinId, type OutfitId,
+} from '../rules/cosmetics';
+import { outfitFigureSvg } from '../art/outfitArt';
+import { cannonSkinFigureSvg } from '../art/cannonArt';
+import { cannonSkinGroup, cosmeticArtGroups, hatGroup, levelArtGroups, outfitGroup, playerBarrelGroups } from '../art/library';
+import { artMeta, artReady, ensureArt, whenArtReady } from '../render/artTextures';
+import { pickAttractLevel } from './attractLevel';
+import { readabilityBoost } from '../fx/readability';
+import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
+import { campaignOrder } from '../rules/campaign';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
+import { distanceToBox, fastForwardTarget, SettleClock, slideReachMetres } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
-import { MAPS } from '../levels';
+import { MAP_IDS, MAPS } from '../levels';
+import { campaignStatus, campaignSuccessor, campaignTotals, nextCampaignMap } from '../rules/campaign';
+import { chapterCompletedBy, chapterLabel, chapterOpenedBy } from '../rules/chapters';
 import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
@@ -24,13 +44,17 @@ import { JonhRenderer } from '../render/jonhRenderer';
 import { SceneryRenderer } from '../render/sceneryRenderer';
 import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
 import { PlayerHistory } from '../rules/playerHistory';
-import { classifyShotOutcome, JonhReactionSelector } from '../rules/reactions';
+import { classifyShotOutcome, JonhReactionSelector, type ReactionContext } from '../rules/reactions';
+import { SharedLines, type LinePicker } from '../rules/sharedLines';
+import { HeckleTimer } from '../rules/heckleTimer';
 import { SessionCoordinator } from '../rules/sessionCoordinator';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { SoloChallengeMachine } from '../rules/soloChallenge';
 import { SoloCoordinator } from '../rules/soloCoordinator';
 import { MultiplayerMatchMachine, OUTCOME_POINTS, type MPPlayerSetup } from '../rules/multiplayerMatch';
 import { MultiCoordinator } from '../rules/multiCoordinator';
+import { matchStakes, shotsLeftPerPlayer, suddenDeathStakes, tauntFor, type Stakes } from '../rules/matchStakes';
+import { arcShape, closestOnArc } from '../sim/arc';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -43,23 +67,52 @@ import {
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
-import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
+import { saveCodeFromHash } from '../storage/saveCode';
+import { loadOnlineProfile, loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveOnlineProfile, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
+import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
+import { shareBlock } from '../ui/share';
+import { ClipDirector } from '../share/clipDirector';
+import { ClipRecorder, clipFormat } from '../share/clipRecorder';
+import { clipCaption, gameAddress, planClip } from '../share/clipPlan';
+import type { ClipOffer } from '../share/clipTypes';
+import { DEFAULT_KEYS, keyLabel, type KeyBindings } from '../input/keyBindings';
+import { coachActive, missHint, showGhostHand } from '../rules/coach';
+import { mechanicTip } from '../rules/mechanicTips';
+import { FEATS, FEAT_GROUPS, featStatuses, featsDone, newlyCompletedFeats, type FeatInput } from '../rules/feats';
+import { buildFeats } from '../ui/feats';
+import { CoachRenderer } from '../render/coachRenderer';
 import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
 import { isOnlineConfigured } from '../net/convexClient';
 import { OnlineController, type OnlineSceneHooks } from './onlineController';
+import { FriendsBoardController } from './friendsBoardController';
+import { BOARD_LINK_PARAM } from '../rules/friendsBoard';
 
 /** Result labels when the official online outcome differs from what this device simulated. */
 const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
-  ricochet_body: 'Ricochet hit', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
+  ricochet_body: 'Trick shot', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
 };
 
+/** An earned cosmetic: a hat, an outfit or a cannon skin. */
+type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | { kind: 'cannon'; id: CannonSkinId };
+
+/** Keys that adjust the aim; pressing one during a solo miss's result goes straight back to aiming. */
+/** The bound aim keys (angle and power), for "touching the aim skips a miss's result". */
+const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDown, k.powerUp];
+
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', plywood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground', ice: 'ice', canvas: 'ground' };
+
+/** Runs `fn` when the main thread is idle (Safari has no requestIdleCallback: a short timer stands in). */
+function whenIdle(fn: () => void): void {
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 2000 });
+  else globalThis.setTimeout(fn, 200);
+}
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
+  private readonly footsteps = new FootstepTracker();
   private attemptMachine!: ShotAttemptMachine;
   private soloMachine!: SoloChallengeMachine;
   private soloCoordinator!: SoloCoordinator;
@@ -77,15 +130,48 @@ export class PrototypeScene extends Phaser.Scene {
   /** Muzzle position waiting for the cannon wind-up to finish. */
   private pendingLaunch: { x: number; y: number; angleRad: number } | null = null;
   private prevVelocity: { vx: number; vy: number } | null = null;
+  /** Fixed steps the ball has spent skidding on ice (paces the spray). */
+  private skidSteps = 0;
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
-  private attract: { scenery: SceneryRenderer; jonh: JonhRenderer; cannon: CannonRenderer } | null = null;
+  /**
+   * The title screen's live garden. A demo shot (one of the garden's physics-proven reference
+   * solutions, recorded on a private engine) bonks Jonh every so often, or whenever the player taps.
+   */
+  private attract: {
+    stage: DemoStage;
+    /** Seconds until the next demo shot (counts only on the home view). */
+    timer: number;
+    /** Seconds until Jonh's opening quip, if not said yet. */
+    quipIn: number | null;
+  } | null = null;
+  private readonly recordedShots = new Map<string, RecordedShot>();
   private soloResultExtras: SoloResultExtras = {};
   private progress: Progress = freshProgress();
-  private pendingUnlocks: HatName[] = [];
+  /** Cosmetics unlocked since the last solo result screen (shown as one card there). */
+  private pendingUnlocks: Unlock[] = [];
+  /** Feats completed during the current solo run, announced on its result card. */
+  private pendingFeats: string[] = [];
   /** Set while playing today's Daily Bonk (never overwrites solo bests). */
   private daily: { key: string; positionId: string } | null = null;
+  /** This daily run's shots so far (rules/dailyShare.ts codes), saved with the day's first result. */
+  private dailyRun = '';
+  /** Practice on a cleared garden: unlimited shots, nothing saved (SPEC §4.2). */
+  private practice = false;
+  /** Gameplay key bindings (Settings → Keys). */
+  private keys: KeyBindings = DEFAULT_KEYS;
+  /**
+   * Bumped by every map load and by leaving play: a map whose art finishes rasterizing after the
+   * player has gone Home (or picked another garden) must not build itself behind the menu.
+   */
+  private loadToken = 0;
+  /** The coach's ghost hand on the first garden while it plays (rules/coach.ts). */
+  private coachHand: CoachRenderer | null = null;
+  /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
+  private coachHint: string | null = null;
+  /** This garden's first-meeting tip (rules/mechanicTips.ts): the aiming caption until the first hit here. */
+  private mechanicTip: string | null = null;
   private readonly hatImages = new Map<string, string>();
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
@@ -96,6 +182,34 @@ export class PrototypeScene extends Phaser.Scene {
   private cosmeticBall: { x: number; y: number; vx: number; vy: number } | null = null;
   private outOfCanvasSoundPlayed = false;
   private skipPresentationFrame = false;
+  /** Fast-forwards a missed ball that is only rolling to a stop (presentation time only). */
+  private readonly settleClock = new SettleClock();
+  /** The HUD pill currently offers "Skip" for a rolling ball. */
+  private skipOffered = false;
+  /** Solo: Jonh's line about the last miss stays in his bubble while the player re-aims. */
+  private lastMissQuote: string | null = null;
+  /** Shots in a row (this session) that did not hit Jonh's body: his lines escalate. */
+  private missStreak = 0;
+  /** Jonh heckles a player who takes ages to aim. */
+  private readonly heckles = new HeckleTimer();
+  /** Multiplayer party: the last scored shot (for the next handover's taunt) and the current stakes. */
+  private lastPartyShot: { shooter: number; outcome: ClassifiedOutcome } | null = null;
+  private currentStakes: Stakes | null = null;
+  /** Every body hit of the current match, for the winning-shot replay. */
+  private matchHighlights: Array<{ player: number; mapId: string; positionId: string; angle: number; power: number; outcome: ClassifiedOutcome }> = [];
+  /** In-canvas text grows on small screens (speech bubble, landing label). */
+  private textBoost = 1;
+  /** A title card is covering the start of this round: the first handover waits for it. */
+  private titleCardPending = false;
+  /** The winning-shot replay before the match result: not started, playing, or done for this match. */
+  private showcaseState: 'none' | 'playing' | 'done' = 'none';
+  /**
+   * While a replay plays in ShowcaseScene, the wind bed follows the replayed garden (the winning shot
+   * may come from another round's garden); undefined when no replay is on.
+   */
+  private showcaseWind: number | null | undefined = undefined;
+  /** The shareable clip being recorded from a result card, if any (share/clipDirector.ts). */
+  private clipDirector: ClipDirector | null = null;
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -107,12 +221,16 @@ export class PrototypeScene extends Phaser.Scene {
   private menuOverlay!: MenuOverlay;
   private audioManager!: AudioManager;
   private reactionSelector = new JonhReactionSelector();
+  /** Online lines: seeded by the match and the moment, so every screen shows the same one. */
+  private readonly sharedLines = new SharedLines();
   private classifier = new ShotClassifier();
 
   private currentLevel!: LevelData;
   private multiplayerPositionKey = '';
   /** Online play glue; null when no Convex deployment is configured. */
   private online: OnlineController | null = null;
+  /** Daily Bonk friends boards (SPEC §6.2); null when no Convex deployment is configured. */
+  private boards: FriendsBoardController | null = null;
   /** This device's view of the current online shot, kept until the official outcome is applied. */
   private onlineLocal: { outcome: ClassifiedOutcome; label: string; quote: string; resultSeconds: number } | null = null;
   private sceneryRenderer!: SceneryRenderer;
@@ -167,10 +285,17 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
+        this.audioManager.setWindBed(null);
+        // The continuous flight sounds are driven every frame, and no frame runs while paused: stop them here
+        // (the first frame after Resume drives them again).
+        this.audioManager.setFlightWhoosh(null);
+        this.audioManager.setRampRumble(null);
+        this.audioManager.setMagnetHum(null);
+        this.audioManager.setSkid(null);
         this.canvasAim.cancel();
         this.inputCoordinator.setPaused(true);
         this.htmlControls.setControlsInert(true);
-        this.menuOverlay.showPauseMenu(this.online?.inMatch ? 'Leave match' : undefined);
+        this.menuOverlay.showPauseMenu(this.online?.inMatch ? 'Leave match' : this.practice ? 'End practice' : undefined);
       },
       onResume: () => {
         this.inputCoordinator.setPaused(false);
@@ -183,7 +308,10 @@ export class PrototypeScene extends Phaser.Scene {
         this.menuOverlay.hide();
       },
       onQuit: () => {
+        // Ending practice goes back to the gardens (still in practice), not all the way Home.
+        const fromPractice = this.practice;
         this.performQuit();
+        if (fromPractice) this.menuOverlay.showMapSelect(true);
       }
     }, this.stepper);
 
@@ -193,7 +321,7 @@ export class PrototypeScene extends Phaser.Scene {
         onAngleChange: (angle) => this.setAngle(angle),
         onPowerChange: (power) => this.setPower(power),
         onFire: () => this.fire(),
-        onReset: () => this.reset(),
+        onReset: () => { if (!this.hurryShot()) this.reset(); },
         onToggleDebug: (enabled) => {
           if (!this.isDevOptIn) return;
           this.isDebugEnabled = enabled;
@@ -218,11 +346,14 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.menuOverlay = new MenuOverlay(gameContainer, {
       onMapSelected: (mapId) => this.loadMap(mapId),
+      onPracticeSelected: (mapId) => this.loadMap(mapId, null, true),
       onRetry: () => {
+        this.lastMissQuote = null;
         this.inputCoordinator.setOverlayVisible(false);
         this.htmlControls.setVisible(true);
         this.htmlControls.setControlsInert(false);
         this.soloMachine.retry();
+        this.dailyRun = '';
         this.reset();
       },
       onReturnToMenu: () => {
@@ -235,9 +366,11 @@ export class PrototypeScene extends Phaser.Scene {
         if (this.online?.inMatch) { this.online.requestRematch(); return; }
         this.inputCoordinator.setOverlayVisible(false);
         this.multiMachine.rematch();
+        this.stopShowcase();
+        this.lastPartyShot = null;
+        this.matchHighlights = [];
         this.trailHistory.clear();
-        this.loadMultiplayerMap(this.multiMachine.currentMapId);
-        this.updateUIPerMultiState();
+        this.loadMultiplayerMap(this.multiMachine.currentMapId, () => this.updateUIPerMultiState());
       },
       onPauseResume: () => this.sessionCoordinator.resume(),
       onPauseQuit: () => this.sessionCoordinator.quit(),
@@ -249,23 +382,36 @@ export class PrototypeScene extends Phaser.Scene {
         this.htmlControls.setMuted(this.audioManager.isSilenced);
         document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
         if (this.jonhRenderer) this.jonhRenderer.setReducedMotion(settings.reducedMotion);
-        this.attract?.jonh.setReducedMotion(settings.reducedMotion);
+        this.attract?.stage.jonh.setReducedMotion(settings.reducedMotion);
       },
       onClick: () => this.audioManager.playClick(),
+      onKeysChange: (keys) => this.applyKeys(keys),
+      onSaveImported: () => { this.progress = loadProgress(); },
       onHomeExtras: (row, signal) => this.addHomeExtras(row, signal),
       onOnline: isOnlineConfigured() ? () => this.online?.open() : undefined,
     });
     this.online = isOnlineConfigured() ? new OnlineController(this.menuOverlay, this.onlineHooks()) : null;
+    this.boards = isOnlineConfigured() ? new FriendsBoardController(this.menuOverlay, {
+      progress: () => this.progress,
+      playDaily: () => this.playDailyNow(),
+      back: () => this.showDaily(),
+      loadName: () => loadOnlineProfile().name,
+      saveName: name => saveOnlineProfile({ ...loadOnlineProfile(), name }),
+    }) : null;
     document.documentElement.classList.toggle('reduced-motion', loadSaveData().settings.reducedMotion);
+    setPlayerPalette(loadSaveData().settings.playerColors);
 
     this.inputCoordinator = new InputCoordinator({
       onFire: () => this.fire(),
-      onReset: () => this.reset(),
+      onReset: () => { if (!this.hurryShot()) this.reset(); },
       onContinue: () => {
+        if (this.hurryShot()) return;
         if (this.attemptMachine?.state === 'resolved') {
           this.reset();
         }
       },
+      // Space while it can't fire: finish a rolling ball, or (solo) skip the result window.
+      onSkip: () => { if (!this.hurryShot()) this.skipResult(false); },
       onToggleMute: () => {
         const isMuted = this.audioManager.toggleMute();
         this.htmlControls.setMuted(isMuted);
@@ -285,7 +431,11 @@ export class PrototypeScene extends Phaser.Scene {
     });
 
     this.canvasAim = new CanvasAim(this.game.canvas, {
-      canAim: () => this.canAimNow(),
+      canAim: () => {
+        // Touching the field during a solo miss's result window skips straight back to aiming.
+        this.skipResult(true);
+        return this.canAimNow();
+      },
       getAim: () => ({ angle: this.currentAngleDeg, power: this.currentPowerPercent }),
       onAim: (angle, power) => { this.setAngle(angle); this.setPower(power); },
       toWorld: (clientX, clientY) => {
@@ -298,6 +448,15 @@ export class PrototypeScene extends Phaser.Scene {
       pivot: () => this.cannonRenderer?.pivot ?? { x: 0, y: 0 },
       worldPerPx: () => 1 / (this.view.zoom ?? 1),
     });
+
+    // Title screen: tapping the garden fires the demo shot at Jonh right away.
+    const onTitleTap = (event: PointerEvent) => {
+      if (this.activeMode !== 'none' || !this.attract || !event.isPrimary || this.menuOverlay.getView() !== 'home') return;
+      this.audioManager.unlock();
+      this.attractFire();
+    };
+    this.game.canvas.addEventListener('pointerdown', onTitleTap);
+    this.cleanupHandlers.push(() => this.game.canvas.removeEventListener('pointerdown', onTitleTap));
 
     // Gesture unlock
     const unlockAudio = () => this.audioManager.unlock();
@@ -312,6 +471,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     // Keyboard bindings
     const onKeyDown = (e: KeyboardEvent) => {
+      if (this.showcaseState === 'playing') return;
       const isInput = isTextInputElement(e.target || document.activeElement);
 
       if (e.code === 'KeyD' && !isInput && this.isDevOptIn) {
@@ -321,6 +481,7 @@ export class PrototypeScene extends Phaser.Scene {
       
       const isOverlayOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
       this.inputCoordinator.setOverlayVisible(isOverlayOpen);
+      if (!isInput && !e.repeat && aimKeys(this.keys).includes(e.code)) this.skipResult(true);
 
       const focused = e.target instanceof HTMLElement ? e.target : document.activeElement;
       const isActionButton = focused instanceof HTMLButtonElement && focused.id !== 'fire-btn';
@@ -332,10 +493,14 @@ export class PrototypeScene extends Phaser.Scene {
     const onKeyUp = (e: KeyboardEvent) => {
       this.inputCoordinator.handleKeyUp(e.code);
     };
+    this.applyKeys(loadSaveData().settings.keys);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     this.cleanupHandlers.push(() => window.removeEventListener('keydown', onKeyDown));
     this.cleanupHandlers.push(() => window.removeEventListener('keyup', onKeyUp));
+    const onHashChange = () => { this.takeSaveLink(); };
+    window.addEventListener('hashchange', onHashChange);
+    this.cleanupHandlers.push(() => window.removeEventListener('hashchange', onHashChange));
 
     const onHidden = () => { this.stepper.reset(); this.skipPresentationFrame = true; };
     const onVisible = () => { this.stepper.reset(); this.skipPresentationFrame = true; };
@@ -345,6 +510,12 @@ export class PrototypeScene extends Phaser.Scene {
       this.game.events.off(Phaser.Core.Events.HIDDEN, onHidden);
       this.game.events.off(Phaser.Core.Events.VISIBLE, onVisible);
     });
+
+    // Small screens: grow in-canvas text so it stays readable (re-measured whenever the canvas refits).
+    const onResize = () => this.updateTextBoost();
+    this.scale.on(Phaser.Scale.Events.RESIZE, onResize);
+    this.cleanupHandlers.push(() => this.scale.off(Phaser.Scale.Events.RESIZE, onResize));
+    this.updateTextBoost();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.cleanup());
 
@@ -356,8 +527,44 @@ export class PrototypeScene extends Phaser.Scene {
     this.showAttract();
 
     // A shared room link (?room=CODE) opens online play directly, rejoining this tab's seat after a reload.
-    const roomParam = new URLSearchParams(window.location.search).get('room');
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    const boardParam = params.get(BOARD_LINK_PARAM);
     if (roomParam && this.online) void this.online.openFromLink(roomParam);
+    else if (boardParam !== null) {
+      // A friends-board invite (?board=CODE) opens that board; without a backend, the Daily screen says why not.
+      const url = new URL(window.location.href);
+      url.searchParams.delete(BOARD_LINK_PARAM);
+      window.history.replaceState(null, '', url);
+      if (this.boards) this.boards.openFromLink(boardParam);
+      else this.showDaily();
+    } else if (this.takeSaveLink()) { /* asking about a save link from another device */ }
+    else if (params.has(DAILY_LINK_PARAM)) {
+      // A shared Daily Bonk result links here: open today's challenge (once; a reload starts at Home).
+      const url = new URL(window.location.href);
+      url.searchParams.delete(DAILY_LINK_PARAM);
+      window.history.replaceState(null, '', url);
+      this.showDaily();
+    }
+    void this.boards?.syncPosts();
+  }
+
+  /**
+   * A save link (`#save=…`) from another device: clears the fragment (so a reload doesn't ask again) and asks
+   * before loading it, at once outside a game or else the next time Home shows. Also runs when such a link is
+   * opened in a tab that is already open.
+   */
+  private takeSaveLink(): boolean {
+    const code = saveCodeFromHash(window.location.hash);
+    if (!code) return false;
+    const url = new URL(window.location.href);
+    url.hash = '';
+    window.history.replaceState(null, '', url);
+    // Never interrupt a game or a room: ask the next time Home shows.
+    if (this.activeMode !== 'none' || this.online?.inRoom) { this.menuOverlay.queueSaveLink(code); return false; }
+    this.boards?.close(); // a live friends board must not redraw over the prompt
+    this.menuOverlay.showSaveLink(code);
+    return true;
   }
 
   /** True while the active player may adjust aim (drives drag input and the aim aids). */
@@ -374,6 +581,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private togglePause(): void {
+    if (this.showcaseState === 'playing') return;
     if (this.sessionCoordinator.isPaused) {
       this.sessionCoordinator.resume();
     } else {
@@ -394,7 +602,18 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private teardownGameplay(): void {
+    this.stopShowcase();
+    this.titleCardPending = false;
+    this.loadToken++; // a garden still loading its art must not build itself after this
+    this.audioManager.setWindBed(null);
+    this.audioManager.setMagnetHum(null);
+    this.footsteps.reset();
+    this.missStreak = 0;
     this.daily = null;
+    this.practice = false;
+    this.dismissCoachHand();
+    this.coachHint = null;
+    this.mechanicTip = null;
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.cancel();
@@ -407,6 +626,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.trailHistory.clear();
     this.lastProjectileState = null;
     this.currentLevel = null as unknown as LevelData;
+    this.htmlControls?.setCaptionLow(false);
     this.attemptMachine = null as unknown as ShotAttemptMachine;
     this.shotShooterIndex = null;
 
@@ -426,33 +646,140 @@ export class PrototypeScene extends Phaser.Scene {
     this.showAttract();
   }
 
-  /** The title screen's live backdrop: Jonh reading in his garden while menus are open. */
+  private updateTextBoost(): void {
+    const width = this.game.canvas.getBoundingClientRect().width;
+    const boost = readabilityBoost(width);
+    if (Math.abs(boost - this.textBoost) < 0.01) return;
+    this.textBoost = boost;
+    this.jonhRenderer?.setUiScale(this.textBoost / (this.view.zoom ?? 1));
+    this.trailRenderer?.setTextBoost(this.textBoost);
+    this.attract?.stage.jonh.setUiScale(this.textBoost);
+    this.coachHand?.setUiScale(this.textBoost / (this.view.zoom ?? 1));
+  }
+
+  /** The title screen's live backdrop: Jonh reading in one of your gardens while menus are open. */
   private showAttract(): void {
     this.hideAttract();
-    const level = MAPS[0]!;
-    const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
-    const scenery = new SceneryRenderer(this, ppm, h, w);
-    scenery.draw(level);
-    const jonh = new JonhRenderer(this, level.jonhSpawn, ppm, h, { level, hatId: this.progress.selectedHat });
-    jonh.setReducedMotion(loadSaveData().settings.reducedMotion);
-    const cannon = new CannonRenderer(this, level.cannonSpawn, ppm, h);
-    cannon.setAimAids(false, 50);
-    cannon.draw(38, null);
-    this.view = { width: w, height: h };
-    this.cameraRig?.setView(this.view);
-    this.attract = { scenery, jonh, cannon };
+    const stage = new DemoStage(this, this.pickAttractLevel(),
+      { audio: this.audioManager, effects: this.effects, camera: this.cameraRig, timeline: this.impactTimeline },
+      { hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit, skin: this.progress.selectedCannon,
+        reducedMotion: loadSaveData().settings.reducedMotion, textBoost: this.textBoost });
+    this.view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
+    this.attract = { stage, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2 };
+    this.warmAttractShots();
+  }
+
+  /** A garden the player has unlocked (ordinary width, so the title framing fits). */
+  private pickAttractLevel(): LevelData {
+    return pickAttractLevel(id => artReady(levelArtGroups(id)));
   }
 
   private hideAttract(): void {
     if (!this.attract) return;
-    this.attract.scenery.destroy();
-    this.attract.jonh.destroy();
-    this.attract.cannon.destroy();
+    this.attract.stage.destroy();
     this.attract = null;
+    this.effects?.reset();
+    this.impactTimeline.reset();
+    this.cameraRig?.reset();
   }
 
+  /** A recorded reference shot (cached: recording runs real Matter on a private engine). */
+  private recordedShot(level: LevelData, angleDeg: number, powerPercent: number): RecordedShot {
+    const key = `${level.id}:${level.jonhSpawn.bodyBox.minX}:${angleDeg}:${powerPercent}`;
+    let shot = this.recordedShots.get(key);
+    if (!shot) {
+      shot = recordDemoShot(level, angleDeg, powerPercent);
+      this.recordedShots.set(key, shot);
+    }
+    return shot;
+  }
 
-  private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null): void {
+  /**
+   * Records the title garden's demo shots in idle time, one per idle slot, so the first demo shot
+   * does not re-simulate on the frame it fires (a 50–70 ms hitch on a phone; phone pass).
+   */
+  private warmAttractShots(): void {
+    const a = this.attract;
+    if (!a || typeof window === 'undefined') return;
+    const pending = a.stage.level.referenceSolutions.slice();
+    const next = (): void => {
+      const aim = pending.shift();
+      if (!aim || this.attract !== a) return;
+      this.recordedShot(a.stage.level, aim.angleDeg, aim.powerPercent);
+      whenIdle(next);
+    };
+    whenIdle(next);
+  }
+
+  /** Title screen: aim at Jonh, wind up and fire a recorded reference shot (tap = right now). */
+  private attractFire(): void {
+    const a = this.attract;
+    if (!a || a.stage.busy) return;
+    if (a.stage.jonh.isReducedMotionActive()) {
+      // No flying ball under reduced motion: he just answers.
+      const line = this.reactionSelector.selectTitle(false);
+      a.stage.jonh.triggerArrival(line);
+      this.audioManager.playMutter(line.length);
+      return;
+    }
+    const aims = a.stage.level.referenceSolutions;
+    const aim = aims[Math.floor(Math.random() * aims.length)]!;
+    a.stage.fire({
+      shot: this.recordedShot(a.stage.level, aim.angleDeg, aim.powerPercent),
+      angleDeg: aim.angleDeg,
+      powerPercent: aim.powerPercent,
+      line: this.reactionSelector.selectTitle(true),
+      onDone: () => { if (this.attract === a) a.timer = FLOW.attractShotEverySeconds + Math.random() * 4; },
+    });
+  }
+
+  private updateAttract(dt: number, reduced: boolean): void {
+    const a = this.attract!;
+    const onHome = this.menuOverlay.isVisible() && this.menuOverlay.getView() === 'home';
+    if (a.quipIn !== null) {
+      a.quipIn -= dt;
+      if (a.quipIn <= 0) {
+        a.quipIn = null;
+        if (onHome && !a.stage.busy) {
+          const line = this.reactionSelector.selectTitle(false);
+          a.stage.jonh.triggerArrival(line);
+          this.audioManager.playMutter(line.length);
+        }
+      }
+    }
+    if (!a.stage.busy && onHome && !reduced) {
+      a.timer -= dt;
+      if (a.timer <= 0) { a.timer = Number.POSITIVE_INFINITY; this.attractFire(); }
+    }
+    a.stage.update(dt, reduced);
+  }
+
+  private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null, practice = false): void {
+    // Art is rasterized the first time a garden (or hat, outfit, cannon) is needed; wait for it, then build the scene.
+    const token = ++this.loadToken;
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups()], () => {
+      if (token !== this.loadToken) return;
+      this.loadMapNow(mapId, daily, practice);
+      this.warmNextGarden();
+    });
+  }
+
+  /**
+   * Once the garden is up and the player is aiming, rasterizes the garden that most likely comes next (the next
+   * one in the campaign, or the next round's map) in idle time, so Next garden doesn't wait on art.
+   */
+  private warmNextGarden(): void {
+    const next = this.activeMode === 'multi' ? this.multiMachine.nextMapId
+      : this.daily ? null : campaignSuccessor(MAP_IDS, this.currentLevel.id);
+    if (!next || artReady(levelArtGroups(next))) return;
+    const token = this.loadToken;
+    globalThis.setTimeout(() => whenIdle(() => {
+      if (token !== this.loadToken) return; // left the garden meanwhile
+      ensureArt(this, levelArtGroups(next)).catch((error: unknown) => console.error('Hit Jonh failed to prepare art', error));
+    }), FLOW.warmNextGardenSeconds * MS_PER_SECOND);
+  }
+
+  private loadMapNow(mapId: string, daily: { key: string; positionId: string } | null, practice: boolean): void {
     this.hideAttract();
     this.autoAdvance.cancel();
     this.resetEffects();
@@ -460,7 +787,12 @@ export class PrototypeScene extends Phaser.Scene {
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
     this.daily = daily;
+    this.practice = practice && !daily;
+    this.dailyRun = '';
+    this.coachHint = null;
+    this.mechanicTip = this.firstMeetingTip(level);
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
+    this.lastMissQuote = null;
 
     const { designWidthPx: w, designHeightPx: h, pixelsPerMetre: ppm } = WORLD;
 
@@ -483,13 +815,14 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.settledSeconds,
       SHOT.timeoutSeconds,
       SHOT.boundsMarginMetres,
+      this.currentLevel.bounds.minY,
     );
-    this.soloMachine = new SoloChallengeMachine(mapId);
+    this.soloMachine = new SoloChallengeMachine(mapId, { practice: this.practice });
 
     this.soloCoordinator = new SoloCoordinator(this.attemptMachine, this.soloMachine, {
       onStateChange: () => this.updateUIPerSoloState(),
       onShotFired: (angle, power) => {
-        if (!this.daily) saveSoloAim(this.soloMachine.mapId, angle, power);
+        if (!this.daily && !this.practice) saveSoloAim(this.soloMachine.mapId, angle, power);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
         const speed = this.levelPhys.launchSpeed(power);
@@ -502,7 +835,7 @@ export class PrototypeScene extends Phaser.Scene {
       onShowResult: (res) => {
         this.inputCoordinator.setOverlayVisible(true);
         this.htmlControls.setControlsInert(true);
-        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle, this.soloResultExtras);
+        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle, { ...this.soloResultExtras, clip: res.success ? this.soloClipOffer(res.hasStyle) : undefined });
         this.audioManager.playSting(res.success);
         this.htmlControls.setCanFire(false);
         this.htmlControls.setFeedback('', 'info');
@@ -513,17 +846,19 @@ export class PrototypeScene extends Phaser.Scene {
     // Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
+    this.htmlControls.setCaptionLow(Boolean(this.currentLevel.captionLow));
 
-    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
+    this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys, this.progress.selectedCannon);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
     this.trailRenderer.setView(this.view);
+    this.trailRenderer.setTextBoost(this.textBoost);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -546,8 +881,59 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
 
     this.reset();
-    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
+    this.jonhSays(this.lines('arrival').selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
+    const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
+    // The first garden of a campaign chapter names the chapter on the same card (not practice or Daily).
+    const opened = daily || this.practice ? null : chapterOpenedBy(campaignStatus(MAP_IDS, data.solo), level.id);
+    playTitleCard(level.name, daily ? 'Daily Bonk' : this.practice ? `Practice · Garden ${number}` : `Garden ${number}`, data.settings.reducedMotion, opened ? chapterLabel(opened) : null);
+    this.startCoachHand();
+  }
+
+  /**
+   * The first time a player meets a garden's mechanic (rules/mechanicTips.ts): its one-line tip, saved
+   * as seen at once. Gardens cleared before tips existed count as met. Practice never tips.
+   */
+  private firstMeetingTip(level: LevelData): string | null {
+    const cleared = Object.entries(loadSaveData().solo).filter(([, r]) => r?.bestShots != null).map(([id]) => MAPS.find(m => m.id === id)?.mechanic);
+    const tip = mechanicTip({ mechanic: level.mechanic, seen: this.progress.seenTips, cleared, practice: this.practice });
+    if (!tip) return null;
+    this.progress = { ...this.progress, seenTips: [...this.progress.seenTips, tip.id] };
+    saveProgress(this.progress);
+    return tip.text;
+  }
+
+  /** The ball touched the ground before reaching the nearest obstacle it hit (it rolled into it). */
+  private landedBeforeObstacle(state: ProjectileState): boolean {
+    const ground = state.firstGroundContact;
+    if (!ground || state.obstacleContacts.length === 0) return false;
+    const near = Math.min(...state.obstacleContacts.map(c => this.currentLevel.obstacles.find(o => o.id === c.id)?.box.minX ?? Number.POSITIVE_INFINITY));
+    return ground.xSim < near;
+  }
+
+  /** Remapped keys (Settings → Keys): the keyboard coordinator and the HUD's key labels follow them. */
+  private applyKeys(keys: KeyBindings): void {
+    this.keys = keys;
+    this.inputCoordinator.setKeys(keys);
+    this.htmlControls.setKeyLabels(keyLabel(keys.fire), keyLabel(keys.next));
+  }
+
+  /** The coach's ghost hand: on the first garden, for a player who has never hit Jonh (rules/coach.ts). */
+  private startCoachHand(): void {
+    this.dismissCoachHand();
+    const show = showGhostHand({ mode: this.activeMode, daily: this.daily !== null, mapId: this.currentLevel.id, firstMapId: campaignOrder(MAP_IDS)[0]!,
+      totalHits: this.progress.totalHits, shotsFired: 0, aimTouched: false });
+    if (!show) return;
+    const { pixelsPerMetre: ppm, designHeightPx: h } = WORLD;
+    const spawn = this.currentLevel.cannonSpawn;
+    const from = { x: metresToPixels(spawn.x, ppm), y: simYToWorldY(spawn.y, h, ppm) };
+    const to = { x: metresToPixels(spawn.x + COACH.dragTo.x, ppm), y: simYToWorldY(spawn.y + COACH.dragTo.y, h, ppm) };
+    this.coachHand = new CoachRenderer(this, from, to, this.textBoost / (this.view.zoom ?? 1));
+  }
+
+  private dismissCoachHand(): void {
+    this.coachHand?.destroy();
+    this.coachHand = null;
   }
 
   private setAngle(angle: number): void {
@@ -555,6 +941,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
     if (res) {
+      if (res.angle !== this.currentAngleDeg) { this.heckles.activity(); this.dismissCoachHand(); }
       this.currentAngleDeg = res.angle;
       this.drawCannon();
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
@@ -566,6 +953,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, 0, power - this.currentPowerPercent);
     if (res) {
+      if (res.power !== this.currentPowerPercent) { this.heckles.activity(); this.dismissCoachHand(); }
       this.currentPowerPercent = res.power;
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
     }
@@ -578,8 +966,12 @@ export class PrototypeScene extends Phaser.Scene {
     this.canvasAim.cancel();
     this.autoAdvance.cancel();
     this.resetEffects();
+    this.dismissCoachHand();
+    this.coachHint = null;
     this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
+    this.lastMissQuote = null;
+    this.heckles.reset();
 
     this.classifier.reset();
     this.inputCoordinator.setCanFire(false);
@@ -604,7 +996,8 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (this.activeMode === 'solo') {
-      this.htmlControls.setFeedback(`Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
+      this.htmlControls.setFeedback(this.practice ? `Practice shot ${this.soloMachine.shotsTaken}: Cannonball in flight...`
+        : `Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
     } else {
       this.shotShooterIndex = this.multiMachine.lastShooterIndex;
       const shooter = this.multiMachine.players[this.shotShooterIndex!]!;
@@ -646,8 +1039,11 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeReactionQuote = null;
 
     this.ballRenderer.setVisible(false);
+    this.heckles.reset();
     this.jonhRenderer.resetToIdle();
     this.jonhRenderer.draw(false);
+    // Solo: his line about the miss stays up while you re-aim (the result window is short).
+    if (this.activeMode === 'solo' && this.lastMissQuote) this.jonhRenderer.triggerArrival(this.lastMissQuote);
     this.drawCannon();
     this.trailRenderer.onAttemptReset();
     
@@ -664,11 +1060,23 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
+      if (this.practice) {
+        const { hits, shotsTaken: shots } = this.soloMachine;
+        this.htmlControls.setMatchStatus(`Practice · ${this.currentLevel.name}`, []);
+        this.htmlControls.setStreak(0);
+        this.htmlControls.setAttempts(null);
+        this.htmlControls.setFeedback(shots === 0 ? 'Practice: as many shots as you like. Nothing is saved.'
+          : `Practice: ${hits} hit${hits === 1 ? '' : 's'} in ${shots} shot${shots === 1 ? '' : 's'}`, 'info');
+        return;
+      }
       this.htmlControls.setMatchStatus(this.daily ? `Daily Bonk · ${this.currentLevel.name}` : this.currentLevel.name, []);
       this.htmlControls.setStreak(this.progress.currentStreak);
       const left = this.soloMachine.attemptsLeft;
       this.htmlControls.setAttempts(left);
-      this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${left} shot${left === 1 ? '' : 's'} left. Adjust and fire again`, 'info');
+      const shotsLeft = `${left} shot${left === 1 ? '' : 's'} left`;
+      if (this.coachHint) this.htmlControls.setFeedback(`${this.coachHint} ${shotsLeft}.`, 'coach');
+      else if (this.mechanicTip) this.htmlControls.setFeedback(left === 3 ? this.mechanicTip : `${this.mechanicTip} ${shotsLeft}.`, 'coach');
+      else this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${shotsLeft}. Adjust and fire again`, 'info');
     }
   }
 
@@ -676,16 +1084,16 @@ export class PrototypeScene extends Phaser.Scene {
     this.online?.update(Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND)));
     if (this.activeMode === 'none' && this.attract) {
       const dt = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
-      const reduced = this.attract.jonh.isReducedMotionActive();
-      this.attract.scenery.update(dt, reduced);
-      this.attract.jonh.update(dt);
+      this.updateAttract(dt, this.attract.stage.jonh.isReducedMotionActive());
       return;
     }
     if (this.sessionCoordinator?.isPaused || this.activeMode === 'none' || !this.currentLevel || !this.attemptMachine) return;
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
-    this.sceneryRenderer.update(dtSeconds, reduced);
+    this.sceneryRenderer.magnet.follow(this.ballRenderer.drawnAt); // glow follows the drawn ball (live or replay)
+    this.sceneryRenderer.update(dtSeconds, reduced, this.audioManager.windGust());
+    this.coachHand?.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
     const timelineSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
     if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
@@ -707,67 +1115,39 @@ export class PrototypeScene extends Phaser.Scene {
     if (advance === 'round') { this.nextMultiplayerRound(); return; }
 
     this.jonhRenderer.setAware(this.canvasAim.isDragging);
+    if (this.canAimNow() && !this.canvasAim.isDragging && this.heckles.advance(dtSeconds)) {
+      this.jonhSays(this.reactionSelector.selectHeckle(this.missStreak));
+    }
     this.jonhRenderer.setAlarm(replayFrameNow?.phase === 'pre' ? this.replayAlarm(replayFrameNow) : this.incomingAlarm());
     this.jonhRenderer.update(reactionSeconds);
-    const steps = this.stepper.advance(timelineSeconds);
+    // A missed ball that is only rolling to a stop is fast-forwarded: scaled real time is fed to
+    // the accumulator (with a matching step cap); the fixed step itself never changes.
+    const fastForward = this.settleClock.advance(dtSeconds, this.fastForwardTarget());
+    this.offerSkip(this.settleClock.isFastForwarding && this.attemptMachine.state === 'simulating');
+    const steps = this.stepper.advance(timelineSeconds * fastForward, Math.ceil(PHYSICS.maxStepsPerFrame * fastForward));
     const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
 
     for (let i = 0; i < steps; i++) {
       this.matter.world.step(stepMs);
-
-      if (this.attemptMachine.state === 'simulating') {
-        const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
-        if (state) {
-          // Sound follows the visible canvas; top exits still keep their valid flight path.
-          const v = this.view;
-          const bottom = v.bottom ?? v.height;
-          if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > v.width ||
-            state.yPx < bottom - v.height || state.yPx > bottom)) {
-            this.outOfCanvasSoundPlayed = true;
-            this.audioManager.playOutOfBounds();
-          }
-          if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
-          this.detectBounce(state, reduced);
-          this.lastProjectileState = state;
-          const ppmNow = WORLD.pixelsPerMetre;
-          this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
-          this.trailRenderer.addPoint(state.xPx, state.yPx);
-          if (state.firstGroundContact && !this.groundFeedbackShown) {
-            this.groundFeedbackShown = true;
-            const landing = state.firstGroundContact;
-            this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
-          }
-
-          if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
-            this.hatReactionTriggered = true;
-            this.activeReactionQuote = this.reactionSelector.selectReaction('hat');
-            this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
-            this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
-          } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
-            this.overheadReactionTriggered = true;
-            this.activeReactionQuote = this.reactionSelector.selectReaction('overhead');
-            this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
-          }
-
-          const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
-            x: state.xSim,
-            y: state.ySim,
-            speed: state.speedMs,
-            hitBody: state.hitJonh,
-            hitHat: state.hitHat,
-          });
-
-          if (result.resolved) {
-            this.handleResolution(result, state);
-            break;
-          }
-        }
-      }
+      if (this.attemptMachine.state === 'simulating' && this.simulateStep(reduced)) break;
     }
 
+    // Walking Jonh follows the physics' route clock; the replay re-walks it in step with the ball.
+    const routePose = this.physicsAdapter?.jonhRoutePoseAt(
+      replayFrameNow?.phase === 'pre' ? replayFrameNow.simT : this.attemptMachine.simulatedTime) ?? null;
+    this.jonhRenderer.followRoute(routePose);
+    // Footsteps come from the same walked distance as his legs, so they also follow replays and stop when he does.
+    for (const foot of this.footsteps.update(routePose)) this.audioManager.playFootstep(foot);
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
+    // Skate ramp: a plywood rumble while the ball rolls along the curve.
+    const rolling = flying && this.lastProjectileState!.rampRolling !== null;
+    this.audioManager.setRampRumble(rolling
+      ? clamp01((this.lastProjectileState!.speedMs - RAMP.rumbleFromMs) / (RAMP.rumbleFullMs - RAMP.rumbleFromMs)) : null);
+    this.audioManager.setMagnetHum(flying && this.sceneryRenderer.magnet.active ? this.sceneryRenderer.magnet.proximity : null);
+    this.audioManager.setSkid(flying && this.lastProjectileState!.slidingOn ? this.lastProjectileState!.speedMs / ICE_FX.fullSpeedMs : null);
+    this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
@@ -787,15 +1167,160 @@ export class PrototypeScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * One fixed step of the live shot after Matter has stepped: contacts, trail, reactions and the
+   * shot rules. Returns true when the shot resolved. `quiet` (Skip) drops per-bounce sound and dust.
+   */
+  private simulateStep(reduced: boolean, quiet = false): boolean {
+    const state = this.physicsAdapter.stepProjectile(this.currentLevel, PROJECTILE.radiusMetres);
+    if (!state) return false;
+    // Sound follows the visible canvas; top exits still keep their valid flight path.
+    const v = this.view;
+    const bottom = v.bottom ?? v.height;
+    if (!this.outOfCanvasSoundPlayed && (state.xPx < 0 || state.xPx > v.width ||
+      state.yPx < bottom - v.height || state.yPx > bottom)) {
+      this.outOfCanvasSoundPlayed = true;
+      if (!quiet) this.audioManager.playOutOfBounds();
+    }
+    if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) this.flightDir = Math.sign(state.vxSim);
+    // [mechanics] A smashed pane or a portal plays its own effects and sound; it is not a bounce.
+    // It always runs (even during Skip) so the renderer's broken panes and spent hoops stay right.
+    const mechanicsEvent = this.sceneryRenderer.mechanics.onStep(state, reduced, this.audioManager);
+    // Rolling along a ramp's curve turns the velocity every step; that is not a bounce either.
+    if (quiet || mechanicsEvent || state.rampRolling !== null) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+    else this.detectBounce(state, reduced);
+    // Ice: chips kicked up behind a skidding ball, a puff every few steps.
+    if (!quiet && state.slidingOn && state.speedMs > ICE_FX.sprayFromSpeedMs && ++this.skidSteps % ICE_FX.sprayEverySteps === 0) {
+      this.effects.skid(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(state.speedMs / ICE_FX.fullSpeedMs), state.vxSim, reduced);
+    }
+    this.lastProjectileState = state;
+    const ppmNow = WORLD.pixelsPerMetre;
+    this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
+    this.trailRenderer.addPoint(state.xPx, state.yPx);
+    if (state.firstGroundContact && !this.groundFeedbackShown) {
+      this.groundFeedbackShown = true;
+      const landing = state.firstGroundContact;
+      this.trailRenderer.setLandingMarker(landing.xPx, landing.yPx, 'Landed');
+    }
+
+    if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
+      this.hatReactionTriggered = true;
+      this.activeReactionQuote = this.lines('shot').selectReaction('hat', this.talkContext(state));
+      this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
+      this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
+    } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
+      this.overheadReactionTriggered = true;
+      this.activeReactionQuote = this.lines('shot').selectReaction('overhead', { ...this.talkContext(state), missStreak: this.missStreakSoFar() + 1 });
+      this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
+    }
+
+    const result = this.attemptMachine.step(PHYSICS.fixedStepSeconds, {
+      x: state.xSim,
+      y: state.ySim,
+      speed: state.speedMs,
+      hitBody: state.hitJonh,
+      hitHat: state.hitHat,
+    });
+    if (!result.resolved) return false;
+    this.handleResolution(result, state);
+    return true;
+  }
+
+  /** What Jonh knows about this shot so far (for lines that fit the moment). */
+  private talkContext(state: ProjectileState): ReactionContext {
+    return {
+      mapId: this.currentLevel.id,
+      // Online each screen dresses Jonh in its own player's hat, so hat-specific lines would differ between screens.
+      ...(this.online?.inMatch ? {} : { hatId: this.progress.selectedHat }),
+      obstacles: state.obstacleContacts.map(o => ({ id: o.id, material: o.material })),
+    };
+  }
+
+  /** Jonh's line picker. Online it is seeded by the match and the moment, so every screen shows the same line. */
+  private lines(moment: 'shot' | 'moved' | 'arrival' | 'winning'): LinePicker {
+    const shared = this.online?.inMatch ? this.online.lineMoment(moment) : null;
+    return shared ? this.sharedLines.at(shared.match, shared.moment) : this.reactionSelector;
+  }
+
+  /** Misses in a row before this shot; online, counted from the shared shot list so every screen agrees. */
+  private missStreakSoFar(): number {
+    const shared = this.online?.inMatch ? this.online.lineMoment('shot') : null;
+    return shared ? shared.missStreak : this.missStreak;
+  }
+
+  /** Jonh says a line (speech bubble plus a quiet mutter). */
+  private jonhSays(line: string): void {
+    this.jonhRenderer.triggerArrival(line);
+    this.audioManager.playMutter(line.length);
+  }
+
+  /** How fast presentation time runs this frame: faster only while a landed miss rolls to a stop. */
+  private fastForwardTarget(): number {
+    const p = this.lastProjectileState;
+    if (!p || this.attemptMachine.state !== 'simulating' || this.pendingLaunch) return 1;
+    const jonh = this.physicsAdapter.jonhBodyBox(this.currentLevel);
+    return fastForwardTarget({
+      landed: p.firstGroundContact !== null || p.obstacleContacts.length > 0,
+      speedMs: p.speedMs,
+      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, jonh),
+      impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
+      onRamp: p.rampRolling !== null,
+      slideReachMetres: p.slidingOn
+        ? slideReachMetres(p.vxSim, (jonh.minX + jonh.maxX) / 2 > p.xSim, (MATERIALS as Record<string, MaterialProps>)[p.slidingOn]?.slideFrictionMs2)
+        : 0,
+    });
+  }
+
+  /** The Next pill turns into "Skip" while a missed ball is rolling to a stop. */
+  private offerSkip(on: boolean): void {
+    if (on === this.skipOffered) return;
+    this.skipOffered = on;
+    if (on) this.htmlControls.setResetLabel('Skip »');
+    else if (this.attemptMachine?.state === 'simulating') this.htmlControls.setResetLabel('Aim again ↵');
+  }
+
+  /**
+   * Skip: finishes a shot that is only rolling to a stop within this frame. It runs the very same
+   * fixed steps the clock would have, so the outcome is unchanged; only waiting is removed.
+   */
+  private hurryShot(): boolean {
+    if (this.activeMode === 'none' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() ||
+      this.attemptMachine?.state !== 'simulating' || !this.settleClock.isFastForwarding) return false;
+    const reduced = this.jonhRenderer.isReducedMotionActive();
+    const stepMs = PHYSICS.fixedStepSeconds * MS_PER_SECOND;
+    const maxSteps = Math.ceil(SHOT.timeoutSeconds / PHYSICS.fixedStepSeconds) + 1;
+    for (let i = 0; i < maxSteps && this.attemptMachine.state === 'simulating'; i++) {
+      this.matter.world.step(stepMs);
+      if (this.simulateStep(reduced, true)) break;
+    }
+    this.stepper.reset();
+    return true;
+  }
+
+  /**
+   * Solo only: skips a shot's result window. `aimOnly` (aim keys or touching the field) skips just
+   * a non-final miss, straight back to aiming; Space also skips a final miss or a hit's replay.
+   */
+  private skipResult(aimOnly: boolean): void {
+    if (this.activeMode !== 'solo' || this.sessionCoordinator?.isPaused || this.menuOverlay.isVisible() ||
+      this.attemptMachine?.state !== 'resolved') return;
+    if (aimOnly && this.soloMachine?.state !== 'result') return;
+    this.reset();
+  }
+
   private handleResolution(result: { resolved: true; outcome: 'hit' | 'miss'; reason?: string; hadHatHit?: boolean }, state: ProjectileState): void {
     for (const obs of state.obstacleContacts) {
       this.classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
     }
+    // A hit resolves the shot on first contact, so any hoop the ball went through came before it.
+    for (const id of state.portalsUsed) this.classifier.recordContact({ role: 'portal', id });
     if (state.hitGround) this.classifier.recordContact({ role: 'ground' });
     if (state.hitHat || result.hadHatHit) this.classifier.recordContact({ role: 'jonhHat' });
     if (state.hitJonh) this.classifier.recordContact({ role: 'jonhBody' });
     if (state.passedOverhead) this.classifier.recordOverhead();
 
+    this.settleClock.reset();
+    this.skipOffered = false;
     const classification = this.classifier.classify(true);
     const isBodyHit = classification.isHit;
 
@@ -812,22 +1337,46 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (this.activeMode === 'solo') {
+      if (this.daily) this.dailyRun += shotCode(classification.outcome);
       this.soloCoordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
     } else if (this.activeMode === 'multi' && !this.online?.inMatch) {
       this.multiCoordinator.resolveShot(classification.outcome);
+      if (this.shotShooterIndex !== null) {
+        this.lastPartyShot = { shooter: this.shotShooterIndex, outcome: classification.outcome };
+        this.recordHighlight(this.shotShooterIndex, classification.outcome);
+      }
     }
 
     const feedback = classifyShotOutcome(
       isBodyHit,
       isBodyHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
-      this.currentLevel.jonhSpawn.bodyBox.minX,
-      this.currentLevel.jonhSpawn.bodyBox.maxX,
-      { classifiedOutcome: classification.outcome, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
+      this.physicsAdapter.jonhBodyBox(this.currentLevel).minX,
+      this.physicsAdapter.jonhBodyBox(this.currentLevel).maxX,
+      { classifiedOutcome: classification.outcome, trick: classification.trick, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
     );
 
+    this.missStreak = isBodyHit ? 0 : this.missStreakSoFar() + 1;
+    if (isBodyHit) this.mechanicTip = null; // met and mastered
+    // Coach (rules/coach.ts): until the first hit ever, a solo miss names one fix for the next shot.
+    if (this.activeMode === 'solo') {
+      this.coachHint = !isBodyHit && coachActive(this.progress.totalHits)
+        ? missHint({ category: feedback.category, angleDeg: this.currentAngleDeg, powerPercent: this.currentPowerPercent, blocked: state.obstacleContacts.length > 0,
+          landedBeforeObstacle: this.landedBeforeObstacle(state) })
+        : null;
+    }
+    const talk: ReactionContext = {
+      ...this.talkContext(state),
+      missStreak: this.missStreak,
+      strength: quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak',
+      ...(classification.trick ? { trickKind: classification.trick } : {}),
+      // Solo/daily only: multiplayer turns are shared, so streaks and "first shot" would mislead.
+      ...(this.activeMode === 'solo' ? { firstShot: this.soloMachine.attemptsLeft === 2, hitStreak: this.progress.currentStreak + 1 } : {}),
+    };
     const quote = isBodyHit
-      ? this.reactionSelector.selectReaction(feedback.category)
-      : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category));
+      ? this.lines('shot').selectReaction(feedback.category, talk)
+      : (this.activeReactionQuote ?? this.lines('shot').selectReaction(feedback.category, talk));
+    this.lastMissQuote = isBodyHit ? null : quote;
+    if (!isBodyHit) this.audioManager.playMutter(quote.length);
 
     const landing = !isBodyHit ? state.firstGroundContact : null;
     this.trailRenderer.setLandingMarker(
@@ -866,34 +1415,77 @@ export class PrototypeScene extends Phaser.Scene {
       return;
     }
 
-    // Retention: hits, streak, three-star maps, daily results and hat unlocks.
+    if (this.practice) {
+      // Practice records nothing: no hits, streak, bests, stars or unlocks (SPEC §4.2).
+      this.htmlControls.setResetLabel('Next now ↵');
+      this.autoAdvance.schedule('shot', this.resultWindowSeconds(isBodyHit));
+      return;
+    }
+
+    // Retention: hits, streak, three-star maps, daily results and cosmetic unlocks.
     const before = this.progress;
-    let after = recordShot(before, classification.outcome, this.activeMode === 'solo');
-    if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
+    let after = recordShot(before, classification.outcome, this.activeMode === 'solo', this.currentLevel.id);
+    const soloFinished = this.activeMode === 'solo' && this.soloMachine.state === 'solo_result';
+    if (soloFinished) {
       const res = this.soloMachine.result!;
-      if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0);
+      if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0, this.dailyRun);
       else if (res.success) after = recordSoloFinish(after, this.currentLevel.id, res.stars);
     }
-    const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
+    // The solo bests before and after this result (the save itself is written after the contact
+    // frame), for campaign stars and star-gated cosmetics.
+    const soloBefore = { ...loadSaveData().solo };
+    const soloAfter = { ...soloBefore };
+    if (soloFinished && this.soloMachine.result!.success && !this.daily) {
+      const res = this.soloMachine.result!;
+      const prior = soloAfter[this.currentLevel.id];
+      soloAfter[this.currentLevel.id] = { lastAngle: this.currentAngleDeg, lastPower: this.currentPowerPercent, ...prior,
+        bestShots: prior?.bestShots != null ? Math.min(prior.bestShots, res.shotsUsed) : res.shotsUsed,
+        hasStyle: Boolean(prior?.hasStyle) || res.hasStyle };
+    }
+    const unlocks = this.newUnlocks(before, after, soloBefore, soloAfter);
+    const feats = newlyCompletedFeats(this.featInput(before, soloBefore), this.featInput(after, soloAfter));
+    this.pendingFeats.push(...feats.map(f => f.name));
     this.progress = after;
     // Storage writes wait until after the contact frame so the hit-stop starts on time.
     setTimeout(() => saveProgress(after), 0);
+    // A counted Daily run goes to the player's friends boards in the background (never blocks the result).
+    if (soloFinished && this.daily) setTimeout(() => void this.boards?.syncPosts(), 0);
     this.pendingUnlocks.push(...unlocks);
     if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
     if (unlocks.length && this.activeMode === 'multi') {
-      this.htmlControls.setFeedback(`New hat for Jonh: ${HAT_RULES[unlocks[0]!].name}!`, 'hit');
+      this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
+    } else if (feats.length && this.activeMode === 'multi') {
+      this.htmlControls.setFeedback(`Feat: ${feats[0]!.name}!`, 'hit');
     }
+    if (this.activeMode === 'multi') { this.pendingFeats = []; this.pendingUnlocks = []; }
 
-    if (this.activeMode === 'solo' && this.soloMachine.state === 'solo_result') {
+    if (soloFinished) {
       const res = this.soloMachine.result!;
-      const previous = loadSaveData().solo[this.currentLevel.id]?.bestShots ?? null;
+      const mapId = this.currentLevel.id;
+      const previous = soloBefore[mapId]?.bestShots ?? null;
+      const hadTrick = soloBefore[mapId]?.hasStyle ?? false;
+      const campaignBefore = campaignStatus(MAP_IDS, soloBefore);
+      const campaignAfter = campaignStatus(MAP_IDS, soloAfter);
+      const nextMapId = !this.daily && res.success ? nextCampaignMap(campaignAfter, mapId) : null;
+      const wasLocked = nextMapId !== null && !campaignBefore.find(e => e.mapId === nextMapId)?.unlocked;
+      const finished = this.daily || !res.success ? null : chapterCompletedBy(campaignBefore, campaignAfter, mapId);
       this.soloResultExtras = {
         newBest: !this.daily && res.success && (previous === null || res.shotsUsed < previous),
         quote,
         streak: after.currentStreak,
         unlockHtml: this.unlockHtml(this.pendingUnlocks),
+        feats: [...new Set(this.pendingFeats)],
+        nextMapId,
+        unlockedMapId: wasLocked ? nextMapId : null,
+        chapterComplete: finished?.number != null ? { number: finished.number, name: finished.name, stars: finished.stars, maxStars: finished.maxStars } : null,
+        campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
+        newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
+        practiceMapId: !this.daily && soloAfter[mapId]?.bestShots != null ? mapId : null,
+        share: this.dailyResultShare(before, after),
+        friendsBoard: this.daily ? this.friendsBoardEntry() : undefined,
       };
       this.pendingUnlocks = [];
+      this.pendingFeats = [];
       if (res.success && !this.daily) {
         const [mapId, angle, power] = [this.currentLevel.id, this.currentAngleDeg, this.currentPowerPercent];
         setTimeout(() => recordSoloResult(mapId, res.shotsUsed, res.hasStyle, angle, power), 0);
@@ -910,30 +1502,63 @@ export class PrototypeScene extends Phaser.Scene {
     return isBodyHit ? Math.max(FLOW.bodyHitResultSeconds, replaySeconds + 0.6) : FLOW.shotResultSeconds;
   }
 
-  /** A rasterized hat as an image URL for HTML menus. */
+  /** The art groups for what Jonh and the cannon currently wear. */
+  private cosmeticGroups(): string[] {
+    return cosmeticArtGroups({ hat: this.progress.selectedHat, outfit: this.progress.selectedOutfit, cannon: this.progress.selectedCannon });
+  }
+
+  /** A hat as an image URL for HTML menus. */
   private hatImage(id: HatName): string {
     const cached = this.hatImages.get(id);
     if (cached) return cached;
-    const source = this.textures.get(`hat-${id}`).getSourceImage() as HTMLCanvasElement;
-    const url = typeof source.toDataURL === 'function' ? source.toDataURL() : '';
+    // Straight from the SVG: the hat texture may not be rasterized yet, and the menu <img> draws it crisply.
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artMeta(`hat-${id}`).svg)}`;
     this.hatImages.set(id, url);
     return url;
   }
 
-  private unlockHtml(hats: readonly HatName[]): string {
-    return [...new Set(hats)].map(id => {
-      const card = document.createElement('div');
-      card.className = 'unlock-card';
-      const img = document.createElement('img');
-      img.src = this.hatImage(id);
-      img.alt = '';
-      const text = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = `New hat: ${HAT_RULES[id].name}`;
-      text.append(title, document.createTextNode('Put it on Jonh in the hat locker.'));
-      card.append(img, text);
-      return card.outerHTML;
-    }).join('');
+  /** Everything earned by going from `before` to `after` (stars come from the solo bests). */
+  private newUnlocks(before: Progress, after: Progress, soloBefore: ReturnType<typeof loadSaveData>['solo'], soloAfter: ReturnType<typeof loadSaveData>['solo']): Unlock[] {
+    const ctxBefore = cosmeticContext(MAP_IDS, soloBefore);
+    const ctxAfter = cosmeticContext(MAP_IDS, soloAfter);
+    return [
+      ...newlyUnlocked(before, after, MAP_IDS).map(id => ({ kind: 'hat' as const, id })),
+      ...newlyUnlockedOutfits(before, after, ctxBefore, ctxAfter).map(id => ({ kind: 'outfit' as const, id })),
+      ...newlyUnlockedCannonSkins(before, after, ctxBefore, ctxAfter).map(id => ({ kind: 'cannon' as const, id })),
+    ];
+  }
+
+  private unlockName(u: Unlock): string {
+    return u.kind === 'hat' ? HAT_RULES[u.id].name : u.kind === 'outfit' ? OUTFIT_RULES[u.id].name : CANNON_SKIN_RULES[u.id].name;
+  }
+
+  /** Preview art for an unlock (generated by our own code, so safe to embed). */
+  private unlockArt(u: Unlock): string {
+    if (u.kind === 'outfit') return outfitFigureSvg(u.id, this.progress.selectedHat);
+    if (u.kind === 'cannon') return cannonSkinFigureSvg(u.id);
+    const img = document.createElement('img');
+    img.src = this.hatImage(u.id);
+    img.alt = '';
+    return img.outerHTML;
+  }
+
+  private unlockHtml(list: readonly Unlock[]): string {
+    const unique = list.filter((u, i) => list.findIndex(v => v.kind === u.kind && v.id === u.id) === i);
+    if (unique.length === 0) return '';
+    // One compact card, however many things a single shot unlocks.
+    const card = document.createElement('div');
+    card.className = `unlock-card${unique.length > 1 ? ' unlock-many' : ''}`;
+    const images = document.createElement('div');
+    images.className = 'unlock-images';
+    images.innerHTML = unique.slice(0, 4).map(u => `<span class="unlock-art unlock-${u.kind}">${this.unlockArt(u)}</span>`).join('');
+    const text = document.createElement('div');
+    const title = document.createElement('strong');
+    const names = unique.map(u => this.unlockName(u));
+    title.textContent = unique.length === 1 ? `New ${unique[0]!.kind}: ${names[0]}` : `${unique.length} new things for Jonh!`;
+    text.append(title, document.createTextNode(unique.length === 1 ? 'Try it on in the wardrobe.'
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}. See the wardrobe.`));
+    card.append(images, text);
+    return card.outerHTML;
   }
 
   private addHomeExtras(row: HTMLElement, signal: AbortSignal): void {
@@ -947,9 +1572,47 @@ export class PrototypeScene extends Phaser.Scene {
     const hats = document.createElement('button');
     hats.type = 'button';
     hats.className = 'btn';
-    hats.textContent = `Hats ${unlockedHats(this.progress, MAPS.map(m => m.id)).length}/${HAT_ORDER.length}`;
+    const ctx = cosmeticContext(MAP_IDS, loadSaveData().solo);
+    const owned = unlockedHats(this.progress, MAP_IDS).length + unlockedOutfits(this.progress, ctx).length + unlockedCannonSkins(this.progress, ctx).length;
+    hats.textContent = `Wardrobe ${owned}/${HAT_ORDER.length + OUTFIT_ORDER.length + CANNON_SKIN_ORDER.length}`;
     hats.addEventListener('click', () => this.showLocker(), { signal });
-    row.append(daily, hats);
+    const feats = document.createElement('button');
+    feats.type = 'button';
+    feats.className = 'btn';
+    feats.textContent = `Feats ${featsDone(this.featInput(this.progress, loadSaveData().solo))}/${FEATS.length}`;
+    feats.addEventListener('click', () => this.showFeats(), { signal });
+    row.append(daily, hats, feats);
+  }
+
+  /** Share extras for a finished daily run; a replay shares the day's counted (first) run, as the note says. */
+  private dailyResultShare(before: Progress, after: Progress): SoloResultExtras['share'] {
+    if (!this.daily) return undefined;
+    const text = this.dailyShareFor(after, this.daily.key);
+    if (!text) return undefined;
+    return { text, note: this.daily.key in before.daily ? 'Replays are just for fun: Share sends your first run of the day.' : undefined };
+  }
+
+  /** The day's counted Daily Bonk run as text to share, or null if it hasn't been played. */
+  private dailyShareFor(progress: Progress, key: string): string | null {
+    const stars = progress.daily[key];
+    if (stars === undefined) return null;
+    return dailyShareText({ key, shots: progress.dailyShots[key] ?? '', stars, streak: dailyStreak(progress, new Date()),
+      url: dailyLink(window.location.origin, window.location.pathname) });
+  }
+
+  /** The "Friends board" entry for the Daily screens: disabled with a reason without a backend, like the Online card. */
+  private friendsBoardEntry(): { onOpen: (() => void) | undefined; reason: string } {
+    const boards = this.boards;
+    return { onOpen: boards ? () => boards.open() : undefined, reason: "Friends boards need the online server, which isn't configured." };
+  }
+
+  /** Starts today's Daily Bonk (from the Daily screen or a friends board). */
+  private playDailyNow(): void {
+    const key = dateKey(new Date());
+    const pick = dailyChallenge(key, MAPS);
+    if (!pick) return;
+    this.menuOverlay.hide(true);
+    this.loadMap(pick.mapId, { key, positionId: pick.positionId });
   }
 
   private showDaily(): void {
@@ -981,66 +1644,84 @@ export class PrototypeScene extends Phaser.Scene {
       play.type = 'button';
       play.className = 'btn btn-primary';
       play.textContent = result === undefined ? 'Play today' : 'Play again';
-      play.addEventListener('click', () => {
-        this.menuOverlay.hide();
-        this.loadMap(pick.mapId, { key, positionId: pick.positionId });
-      }, { signal });
+      play.addEventListener('click', () => this.playDailyNow(), { signal });
+      const entry = this.friendsBoardEntry();
+      const board = document.createElement('button');
+      board.type = 'button';
+      board.className = 'btn';
+      board.id = 'daily-friends-board';
+      board.textContent = 'Friends board';
+      board.disabled = !entry.onOpen;
+      board.addEventListener('click', () => entry.onOpen?.(), { signal });
       const back = document.createElement('button');
       back.type = 'button';
       back.className = 'btn';
       back.textContent = 'Back';
       back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
-      actions.append(play, back);
-      content.append(h, intro, art, status, actions);
+      actions.append(play, board, back);
+      content.append(h, intro, art, status);
+      const shareText = this.dailyShareFor(this.progress, key);
+      if (shareText) {
+        const share = shareBlock(shareText, signal, 'Share result');
+        content.appendChild(share.block);
+        actions.prepend(share.button);
+      }
+      content.appendChild(actions);
+      if (!entry.onOpen) {
+        const note = document.createElement('p');
+        note.className = 'home-note board-entry-note';
+        note.id = 'daily-board-reason';
+        note.textContent = entry.reason;
+        board.setAttribute('aria-describedby', note.id);
+        content.appendChild(note);
+      }
       play.focus();
     });
   }
 
+  /** Jonh's wardrobe: every earned cosmetic, as tabs (hats today; more kinds plug in as sections). */
+  private wardrobeTab = 'hats';
+
   private showLocker(): void {
     const mapIds = MAPS.map(m => m.id);
-    this.menuOverlay.showCustom('locker', (content, signal) => {
-      const h = document.createElement('h2');
-      h.textContent = "Jonh's hats";
-      const intro = document.createElement('p');
-      intro.textContent = 'Earn hats by ruining his afternoon in new ways. Pick one; he will wear it everywhere.';
-      const grid = document.createElement('div');
-      grid.className = 'hat-grid';
-      const unlocked = new Set(unlockedHats(this.progress, mapIds));
-      for (const id of HAT_ORDER) {
-        const rule = HAT_RULES[id];
-        const open = unlocked.has(id);
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = `hat-card${open ? '' : ' locked'}${this.progress.selectedHat === id ? ' selected' : ''}`;
-        card.disabled = !open;
-        card.setAttribute('aria-pressed', String(this.progress.selectedHat === id));
-        const img = document.createElement('img');
-        img.src = this.hatImage(id);
-        img.alt = '';
-        const name = document.createElement('span');
-        name.textContent = open ? rule.name : 'Locked';
-        const hint = document.createElement('small');
-        hint.textContent = rule.hint;
-        card.append(img, name, hint);
-        card.addEventListener('click', () => {
-          this.progress = { ...this.progress, selectedHat: id };
-          saveProgress(this.progress);
-          this.attract?.jonh.setHat(id);
-          this.showLocker();
-        }, { signal });
-        grid.appendChild(card);
-      }
-      const back = document.createElement('button');
-      back.type = 'button';
-      back.className = 'btn';
-      back.textContent = 'Back';
-      back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
-      const stats = document.createElement('p');
-      stats.className = 'home-note';
-      stats.textContent = `Hits: ${this.progress.totalHits} · Best streak: ${this.progress.bestStreak} · Three-star gardens: ${this.progress.threeStarMaps.length}/${mapIds.length}`;
-      content.append(h, intro, grid, stats, back);
-      (grid.querySelector('button:not(:disabled)') as HTMLElement | null)?.focus();
-    });
+    const unlockedHatIds = new Set(unlockedHats(this.progress, mapIds));
+    const ctx = cosmeticContext(MAP_IDS, loadSaveData().solo);
+    const outfits = new Set(unlockedOutfits(this.progress, ctx));
+    const skins = new Set(unlockedCannonSkins(this.progress, ctx));
+    const choose = (patch: Partial<Progress>) => {
+      this.progress = { ...this.progress, ...patch };
+      saveProgress(this.progress);
+      // A pick waits for its art; if the player has left the wardrobe meanwhile, don't reopen it.
+      if (this.menuOverlay.getView() === 'locker') this.showLocker();
+    };
+    const sections: WardrobeSection[] = [{
+      id: 'hats',
+      title: 'Hats',
+      items: HAT_ORDER.map(id => ({ id, name: HAT_RULES[id].name, hint: HAT_RULES[id].hint, unlocked: unlockedHatIds.has(id),
+        selected: this.progress.selectedHat === id, image: this.hatImage(id) })),
+      onSelect: id => whenArtReady(this, [hatGroup(id)], () => { this.attract?.stage.jonh.setHat(id as HatName); choose({ selectedHat: id as HatName }); }),
+    }, {
+      id: 'outfits',
+      title: 'Outfits',
+      items: OUTFIT_ORDER.map(id => ({ id, name: OUTFIT_RULES[id].name, hint: OUTFIT_RULES[id].hint, unlocked: outfits.has(id),
+        selected: this.progress.selectedOutfit === id, svg: outfitFigureSvg(id, this.progress.selectedHat) })),
+      onSelect: id => whenArtReady(this, [outfitGroup(id as OutfitId)], () => { this.attract?.stage.jonh.setOutfit(id as OutfitId); choose({ selectedOutfit: id as OutfitId }); }),
+    }, {
+      id: 'cannons',
+      title: 'Cannons',
+      items: CANNON_SKIN_ORDER.map(id => ({ id, name: CANNON_SKIN_RULES[id].name, hint: CANNON_SKIN_RULES[id].hint, unlocked: skins.has(id),
+        selected: this.progress.selectedCannon === id, svg: cannonSkinFigureSvg(id) })),
+      onSelect: id => whenArtReady(this, [cannonSkinGroup(id as CannonSkinId)], () => { this.attract?.stage.cannon.setSkin(id as CannonSkinId); choose({ selectedCannon: id as CannonSkinId }); }),
+    }];
+    const campaign = campaignTotals(campaignStatus(MAP_IDS, loadSaveData().solo));
+    this.menuOverlay.showCustom('locker', (content, signal) => buildWardrobe(content, signal, {
+      intro: 'Earn things by ruining his afternoon in new ways. Pick one; he will wear it everywhere.',
+      stats: `Hits: ${this.progress.totalHits} · Best streak: ${this.progress.bestStreak} · Campaign ★ ${campaign.stars} / ${campaign.maxStars}`,
+      sections,
+      activeSection: this.wardrobeTab,
+      onTab: id => { this.wardrobeTab = id; this.showLocker(); },
+      onBack: () => this.menuOverlay.showHome(),
+    }));
   }
 
   private replayPlan() {
@@ -1168,19 +1849,24 @@ export class PrototypeScene extends Phaser.Scene {
     const prev = this.prevVelocity;
     this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     if (!prev || state.hitJonh) return;
-    const dvx = state.vxSim - prev.vx;
+    const dvx = state.vxSim - prev.vx - this.levelPhys.windMs2 * PHYSICS.fixedStepSeconds;
     const dvy = state.vySim - prev.vy + this.levelPhys.gravity * PHYSICS.fixedStepSeconds;
     const dv = Math.hypot(dvx, dvy);
     if (dv < 1.2) return;
     const surface = this.surfaceAt(state.xSim, state.ySim);
     this.audioManager.playSurface(surface, dv / 14);
+    const snowy = this.currentLevel.ground.material === 'snow';
     this.effects.dust(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(dv / 10) + 0.3, reduced,
-      surface === 'wood' ? 'fx-chip' : surface === 'ground' ? 'fx-leaf' : 'fx-dust');
+      surface === 'wood' ? 'fx-chip' : surface === 'ice' ? 'fx-ice' : surface === 'ground' ? (snowy ? 'fx-snow' : 'fx-leaf') : 'fx-dust');
     if (surface !== 'ground' && dv > 4) this.cameraRig.impact(4 * clamp01(dv / 12), 0.18, FX.shakeHz, -prev.vx, prev.vy, 0, 0);
   }
 
   private surfaceAt(x: number, y: number): SurfaceSound {
     const r = PROJECTILE.radiusMetres + 0.15;
+    // Skate ramps are plywood.
+    for (const ramp of this.currentLevel.ramps ?? []) {
+      if (closestOnArc(arcShape(ramp), { x, y }).distance <= r) return SURFACE_SOUNDS[ramp.material] ?? 'wood';
+    }
     for (const o of this.currentLevel.obstacles) {
       const b = o.box;
       if (x >= b.minX - r && x <= b.maxX + r && y >= b.minY - r && y <= b.maxY + r) {
@@ -1205,8 +1891,20 @@ export class PrototypeScene extends Phaser.Scene {
     const launch = this.pendingLaunch;
     this.pendingLaunch = null;
     if (!launch) return;
-    this.effects.launch(launch.x, launch.y, launch.angleRad, this.jonhRenderer.isReducedMotionActive());
-    this.audioManager.playCannonFire();
+    const reduced = this.jonhRenderer.isReducedMotionActive();
+    // Cosmetic only: how hard it was fired shapes the flash, smoke, recoil, kick and boom.
+    const power = clamp01(this.currentPowerPercent / 100);
+    this.effects.launch(launch.x, launch.y, launch.angleRad, reduced, power);
+    this.audioManager.playCannonFire(power);
+    if (!reduced) {
+      const k = FX.launchMinStrength + (1 - FX.launchMinStrength) * power;
+      this.cameraRig.impact(FX.launchKickPx * k, 0.22, FX.shakeHz, -Math.cos(launch.angleRad), Math.sin(launch.angleRad), FX.launchPunch * power, 0.28);
+      if (power >= FX.launchDustFrom) {
+        // The surface under the wheels (the Valley cannon stands on a cliff).
+        const pivot = this.cannonRenderer.pivot;
+        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false, this.currentLevel.ground.material === 'snow' ? 'fx-snow' : 'fx-dust');
+      }
+    }
   }
 
   private updateCamera(realDt: number, reduced: boolean, frame: ReplayFrame | null): void {
@@ -1234,7 +1932,11 @@ export class PrototypeScene extends Phaser.Scene {
 
   private resetEffects(): void {
     this.audioManager?.setFlightWhoosh(null);
+    this.audioManager?.setRampRumble(null);
+    this.audioManager?.setMagnetHum(null);
+    this.audioManager?.setSkid(null);
     this.impactTimeline.reset();
+    this.settleClock.reset();
     this.replay = null;
     this.replayCountdown = null;
     this.replayOverlay?.hide();
@@ -1242,6 +1944,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.pendingLaunch = null;
     this.impactQuality = null;
     this.effects?.reset();
+    // [mechanics] Every pane whole and every portal ready again (SPEC §7.2).
+    this.sceneryRenderer?.mechanics.reset();
     this.cameraRig?.reset();
     this.cannonRenderer?.setRecoil(0, this.currentAngleDeg);
     this.jonhRenderer?.settleImpact();
@@ -1251,7 +1955,9 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.clipDirector?.cancel();
     this.online?.destroy();
+    this.boards?.destroy();
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.destroy();
@@ -1275,17 +1981,20 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private startMultiplayer(players: MPPlayerSetup[], maps: string[]): void {
-    this.beginMatch(new MultiplayerMatchMachine(players, maps));
+    // Hot-seat only: a match still level after the tie-break goes to a sudden-death shoot-out.
+    this.beginMatch(new MultiplayerMatchMachine(players, maps, Math.random, { suddenDeath: true }));
   }
 
   /** Shows a match from its machine: a fresh hot-seat match, or an online match fast-forwarded by replayMatch. */
   private beginMatch(machine: MultiplayerMatchMachine): void {
     this.hideAttract();
+    this.stopShowcase();
+    this.lastPartyShot = null;
+    this.matchHighlights = [];
     this.activeMode = 'multi';
     this.multiMachine = machine;
     this.trailHistory.clear();
-    this.loadMultiplayerMap(machine.currentMapId);
-    this.updateUIPerMultiState();
+    this.loadMultiplayerMap(machine.currentMapId, () => this.updateUIPerMultiState());
   }
 
   /** Draws the cannon in the active player's colour and pattern (solo keeps the default look). */
@@ -1300,7 +2009,19 @@ export class PrototypeScene extends Phaser.Scene {
     }
   }
 
-  private loadMultiplayerMap(mapId: string): void {
+  /** Builds the map's scene (waiting for its art if it has not been rasterized yet), then runs `then`. */
+  private loadMultiplayerMap(mapId: string, then?: () => void): void {
+    const token = ++this.loadToken;
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups(), ...playerBarrelGroups(this.multiMachine.players)], () => {
+      if (token !== this.loadToken) return; // the player left (or started something else) meanwhile
+      this.loadMultiplayerMapNow(mapId);
+      this.warmNextGarden();
+      // Paused while it loaded: the screen for this state is drawn on resume (onResume) instead.
+      if (!this.sessionCoordinator.isPaused) then?.();
+    });
+  }
+
+  private loadMultiplayerMapNow(mapId: string): void {
     this.autoAdvance.cancel();
     this.resetEffects();
     const level = MAPS.find(m => m.id === mapId);
@@ -1331,6 +2052,7 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.settledSeconds,
       SHOT.timeoutSeconds,
       SHOT.boundsMarginMetres,
+      this.currentLevel.bounds.minY,
     );
     
     this.multiCoordinator = new MultiCoordinator(this.attemptMachine, this.multiMachine, {
@@ -1353,21 +2075,23 @@ export class PrototypeScene extends Phaser.Scene {
     // Renderers
     this.sceneryRenderer = new SceneryRenderer(this, ppm, h, w);
     this.sceneryRenderer.draw(this.currentLevel);
+    this.htmlControls.setCaptionLow(Boolean(this.currentLevel.captionLow));
 
     this.cannonRenderer = new CannonRenderer(this, this.currentLevel.cannonSpawn, ppm, h, this.levelPhys);
     this.cannonRenderer.setUiScale(1 / (this.view.zoom ?? 1));
     this.slotsRenderer = new CannonSlotsRenderer(this);
-    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+    this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn, ppm, h, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
-    if (this.currentLevel.arrivalLine) this.jonhRenderer.triggerArrival(this.currentLevel.arrivalLine);
+    this.jonhSays(this.lines('arrival').selectArrival(level.id, this.currentLevel.arrivalLine));
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
     this.trailRenderer = new TrailRenderer(this);
     this.trailRenderer.setView(this.view);
+    this.trailRenderer.setTextBoost(this.textBoost);
     this.debugRenderer = new DebugRenderer(this, ppm, h);
     if (this.isDebugEnabled) this.debugRenderer.setVisible(true);
 
@@ -1387,12 +2111,21 @@ export class PrototypeScene extends Phaser.Scene {
     this.htmlControls.setCanFire(false);
 
     this.drawCannon();
+    const match = this.multiMachine;
+    const kicker = match.suddenDeath ? 'Sudden death'
+      : match.roundCount > 1 && match.roundIndex === match.roundCount - 1 ? 'Final round' : `Round ${match.roundIndex + 1} of ${match.roundCount}`;
+    playTitleCard(level.name, kicker, data.settings.reducedMotion);
+    this.titleCardPending = !data.settings.reducedMotion;
   }
 
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
+    // A round's title card pads only the handover that follows it (an online rebuild may land mid-turn).
+    if (match.state !== 'handover') this.titleCardPending = false;
     if (match.state === 'handover') this.applyMultiplayerPosition();
-    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
+    const shootOut = match.suddenDeath;
+    this.htmlControls.setMatchStatus(shootOut ? `${this.currentLevel.name} · Sudden death${shootOut.round > 1 ? ` · round ${shootOut.round}` : ''}`
+      : `${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Shot ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
       match.players, match.state === 'result' ? match.lastShooterIndex
         : match.state === 'round_result' || match.state === 'match_result' ? null : match.activePlayerIndex, match.state);
     this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null);
@@ -1413,8 +2146,25 @@ export class PrototypeScene extends Phaser.Scene {
       const headline = this.online?.inMatch
         ? (match.activePlayerIndex === this.online.mySeat ? 'Your turn!' : `${player.name} is up`)
         : undefined;
-      this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1, headline);
-      this.autoAdvance.schedule('handover', FLOW.handoverSeconds);
+      // Party: what this shot means, and a word from whoever just scored.
+      const left = shotsLeftPerPlayer(match.players.length, match.roundIndex, match.roundCount, match.shotIndexInRound);
+      const stakes = shootOut
+        ? suddenDeathStakes(shootOut, match.players.map(p => p.name), match.activePlayerIndex, shootOut.round >= MULTIPLAYER.suddenDeathRounds)
+        : matchStakes(match.players.map((p, i) => ({ name: p.name, score: p.totalScore, bodyHits: p.bodyHits, shotsLeft: left[i] ?? 0 })),
+          match.activePlayerIndex, { finalRound: match.roundCount > 1 && match.roundIndex === match.roundCount - 1, firstShotOfRound: match.shotIndexInRound === 0 });
+      this.currentStakes = stakes;
+      const prev = this.lastPartyShot;
+      const tauntText = prev && prev.shooter !== match.activePlayerIndex ? tauntFor(prev.outcome) : null;
+      const shooter = prev ? match.players[prev.shooter] : undefined;
+      const taunt = tauntText && shooter ? { name: shooter.name, color: shooter.color, text: tauntText } : null;
+      // The round's title card covers the first moment, so the first handover waits it out.
+      const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0)
+        + (this.titleCardPending ? TITLE_CARD_SECONDS : 0);
+      this.titleCardPending = false;
+      this.menuOverlay.showMPHandover(player, this.currentLevel.name, shootOut ? 0 : match.activePlayerShotNumber + 1, headline,
+        { kicker: stakes.kicker, stakes: stakes.line, decisive: stakes.decisive, taunt, autoSeconds: handoverSeconds });
+      if (stakes.decisive) this.audioManager.playDrumroll();
+      this.autoAdvance.schedule('handover', handoverSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -1430,18 +2180,23 @@ export class PrototypeScene extends Phaser.Scene {
       const movement = match.moveCount > 0 ? ' · Jonh has moved—adjust your aim' : '';
       const status = this.online?.inMatch && match.activePlayerIndex !== this.online.mySeat
         ? `${match.activePlayer.name} is aiming…`
-        : `${match.activePlayer.name}'s turn · Cycle ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}${movement}`;
+        : `${match.activePlayer.name}'s turn${this.currentStakes?.line ? ` · ${this.currentStakes.line}` : ''}${movement}`;
       this.htmlControls.setFeedback(status, 'info');
     } else if (match.state === 'round_result') {
       this.htmlControls.setControlsInert(true);
-      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount);
+      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount, match.suddenDeathNext);
       this.autoAdvance.schedule('round', FLOW.roundResultSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
     } else if (match.state === 'match_result') {
       this.htmlControls.setControlsInert(true);
-      this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined);
+      // The winning shot, replayed, before the scores (once per match; skippable).
+      if (this.showcaseState === 'none') this.showcaseState = this.startWinningShowcase() ? 'playing' : 'done';
+      if (this.showcaseState === 'playing') return;
+      this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined,
+        shootOut ? (match.getWinners().length > 1 ? `Still level after ${shootOut.round} sudden-death rounds. A shared win!` : 'Won in sudden death!') : undefined,
+        this.matchClipOffer());
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -1479,11 +2234,11 @@ export class PrototypeScene extends Phaser.Scene {
     this.sceneryRenderer.draw(this.currentLevel);
     this.jonhRenderer.destroy();
     this.jonhRenderer = new JonhRenderer(this, this.currentLevel.jonhSpawn,
-      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat });
-    this.jonhRenderer.setUiScale(1 / (this.view.zoom ?? 1));
+      WORLD.pixelsPerMetre, WORLD.designHeightPx, { level: this.currentLevel, hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit });
+    this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
-    this.jonhRenderer.triggerArrival(this.reactionSelector.selectReaction('moved'));
+    this.jonhSays(this.lines('moved').selectReaction('moved'));
   }
 
   private beginMultiplayerTurn(): void {
@@ -1504,9 +2259,176 @@ export class PrototypeScene extends Phaser.Scene {
     this.multiMachine.nextRound();
     if (!this.multiMachine.isMatchComplete) {
       this.trailHistory.clear();
-      this.loadMultiplayerMap(this.multiMachine.currentMapId);
+      this.loadMultiplayerMap(this.multiMachine.currentMapId, () => this.updateUIPerMultiState());
+      return;
     }
     this.updateUIPerMultiState();
+  }
+
+  /** Remembers a body hit for the winning-shot replay (map, Jonh's spot and the exact aim). */
+  private recordHighlight(player: number, outcome: ClassifiedOutcome): void {
+    if (outcome !== 'body' && outcome !== 'ricochet_body') return;
+    const match = this.multiMachine;
+    this.matchHighlights.push({ player, mapId: match.currentMapId, positionId: match.activePositionId,
+      angle: this.currentAngleDeg, power: this.currentPowerPercent, outcome });
+  }
+
+  /**
+   * Plays the winner's best hit again (a trick shot if they had one, else their latest hit) in the
+   * ShowcaseScene over the game. Returns false when there is nothing to show.
+   */
+  private startWinningShowcase(): boolean {
+    if (loadSaveData().settings.reducedMotion || this.jonhRenderer?.isReducedMotionActive()) return false;
+    const win = this.winningShot();
+    if (!win) return false;
+    const { best, level, shot, player } = win;
+    document.body.classList.add('showcase-on');
+    this.showcaseWind = level.wind?.accelerationMs2 ?? null;
+    this.scene.launch('ShowcaseScene', {
+      level, shot, angleDeg: best.angle, powerPercent: best.power,
+      playerName: player.name, color: player.color, pattern: player.pattern,
+      hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit, reducedMotion: false,
+      line: this.lines('winning').selectWinningShot(),
+      textBoost: this.textBoost,
+      audio: this.audioManager,
+      onDone: () => {
+        document.body.classList.remove('showcase-on');
+        this.showcaseWind = undefined;
+        if (this.showcaseState !== 'playing') return;
+        this.showcaseState = 'done';
+        if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
+      },
+    });
+    return true;
+  }
+
+  /** The hit the winning-shot replay (and the shareable clip) shows, with its recorded flight; null when there is nothing honest to show. */
+  private winningShot() {
+    const winners = new Set(this.multiMachine.getWinners().map(w => w.id));
+    const hits = this.matchHighlights.filter(h => winners.has(h.player));
+    // A shoot-out winner's latest hit is the one that decided it; otherwise their best (a trick shot first).
+    const decidedBySuddenDeath = this.multiMachine.suddenDeath?.winners?.length === 1;
+    const best = decidedBySuddenDeath ? hits[hits.length - 1] : [...hits].reverse().find(h => h.outcome === 'ricochet_body') ?? hits[hits.length - 1];
+    const base = best ? MAPS.find(m => m.id === best.mapId) : undefined;
+    if (!best || !base) return null;
+    const level = levelAtMultiplayerPosition(base, best.positionId);
+    const shot = this.recordedShot(level, best.angle, best.power);
+    if (shot.contactIndex === null) return null; // a cross-browser difference: nothing honest to show
+    return { best, level, shot, player: this.multiMachine.players[best.player]! };
+  }
+
+  /**
+   * Hot-seat and online match result: "Save clip" for the winning shot (none where the browser cannot record).
+   * Online, the card's once-a-second updates refresh only its live parts, so a recording carries on through them.
+   */
+  private matchClipOffer(): ClipOffer | undefined {
+    if (this.activeMode !== 'multi') return undefined;
+    const win = this.winningShot();
+    if (!win) return undefined;
+    const { best, level, shot, player } = win;
+    const headline = `${player.name}'s ${best.outcome === 'ricochet_body' ? 'trick shot!' : 'winning shot'}`;
+    return this.clipOffer({ level, shot, angleDeg: best.angle, powerPercent: best.power, headline, paint: { name: player.name, color: player.color, pattern: player.pattern } });
+  }
+
+  /**
+   * Solo result card after a body hit: "Save clip" for the shot that did it. Re-simulating the shot
+   * costs tens of milliseconds on a phone (phone pass), so it runs when the player asks for the clip,
+   * not on the frame the card appears. The game runs the tested physics, so the replay reproduces
+   * the hit; if it ever did not, the press says so instead of recording.
+   */
+  private soloClipOffer(trick: boolean): ClipOffer | undefined {
+    if (this.activeMode !== 'solo' || !this.currentLevel || !clipFormat(false)) return undefined;
+    const level = this.currentLevel;
+    const angleDeg = this.currentAngleDeg;
+    const powerPercent = this.currentPowerPercent;
+    const skin = this.progress.selectedCannon;
+    const headline = [this.daily ? 'Daily Bonk' : '', trick ? 'Trick shot!' : 'Bullseye!'].filter(Boolean).join(' · ');
+    let offer: ClipOffer | undefined;
+    return {
+      record: () => {
+        const shot = this.recordedShot(level, angleDeg, powerPercent);
+        offer ??= shot.contactIndex === null ? undefined : this.clipOffer({ level, shot, angleDeg, powerPercent, headline, skin });
+        return offer ? offer.record() : Promise.resolve({ ok: false as const, reason: 'failed' as const, message: "this shot can't be replayed" });
+      },
+      cancel: () => offer?.cancel(),
+    };
+  }
+
+  /**
+   * A shareable clip of `shot`: the replay plays again over the game (the card steps aside) and the
+   * canvas is recorded with a caption (share/). Recording changes nothing in the simulation, the scores or the saved
+   * data. Reduced motion still allows the clip (the player asked for it) but plays it with the softened effects.
+   */
+  private clipOffer(spec: { level: LevelData; shot: RecordedShot; angleDeg: number; powerPercent: number; headline: string;
+    paint?: { name: string; color: number; pattern: string }; skin?: CannonSkinId }): ClipOffer | undefined {
+    if (!clipFormat(false)) return undefined;
+    const { level, shot } = spec;
+    const plan = planClip({
+      leadSeconds: FLOW.showcaseLeadSeconds, introSeconds: FX.demoAimSeconds + FX.windupSeconds, flightSeconds: shot.points[shot.contactIndex ?? shot.points.length - 1]!.t,
+      afterSeconds: CLIP.afterImpactSeconds, minSeconds: CLIP.minSeconds, maxSeconds: CLIP.maxSeconds,
+    });
+    const caption = clipCaption({ garden: level.name, headline: spec.headline, address: gameAddress(window.location.origin, window.location.pathname) });
+    const director = new ClipDirector({
+      createRecorder: () => {
+        const audio = this.audioManager.captureStream();
+        const format = clipFormat(audio !== null);
+        if (!format) { this.audioManager.releaseCaptureStream(); return null; }
+        try {
+          return new ClipRecorder({
+            source: this.game.canvas, caption, garden: level.name, audio, format,
+            releaseAudio: () => this.audioManager.releaseCaptureStream(),
+            subscribeFrames: callback => {
+              this.game.events.on(Phaser.Core.Events.POST_RENDER, callback);
+              return () => { this.game.events.off(Phaser.Core.Events.POST_RENDER, callback); };
+            },
+          });
+        } catch (error) {
+          this.audioManager.releaseCaptureStream();
+          throw error;
+        }
+      },
+      startReplay: hooks => {
+        if (this.scene.isActive('ShowcaseScene') || this.showcaseState === 'playing') return null;
+        document.body.classList.add('showcase-on', 'clip-on');
+        this.showcaseWind = level.wind?.accelerationMs2 ?? null;
+        this.scene.launch('ShowcaseScene', {
+          level, shot, angleDeg: spec.angleDeg, powerPercent: spec.powerPercent,
+          playerName: spec.paint?.name ?? '', color: spec.paint?.color ?? null, pattern: spec.paint?.pattern ?? 'solid',
+          ...(spec.skin ? { skin: spec.skin } : {}),
+          hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit,
+          reducedMotion: loadSaveData().settings.reducedMotion || Boolean(this.jonhRenderer?.isReducedMotionActive()),
+          line: this.lines('winning').selectWinningShot(),
+          textBoost: this.textBoost,
+          audio: this.audioManager,
+          clip: { startAt: plan.startAt, endAt: plan.endAt, onRecordStart: hooks.onRecordStart, onEnd: hooks.onEnd },
+          onDone: () => { document.body.classList.remove('showcase-on', 'clip-on'); this.showcaseWind = undefined; },
+        });
+        return {
+          stop: () => {
+            document.body.classList.remove('showcase-on', 'clip-on');
+            this.showcaseWind = undefined;
+            if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
+          },
+        };
+      },
+      tabHidden: () => document.hidden,
+      onTabHidden: callback => {
+        const onChange = (): void => { if (document.hidden) callback(); };
+        document.addEventListener('visibilitychange', onChange);
+        return () => document.removeEventListener('visibilitychange', onChange);
+      },
+    });
+    this.clipDirector = director;
+    return { record: () => director.record(), cancel: () => director.cancel() };
+  }
+
+  /** Stops a winning-shot replay without showing the result (rematch, Home, a rebuilt online match). */
+  private stopShowcase(): void {
+    this.clipDirector?.cancel(); // a clip being recorded is discarded
+    this.showcaseState = 'none';
+    this.showcaseWind = undefined;
+    document.body.classList.remove('showcase-on', 'clip-on');
+    if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
   }
 
   private onlineHooks(): OnlineSceneHooks {
@@ -1532,8 +2454,13 @@ export class PrototypeScene extends Phaser.Scene {
       presentSkippedTurn: (seat, angle, power, text) => this.presentSkippedTurn(seat, angle, power, text),
       applyOfficialOutcome: (outcome, mine) => this.applyOfficialOutcome(outcome, mine),
       refreshPlayerPresence: () => this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null),
+      playEmoteSound: own => this.audioManager.playEmote(own),
       refreshMatchResult: () => {
-        if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
+        if (this.activeMode !== 'multi' || this.multiMachine.state !== 'match_result') return;
+        // Only the ready list, countdown and Rematch change: a clip being recorded on the card must not restart.
+        const extras = this.online?.inMatch ? this.online.resultExtras() : null;
+        if (extras && this.menuOverlay.updateMPMatchOnline(extras)) return;
+        this.updateUIPerMultiState();
       },
       refreshAimingControls: () => {
         // While paused the controls stay inert; onResume re-applies them with the current turn.
@@ -1575,12 +2502,19 @@ export class PrototypeScene extends Phaser.Scene {
   /** Scores and labels the current online shot with the server's outcome. */
   private applyOfficialOutcome(outcome: ClassifiedOutcome, mine: boolean): void {
     if (!this.multiCoordinator.resolveShot(outcome)) return;
+    const shooter = this.multiMachine.lastShooterIndex;
+    if (shooter !== null) {
+      this.lastPartyShot = { shooter, outcome };
+      this.recordHighlight(shooter, outcome);
+    }
     const local = this.onlineLocal;
     this.onlineLocal = null;
-    const label = local && local.outcome === outcome ? local.label : OFFICIAL_LABELS[outcome];
+    // The local line only fits when this screen saw the same outcome as the official one.
+    const agreed = local !== null && local.outcome === outcome ? local : null;
+    const label = agreed ? agreed.label : OFFICIAL_LABELS[outcome];
     const scored = outcome !== 'miss';
     this.htmlControls.setFeedback(scored ? `${label}  +${OUTCOME_POINTS[outcome]}` : label, scored ? 'hit' : 'miss',
-      local ? `Jonh: “${local.quote}”` : '');
+      agreed ? `Jonh: “${agreed.quote}”` : '');
     if (mine) this.recordOnlineProgress(outcome);
     this.htmlControls.setResetLabel('Next now ↵');
     this.autoAdvance.schedule('shot', local?.resultSeconds ?? FLOW.shotResultSeconds);
@@ -1589,12 +2523,41 @@ export class PrototypeScene extends Phaser.Scene {
   /** Hats and streaks count only this player's own online shots. */
   private recordOnlineProgress(outcome: ClassifiedOutcome): void {
     const before = this.progress;
-    const after = recordShot(before, outcome, false);
-    const unlocks = newlyUnlocked(before, after, MAPS.map(m => m.id));
+    const after = recordShot(before, outcome, false, this.currentLevel?.id);
+    const solo = loadSaveData().solo;
+    const unlocks = this.newUnlocks(before, after, solo, solo);
+    const feats = newlyCompletedFeats(this.featInput(before, solo), this.featInput(after, solo));
     this.progress = after;
     setTimeout(() => saveProgress(after), 0);
-    if (unlocks.length) this.htmlControls.setFeedback(`New hat for Jonh: ${HAT_RULES[unlocks[0]!].name}!`, 'hit');
+    if (unlocks.length) this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
+    else if (feats.length) this.htmlControls.setFeedback(`Feat: ${feats[0]!.name}!`, 'hit');
   }
+
+  /** What the feats look at (rules/feats.ts): progress plus the campaign totals from a set of solo bests. */
+  private featInput(progress: Progress, solo: ReturnType<typeof loadSaveData>['solo']): FeatInput {
+    return { progress, ctx: cosmeticContext(MAP_IDS, solo), mapIds: MAP_IDS };
+  }
+
+  /** Jonh's long-term goal list: every feat with its progress and the cosmetics it earns. */
+  private showFeats(): void {
+    const input = this.featInput(this.progress, loadSaveData().solo);
+    const statuses = featStatuses(input);
+    // A reward stays earned even when its feat now asks for more (new gardens raise "every star").
+    const earned = (r: Unlock): boolean => r.kind === 'hat' ? unlockedHats(input.progress, MAP_IDS).includes(r.id)
+      : r.kind === 'outfit' ? unlockedOutfits(input.progress, input.ctx).includes(r.id) : unlockedCannonSkins(input.progress, input.ctx).includes(r.id);
+    this.menuOverlay.showCustom('feats', (content, signal) => buildFeats(content, signal, {
+      groups: FEAT_GROUPS.map(group => ({
+        title: group.title,
+        rows: statuses.filter(s => s.def.group === group.id).map(s => ({
+          id: s.def.id, name: s.def.name, hint: s.def.hint, current: s.current, target: s.target, done: s.done,
+          rewards: s.def.rewards.map(r => ({ name: this.unlockName(r), art: this.unlockArt(r), kind: r.kind, earned: earned(r) })),
+        })),
+      })),
+      onBack: () => this.menuOverlay.showHome(),
+      onWardrobe: () => this.showLocker(),
+    }));
+  }
+
 
 }
 

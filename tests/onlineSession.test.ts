@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConvexClient } from 'convex/browser';
+import { getFunctionName, type FunctionReference } from 'convex/server';
 import { ONLINE } from '../src/config/tuning';
 import { OnlineSession } from '../src/net/onlineSession';
 
@@ -24,7 +25,7 @@ describe('OnlineSession.enter', () => {
     const session = new OnlineSession(client, 't');
     session.enter(` ${valid.toLowerCase()} `, listener);
     expect(session.code).toBe(valid);
-    expect(subs.length).toBe(2);
+    expect(subs.length).toBe(3);
     for (const s of subs) { expect(s.args.code).toBe(session.code); expect(typeof s.onError).toBe('function'); }
     session.exit();
   });
@@ -34,6 +35,48 @@ describe('OnlineSession.enter', () => {
     const session = new OnlineSession(client, 't');
     expect(() => session.enter('!!', listener)).toThrow("That doesn't look like a room code.");
     expect(subs.length).toBe(0);
+  });
+});
+
+describe('OnlineSession emotes', () => {
+  it('subscribes to the emote list with the token and passes lists to the listener', () => {
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' });
+    const { client } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    const seen: unknown[] = [];
+    session.enter(valid, { ...listener, onEmotes: e => seen.push(e) });
+    const calls = (client.onUpdate as unknown as { mock: { calls: Array<[FunctionReference<'query'>, { token?: string }, (v: unknown) => void]> } }).mock.calls;
+    const emotes = calls.find(c => getFunctionName(c[0]) === 'emotes:getEmotes')!;
+    expect(emotes).toBeDefined();
+    expect(emotes[1]).toEqual({ code: valid, token: 't' });
+    emotes[2]([{ seq: 1 }]);
+    expect(seen).toEqual([[{ seq: 1 }]]);
+    session.exit();
+  });
+
+  it('sends an emote id for the entered room, once, and refuses when not in a room', async () => {
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' });
+    const { client } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    expect(() => session.sendEmote('oof')).toThrow('not in a room');
+    session.enter(valid, listener);
+    (client.mutation as unknown as { mockClear(): void }).mockClear();
+    await session.sendEmote('oof');
+    expect(client.mutation).toHaveBeenCalledTimes(1);
+    expect(client.mutation).toHaveBeenLastCalledWith(expect.anything(), { code: valid, token: 't', emote: 'oof' });
+    session.exit();
+  });
+
+  it('does not retry a failed send: a late emote is stale', async () => {
+    vi.stubGlobal('document', { addEventListener() {}, removeEventListener() {}, visibilityState: 'visible' });
+    const { client } = fakeClient();
+    const session = new OnlineSession(client, 't');
+    session.enter(valid, listener);
+    (client.mutation as unknown as { mockClear(): void; mockRejectedValueOnce(e: unknown): void }).mockClear();
+    (client.mutation as unknown as { mockRejectedValueOnce(e: unknown): void }).mockRejectedValueOnce(new Error('offline'));
+    await expect(session.sendEmote('oof')).rejects.toThrow('offline');
+    expect(client.mutation).toHaveBeenCalledTimes(1);
+    session.exit();
   });
 });
 

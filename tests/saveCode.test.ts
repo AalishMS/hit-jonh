@@ -1,0 +1,178 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_KEYS } from '../src/input/keyBindings';
+import { freshProgress, type Progress } from '../src/rules/progression';
+import { decodeSaveCode, encodeSaveCode, importSaveCode, mergeSave, previewSaveCode, saveCodeFromHash, saveCodeFromPaste, saveLink, saveSummary, type DecodedSave } from '../src/storage/saveCode';
+import type { SaveData } from '../src/storage/storage';
+
+const score = (bestShots: number | null, hasStyle = false) => ({ bestShots, hasStyle, lastAngle: 40, lastPower: 60 });
+
+function save(solo: SaveData['solo'], progress: Partial<Progress> = {}): SaveData {
+  return {
+    version: 'hitJonh.v1',
+    solo,
+    progress: { ...freshProgress(), ...progress },
+    settings: { muted: false, volume: 1, reducedMotion: false, music: true, keys: DEFAULT_KEYS, playerColors: 'standard' },
+  };
+}
+
+const decoded = async (code: string): Promise<DecodedSave> => {
+  const out = await decodeSaveCode(code);
+  if ('error' in out) throw new Error(out.error);
+  return out;
+};
+
+describe('save codes (next 10, item 6)', () => {
+  const phone = save({ backyard: score(1), fence: score(2, true), rooftop: score(null) }, {
+    totalHits: 42, trickHits: 3, bestStreak: 6, hitMaps: ['backyard', 'fence'], threeStarMaps: ['backyard'],
+    daily: { '2026-11-20': 3, '2026-11-21': 0 }, dailyShots: { '2026-11-20': 'b' }, seenTips: ['wind'], selectedHat: 'bowler',
+  });
+
+  it('round-trips the solo bests and progress, but not the device selections', async () => {
+    const code = await encodeSaveCode(phone);
+    expect(code).toMatch(/^HJ1-[0-9a-z]{4}-[A-Za-z0-9_-]+$/);
+    const back = await decoded(code);
+    expect(back.solo).toEqual({ backyard: { bestShots: 1, hasStyle: false }, fence: { bestShots: 2, hasStyle: true }, rooftop: { bestShots: null, hasStyle: false } });
+    expect(back.progress).toMatchObject({ totalHits: 42, trickHits: 3, bestStreak: 6, threeStarMaps: ['backyard'], daily: { '2026-11-20': 3, '2026-11-21': 0 }, seenTips: ['wind'] });
+    expect(back.progress.dailyShots).toEqual({ '2026-11-20': 'b' });
+    expect(back.progress.earnedHats).toContain('bowler');
+    expect(back.progress.selectedHat).toBe('boater');
+  });
+
+  it('is short enough to paste, and copes with the spaces and line breaks of copying', async () => {
+    const code = await encodeSaveCode(phone);
+    expect(code.length).toBeLessThan(400);
+    // A year of Daily Bonks packs one character per day.
+    const daily: Record<string, number> = {};
+    const dailyShots: Record<string, string> = {};
+    for (let i = 0; i < 365; i++) {
+      const key = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
+      if (i % 9 === 4) continue; // a few days missed
+      daily[key] = i % 4;
+      dailyShots[key] = ['mmm', 'mmb', 'mb', 'b'][i % 4]!;
+    }
+    const year = save({}, { daily, dailyShots });
+    const yearCode = await encodeSaveCode(year);
+    expect(yearCode.length).toBeLessThan(1200);
+    const back = await decoded(yearCode);
+    expect(back.progress.daily).toEqual(daily);
+    expect(back.progress.dailyShots).toEqual(dailyShots);
+    const mangled = `  ${code.slice(0, 20)}\n${code.slice(20, 50)} ${code.slice(50)}\n`;
+    expect((await decoded(mangled)).progress.totalHits).toBe(42);
+    // Without CompressionStream the code is uncompressed (HJ0) and still reads.
+    const plain = await encodeSaveCode(phone, false);
+    expect(plain.startsWith('HJ0-')).toBe(true);
+    expect((await decoded(plain)).progress.totalHits).toBe(42);
+  });
+
+  it('rejects a code copied short, a typo, garbage and other versions', async () => {
+    const code = await encodeSaveCode(phone, false);
+    expect(await decodeSaveCode(code.slice(0, -6))).toEqual({ error: expect.stringMatching(/format|checksum/) });
+    const typo = code.slice(0, -3) + (code.at(-3) === 'A' ? 'B' : 'A') + code.slice(-2);
+    expect(await decodeSaveCode(typo)).toEqual({ error: expect.stringMatching(/format|checksum/) });
+    expect(await decodeSaveCode('hello')).toEqual({ error: 'format' });
+    expect(await decodeSaveCode('')).toEqual({ error: 'format' });
+    const json = JSON.stringify({ v: 2, s: {}, p: {} });
+    const sum = (() => { let h = 2166136261; for (let i = 0; i < json.length; i++) { h ^= json.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 36 ** 4).toString(36).padStart(4, '0'); })();
+    const future = `HJ0-${sum}-${btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+    expect(await decodeSaveCode(future)).toEqual({ error: 'version' });
+  });
+
+  it('validates what a code says (unknown gardens dropped, impossible bests ignored)', async () => {
+    const json = JSON.stringify({ v: 1, s: { backyard: [7, 1], nowhere: [1, 0], fence: [2, 0] }, p: { totalHits: -5, threeStarMaps: ['nowhere', 'fence'] } });
+    let h = 2166136261;
+    for (let i = 0; i < json.length; i++) { h ^= json.charCodeAt(i); h = Math.imul(h, 16777619); }
+    const sum = ((h >>> 0) % 36 ** 4).toString(36).padStart(4, '0');
+    const back = await decoded(`HJ0-${sum}-${btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`);
+    expect(back.solo).toEqual({ backyard: { bestShots: null, hasStyle: true }, fence: { bestShots: 2, hasStyle: false } });
+    expect(back.progress.totalHits).toBe(0);
+    expect(back.progress.threeStarMaps).toEqual(['fence']);
+  });
+
+  it('merges the best of both devices and never takes anything away', async () => {
+    const laptop = save({ backyard: score(2), rubber: score(1, true), fence: score(3) }, {
+      totalHits: 10, trickHits: 5, hitMaps: ['rubber'], daily: { '2026-11-21': 2, '2026-11-22': 1 }, dailyShots: { '2026-11-21': 'mb', '2026-11-22': 'mmb' },
+      selectedHat: 'boater', seenTips: ['rubber'],
+    });
+    const merged = mergeSave(laptop, await decoded(await encodeSaveCode(phone)));
+    expect(merged.solo.backyard).toMatchObject({ bestShots: 1, hasStyle: false, lastAngle: 40 });
+    expect(merged.solo.fence).toMatchObject({ bestShots: 2, hasStyle: true });
+    expect(merged.solo.rubber).toMatchObject({ bestShots: 1, hasStyle: true });
+    expect(merged.solo.rooftop).toMatchObject({ bestShots: null });
+    const p = merged.progress!;
+    expect(p).toMatchObject({ totalHits: 42, trickHits: 5, bestStreak: 6, selectedHat: 'boater' });
+    expect(p.hitMaps.sort()).toEqual(['backyard', 'fence', 'rubber']);
+    expect(p.daily).toEqual({ '2026-11-20': 3, '2026-11-21': 2, '2026-11-22': 1 });
+    expect(p.dailyShots).toEqual({ '2026-11-20': 'b', '2026-11-21': 'mb', '2026-11-22': 'mmb' });
+    expect(p.seenTips.sort()).toEqual(['rubber', 'wind']);
+    expect(p.earnedHats).toEqual(expect.arrayContaining(['bowler', 'propeller', 'party']));
+
+    // Loading an older code from the same device changes nothing.
+    const again = mergeSave(merged, await decoded(await encodeSaveCode(laptop)));
+    expect(again.solo).toEqual(merged.solo);
+    expect(again.progress).toEqual(merged.progress);
+    expect(saveSummary(merged)).toMatchObject({ stars: 3 + 2 + 3, hits: 42 });
+  });
+
+  describe('hostile or unlucky codes (independent review)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    const fnv = (text: string) => { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 36 ** 4).toString(36).padStart(4, '0'); };
+    const b64 = (bytes: Uint8Array) => { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    const deflate = async (bytes: Uint8Array) => new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+
+    it('refuses a code that would inflate to megabytes, and an absurdly long paste, without decoding it all', async () => {
+      const bomb = await deflate(new Uint8Array(4 * 1024 * 1024).fill(32)); // 4 MB of spaces packs into a few KB
+      expect(await decodeSaveCode(`HJ1-0000-${b64(bomb)}`)).toEqual({ error: 'size' });
+      expect(await decodeSaveCode(`HJ0-0000-${'A'.repeat(30_000)}`)).toEqual({ error: 'size' });
+    });
+
+    it('never throws on a forged Daily day number (the far future is not a valid date)', async () => {
+      const json = JSON.stringify({ v: 1, s: {}, p: { totalHits: 2 }, d: [1e9, '3', ['b']] });
+      const out = await decodeSaveCode(`HJ0-${fnv(json)}-${b64(new TextEncoder().encode(json))}`);
+      expect(out).toMatchObject({ progress: { totalHits: 2, daily: {} } });
+    });
+
+    it('falls back to an uncompressed code when the browser has CompressionStream but not deflate-raw', async () => {
+      vi.stubGlobal('CompressionStream', class { constructor() { throw new TypeError('Unsupported compression format'); } });
+      const code = await encodeSaveCode(save({ backyard: score(1) }, { totalHits: 3 }));
+      expect(code.startsWith('HJ0-')).toBe(true);
+      expect((await decoded(code)).progress.totalHits).toBe(3);
+    });
+
+    it('does not claim "Loaded" when the device refuses to store the save', async () => {
+      vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new DOMException('full', 'QuotaExceededError'); }, removeItem: () => {} });
+      const result = await importSaveCode(await encodeSaveCode(save({ backyard: score(1) })));
+      expect(result).toMatchObject({ ok: false, message: expect.stringContaining("Couldn't save") });
+    });
+  });
+});
+
+
+describe('save links', () => {
+  const code = 'HJ1-ab12-QUJDREVG_-x';
+
+  it('puts the code in the fragment of the game address, dropping any query or old fragment', () => {
+    expect(saveLink(code, 'https://hit-jonh.vercel.app/?room=K7QPX#old')).toBe(`https://hit-jonh.vercel.app/#save=${code}`);
+    expect(saveLink(code, 'http://localhost:5173/sub/index.html')).toBe(`http://localhost:5173/sub/index.html#save=${code}`);
+  });
+
+  it('reads the code back from a fragment, a pasted link or a bare code', () => {
+    expect(saveCodeFromHash(`#save=${code}`)).toBe(code);
+    expect(saveCodeFromHash(`#save=${encodeURIComponent(code)}%20`)).toBe(code);
+    expect(saveCodeFromHash('#save=')).toBeNull();
+    expect(saveCodeFromHash('#room=K7QPX')).toBeNull();
+    expect(saveCodeFromHash('')).toBeNull();
+    expect(saveCodeFromPaste(`  https://hit-jonh.vercel.app/#save=${code}\n`)).toBe(code);
+    expect(saveCodeFromPaste(` ${code} `)).toBe(code);
+    expect(saveCodeFromPaste('   ')).toBeNull();
+  });
+
+  it('round-trips a real save through a link', async () => {
+    const data = save({ backyard: score(1) }, { totalHits: 4 });
+    const real = await encodeSaveCode(data);
+    const fromLink = saveCodeFromPaste(saveLink(real, 'https://hit-jonh.vercel.app/'))!;
+    const preview = await previewSaveCode(fromLink);
+    expect(preview).toEqual({ ok: true, stars: 3, maxStars: expect.any(Number), hits: 4 });
+    expect(await previewSaveCode(fromLink.slice(0, -6))).toMatchObject({ ok: false });
+  });
+});

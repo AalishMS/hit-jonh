@@ -8,6 +8,7 @@ import type { LevelData } from './types';
  */
 export const MOON_LEVEL: LevelData = {
   id: 'moon',
+  mechanic: 'lowGravity',
   name: 'Lunar Picnic',
   difficulty: 2,
   gravityMs2: 2.0,

@@ -26,8 +26,36 @@ export function asPreviousTrail(data: TrailData): TrailData {
   };
 }
 
+/**
+ * Trail dots are pooled sprites of one white disc, tinted and scaled per style (phone pass, next 10
+ * item 4). As Graphics circles they were re-triangulated every frame: two circles per dot, about a
+ * hundred circles after two shots, the largest part of the render cost on a phone.
+ */
+const DOT_KEY = 'trail-dot';
+const DOT_RADIUS_PX = 16;
+
+function ensureDotTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(DOT_KEY) || typeof document === 'undefined') return;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = DOT_RADIUS_PX * 2 + 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(DOT_RADIUS_PX + 1, DOT_RADIUS_PX + 1, DOT_RADIUS_PX, 0, Math.PI * 2);
+  ctx.fill();
+  scene.textures.addCanvas(DOT_KEY, canvas);
+}
+
+/** One dot style: rim and centre radius (px), colours and alphas. */
+interface DotStyle { rim: number; rimAlpha: number; core: number; coreColor: number; coreAlpha: number }
+
 export class TrailRenderer {
+  /** Only the landing crosses are drawn as Graphics now (a few lines). */
   private graphics: Phaser.GameObjects.Graphics;
+  private readonly scene: Phaser.Scene;
+  /** Pooled dot sprites: rims under centres. */
+  private readonly rims: Phaser.GameObjects.Image[] = [];
+  private readonly cores: Phaser.GameObjects.Image[] = [];
   private landingText: Phaser.GameObjects.Text;
   private activePoints: Array<{ x: number; y: number }> = [];
   private activeLandingMarker: LandingFeedback | null = null;
@@ -46,9 +74,19 @@ export class TrailRenderer {
     this.redraw();
   }
 
+  /** Extra label size on small screens (see fx/readability.ts). */
+  private textBoost = 1;
+  setTextBoost(boost: number): void {
+    if (boost === this.textBoost) return;
+    this.textBoost = boost;
+    this.redraw();
+  }
+
   constructor(scene: Phaser.Scene) {
+    this.scene = scene;
+    ensureDotTexture(scene);
     this.graphics = scene.add.graphics();
-    this.graphics.setDepth(6);
+    this.graphics.setDepth(6.2);
     this.landingText = scene.add.text(0, 0, '', {
       fontFamily: 'Nunito, system-ui, sans-serif', fontStyle: '900', fontSize: '14px',
       color: PAL.paper, backgroundColor: PAL.ink, padding: { x: 8, y: 4 },
@@ -129,7 +167,24 @@ export class TrailRenderer {
     this.previousPoints = [];
     this.previousLandingMarker = null;
     this.graphics.clear();
+    this.placeDots([]);
     this.landingText.setVisible(false);
+  }
+
+  /** Shows exactly `dots` from the pools (growing them as needed) and hides the rest. */
+  private placeDots(dots: ReadonlyArray<{ x: number; y: number; style: DotStyle }>): void {
+    const ink = hex(PAL.ink);
+    for (let i = 0; i < dots.length; i++) {
+      const { x, y, style } = dots[i]!;
+      const rim = this.rims[i] ?? this.rims[this.rims.push(this.scene.add.image(0, 0, DOT_KEY).setDepth(6)) - 1]!;
+      const core = this.cores[i] ?? this.cores[this.cores.push(this.scene.add.image(0, 0, DOT_KEY).setDepth(6.1)) - 1]!;
+      rim.setPosition(x, y).setScale(style.rim / DOT_RADIUS_PX).setTint(ink).setAlpha(style.rimAlpha).setVisible(true);
+      core.setPosition(x, y).setScale(style.core / DOT_RADIUS_PX).setTint(style.coreColor).setAlpha(style.coreAlpha).setVisible(true);
+    }
+    for (let i = dots.length; i < this.rims.length; i++) {
+      this.rims[i]!.setVisible(false);
+      this.cores[i]!.setVisible(false);
+    }
   }
 
   private redraw(): void {
@@ -139,36 +194,24 @@ export class TrailRenderer {
     if (marker) {
       this.landingText.setText(`${this.activeLandingMarker ? '' : 'Last: '}${marker.label}`);
       // Sized and placed in screen terms, so zoomed-out maps keep it readable.
-      const k = 1 / (this.view.zoom ?? 1);
+      const k = this.textBoost / (this.view.zoom ?? 1);
       this.landingText.setScale(k).setPosition(
         Math.max(10 * k, Math.min(this.view.width - this.landingText.width * k - 10 * k, marker.x + 12 * k)),
         (this.view.bottom ?? this.view.height) - 56 * k,
       );
     }
 
-    const ink = hex(PAL.ink);
-    const g = this.graphics;
+    const dots: Array<{ x: number; y: number; style: DotStyle }> = [];
     // 1. Previous shot: a quiet comic dotted path (paper dots, thin ink rims) for aiming reference.
-    const ghostFill = this.playerColor === null ? hex(PAL.paper) : playerDisplayColor(this.playerColor);
-    for (let i = 0; i < this.previousPoints.length; i += 2) {
-      const p = this.previousPoints[i]!;
-      g.fillStyle(ink, 0.45);
-      g.fillCircle(p.x, p.y, 3.6);
-      g.fillStyle(ghostFill, 0.75);
-      g.fillCircle(p.x, p.y, 2.4);
-    }
+    const ghost: DotStyle = { rim: 3.6, rimAlpha: 0.45, core: 2.4, coreColor: this.playerColor === null ? hex(PAL.paper) : playerDisplayColor(this.playerColor), coreAlpha: 0.75 };
+    for (let i = 0; i < this.previousPoints.length; i += 2) dots.push({ ...this.previousPoints[i]!, style: ghost });
     if (this.previousLandingMarker) this.drawCross(this.previousLandingMarker.x, this.previousLandingMarker.y, 6, 0.5);
 
     // 2. Active shot: bold dots in the shooter's colour.
-    const activeColor = this.playerColor === null ? hex(PAL.pow) : playerDisplayColor(this.playerColor);
-    for (let i = 0; i < this.activePoints.length; i += 2) {
-      const p = this.activePoints[i]!;
-      g.fillStyle(ink, 0.9);
-      g.fillCircle(p.x, p.y, 4.2);
-      g.fillStyle(activeColor, 1);
-      g.fillCircle(p.x, p.y, 2.8);
-    }
+    const active: DotStyle = { rim: 4.2, rimAlpha: 0.9, core: 2.8, coreColor: this.playerColor === null ? hex(PAL.pow) : playerDisplayColor(this.playerColor), coreAlpha: 1 };
+    for (let i = 0; i < this.activePoints.length; i += 2) dots.push({ ...this.activePoints[i]!, style: active });
     if (this.activeLandingMarker) this.drawCross(this.activeLandingMarker.x, this.activeLandingMarker.y, 9, 1);
+    this.placeDots(dots);
   }
 
   /** An inked "X marks the spot" where the ball came down. */
@@ -184,6 +227,7 @@ export class TrailRenderer {
 
   destroy(): void {
     this.graphics.destroy();
+    for (const dot of [...this.rims, ...this.cores]) dot.destroy();
     this.landingText.destroy();
   }
 }

@@ -16,6 +16,8 @@ declare module '@matter-js' {
   export const Body: {
     setPosition(body: MatterJS.BodyType, position: { x: number; y: number }): void;
     setVelocity(body: MatterJS.BodyType, velocity: { x: number; y: number }): void;
+    setStatic(body: MatterJS.BodyType, isStatic: boolean): void;
+    setAngularVelocity(body: MatterJS.BodyType, velocity: number): void;
     update(body: MatterJS.BodyType, deltaTime: number): void;
   };
   export const World: {
@@ -30,13 +32,18 @@ declare module '@matter-js' {
   export const Bodies: {
     rectangle(x: number, y: number, width: number, height: number, options?: unknown): MatterJS.BodyType;
     circle(x: number, y: number, radius: number, options?: unknown): MatterJS.BodyType;
+    /** A convex polygon (any vertex order) whose centre of mass is placed at (x, y). */
+    fromVertices(x: number, y: number, vertexSets: Array<{ x: number; y: number }>, options?: unknown): MatterJS.BodyType;
   };
+  /** The contact solver; its tuning constants (`_restingThresh`, …) are module globals. */
+  export const Resolver: Record<string, unknown>;
 
   const MatterExport: {
     Body: typeof Body;
     World: typeof World;
     Engine: typeof Engine;
     Bodies: typeof Bodies;
+    Resolver: typeof Resolver;
   };
 
   export default MatterExport;

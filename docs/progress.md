@@ -1,8 +1,18 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-10-10_
+_Last updated: 2026-11-25_
 
 ## Current milestone
+
+**Current (2026-11-25, third round): the round-2 proposal is done on branch `real-game-pass` (PR #2 to `main`).** Chapter 5 (Frozen Pond, Skate Park, The Scrapyard), the Daily Bonk friends board, shared online lines, save links and QR, online clips, gust visuals, next-garden warm-up, a landscape phone pass, a listening page and preview-safe Vercel builds. Notes, measurements and decisions are in "Next 10, round 3 (2026-11-25)" at the end of this file.
+
+**Earlier (2026-11-25, second round): the next proposed 10 are done on branch `real-game-pass`.** Online play was tested live against the Convex dev deployment (pushed with a dev deploy key; production not deployed), and the real-phone pass ran on a OnePlus Nord. Per-item notes, measurements, owner decisions and the next proposal are in "Next 10, round 2 (2026-11-25)" at the end of this file.
+
+**Earlier (2026-11-25): "next 10" pass complete on branch `real-game-pass` (not merged or pushed).** All ten proposed items are done: six built here and four in parallel worktrees, merged after review. Along the way a physics bug was found and fixed: the shipped game did not run the physics the tests prove. Per-item notes, evidence, owner decisions and the next proposal are in the "Next 10 (2026-11-25)" section at the end of this file. Online rooms need a Convex redeploy before they can use emotes and the two new gardens.
+
+**Current (2026-11-24): "real game" pass complete on branch `real-game-pass` (not merged or pushed).** All ten gaps from the ranked list are fixed. The list, per-item notes, evidence and the next-10 proposal are in the "Real game pass" section at the end of this file.
+
+Final `npm run check`: `Test Files 58 passed (58)`, `Tests 585 passed | 10 skipped (595)`. `npm run build`: 194 modules; main 389 kB (116 kB gzip). The production build was checked through `vite preview`: no dev globals, a shot played through Skip, no console errors or warnings.
 
 **Current (2026-10-08): owner-requested polish pass complete on branch `polish-pass`.** See `CHANGELOG.md` and the "Polish pass" entries at the end of this file. The earlier text below is historical.
 
@@ -585,3 +595,1154 @@ Owner request: every mode uses the same maps; the existing maps were too easy; a
 - Browser fixture verified local cards contain no Here labels and online dots compute green for Online and red for Away. Live online connection changes not verified: the configured server was previously unreachable.
 - `npm run check`: typecheck and lint passed; `Test Files 48 passed (48)`; `Tests 464 passed | 8 skipped (472)`. `npm run build`: succeeded, 176 modules transformed.
 - Current: requested presence presentation complete. Next: verify live online disconnect/reconnect once the server is reachable.
+
+
+## Real game pass (2026-11-24)
+
+The owner asked for Hit Jonh to feel like a polished game people want to keep playing for 30 minutes. They asked for the gaps to be listed and ranked by value per unit of effort, then fixed in that order with small commits.
+
+**How the list was made.** I played the dev build in headless Chromium: desktop 1440 wide, phone landscape 844×390 and portrait 390×844. I also timed 99 shots per map with real Matter (9 angles × 11 powers).
+
+**Top-10 gaps, ranked by value per unit of effort**
+
+1. **Slow shot loop.** A typical miss took 5.5 s of simulation, and 4.5 s of that was the ball rolling after it landed. A ball rolling off either end of the ground fell until the 15 s timeout. With the 1.4 s result window, it was about 7 s from Fire to aiming again.
+2. **Phone landscape broken.** At 844×390 the canvas is cropped: the ground, the cannon and Jonh are hidden behind the slider bar.
+3. **Jonh has about 35 lines and no memory.** Nothing escalates, nothing depends on the map, and lines repeat within minutes.
+4. **No campaign.** After a win the only options are Retry and Change map. All 8 maps sit unlocked in a flat grid, with no star total.
+5. **Every launch is identical.** A 5% shot and a 100% shot get the same flash, smoke, recoil and boom.
+6. **The title card covers Jonh.** There is no character on the title screen.
+7. **Multiplayer lacks party energy.** No taunts, no replay of the winning shot, no final-round moment.
+8. **Only hats unlock.** There are no cannon skins or outfits.
+9. **Every obstacle is a static box.** There are no breakables and no portals.
+10. **Abrupt transitions.** Maps swap instantly, and the FIRE button covers part of the field on desktop.
+
+**Rules followed throughout.** These stay unchanged: scoring (100/125/20/0, [OPEN]), three solo shots ([OPEN]), shot outcomes, the aim ranges and the "no full trajectory preview" rule. Unlockable maps and the new mechanics are owner requests; they supersede SPEC §5 ("all unlocked") and the §4.2 deferral and are recorded there.
+
+### 1. Snappy shot loop — done
+
+**Done**
+- **Fast-forward after landing** (`src/fx/settleClock.ts`, `FX.settle*` [TUNE]). It applies once a missed ball has touched the ground or an obstacle and is either crawling (< 0.8 m/s) or rolling (< 4 m/s) at least 2.5 m from Jonh.
+  - Presentation time then eases up to 4×. `FixedStepper.advance` takes a matching step cap, so no steps are dropped at 30 Hz.
+  - Fast bounces and anything close to Jonh stay at real speed.
+- **Skip.** While the ball is fast-forwarding, the HUD pill reads "Skip »", and Space, Enter or the pill finishes the shot within one frame. It runs the same fixed steps without per-bounce sound or dust.
+- **Floor out-of-bounds** (`ShotAttemptMachine` `floorYMetres` = level bounds minY). A ball below minY − 1 m is out of bounds. Before, a ball that rolled off either end of the ground (x between 25.6 and 26.6 m, or between −1 and 0 m) fell until the 15 s timeout.
+- **Miss result window** 1.4 s → 1.0 s (`FLOW.shotResultSeconds` [TUNE]). Body hits keep their longer window and replay.
+- **Solo skips.**
+  - Aim keys or touching the field during a non-final miss go straight back to aiming.
+  - Space skips any result, including a hit's replay.
+  - Jonh's line about the miss stays in his bubble while you re-aim.
+  - R (and the focused Retry button) retries from the solo result screen.
+  - After any skip, Space still needs a fresh release before it fires (accidental-action rule kept).
+
+**Measured** (simulated seconds from Fire to resolution for misses, 9 × 11 aim grid per map, at 60 Hz):
+
+| Map | Before: median / p90 / max | After: median / p90 / max |
+| --- | --- | --- |
+| Backyard | 5.48 / 7.35 / 9.50 | 2.57 / 4.27 / 5.73 |
+| Fence | 5.17 / 7.03 / 9.80 | 2.53 / 3.97 / 5.83 |
+| Rooftop | 5.83 / 7.67 / 9.80 | 2.85 / 4.02 / 5.83 |
+| Rubber Yard | 5.58 / 7.15 / 15.02 | 2.78 / 4.62 / 10.83 |
+| Bank Shot | 5.72 / 7.47 / 10.75 | 2.60 / 4.12 / 6.35 |
+| Bounce House | 5.67 / 7.63 / 15.02 | 2.63 / 4.30 / 6.32 |
+| Lunar Picnic | 5.40 / 10.70 / 15.02 | 3.72 / 8.23 / 12.93 |
+| Valley | 7.72 / 11.28 / 14.70 | 4.63 / 7.22 / 9.57 |
+
+The "before" column already includes the floor fix, so the old timeouts were worse than shown.
+
+Skip makes any landed miss instant. The remaining long tails are legitimate: low-gravity Lunar flights, and an 85°/100% Rubber Yard shot that bounces on top of the rubber ceiling for 13 s.
+
+**Verified**
+- `tests/settleFastForward.test.ts` covers all 8 maps × 8 aims (misses plus the reference hit). Fast-forward at 30/60/144 Hz and Skip give identical outcomes, end points, miss reasons and step counts to the plain run, and misses resolve sooner. A Backyard ball that rolls off the end of the ground is now out of bounds in under 6 s.
+- Unit tests cover `fastForwardTarget`, `SettleClock`, `distanceToBox`, the raised stepper cap, the floor rule, and Space-skip needing a fresh press before firing.
+- `npm run check`: `Test Files 50 passed (50)`, `Tests 484 passed | 8 skipped (492)`.
+- **Browser** (dev server, headless Chromium, the game stepped at an exact 60 Hz). The machine was too loaded to run in real time.
+  - Fence 45°/0%: Skip offered at 1.6 s, resolved at 2.5 s, aiming again at 3.5 s.
+  - Space chain over three misses: fire → Space (finish roll) → Space (skip result) → "Jonh wins", with Retry focused; R restarted at once.
+  - Backyard 56°/32%: still a ricochet hit with the full impact and replay, then the result screen.
+
+**Not verified:** real-time feel on a real device. The "R" key hint is hidden on touch-only screens (CSS `hover: none`), but that was not tried on a phone.
+
+### 2. Phone landscape layout — done
+
+**Cause.** Phaser's ScaleManager checks its parent's size only every 500 ms of game time. Entering a game changes the stage size (the HUD and slider bar appear), so the canvas kept its menu-sized scale and was cropped until the next poll. On a slow device that lasts noticeably longer than 0.5 s. Even after the refit, the slider bar shrank the phone-landscape game to 608×266 on an 844×390 screen.
+
+**Done**
+- `main.ts`: a `ResizeObserver` on `#game` refits the canvas the moment the stage changes size.
+- Short landscape screens (`max-height: 520px`): the Angle/Power sliders fold away and a "Precise aim" HUD toggle (sliders icon, `aria-pressed`, `aria-controls`) floats them over the bottom of the field. Desktop and portrait are unchanged.
+
+**Verified** (headless Chromium, the canvas measured after the first frame in game):
+
+| Viewport | Canvas before | Canvas after |
+| --- | --- | --- |
+| 844×390 | 817×357 inside a 608×266 frame (cropped), then 608×266 | 832×364 |
+| 667×375 | — | 655×287 |
+| 932×430 | — | 920×403 |
+| 1440×800 | — | 1400×613 (unchanged layout) |
+| 390×844 | — | 358×157 (unchanged layout) |
+
+- No horizontal overflow at any size.
+- The toggle opens and closes the slider overlay.
+- Hot-seat at 844×390 fits the player panel plus a 642×281 canvas.
+
+**Not verified:** a real phone. Safe-area insets were not exercised on a notched device.
+
+### 3. Jonh's personality — done
+
+**Done**
+- `src/rules/jonhLines.ts` holds about 120 new lines, in these groups:
+  - miss-streak, first-shot, hit-streak, strong and trick hits;
+  - per-hat lines for all 8 hats;
+  - obstacle complaints matched by id or material (fence, shed, planters, awning, billboard, carport, silo, trampoline, rubber, leaves, rock, concrete, wood);
+  - per-garden arrival, miss and hit lines;
+  - heckles.
+- `JonhReactionSelector.selectReaction(category, context?)` tries the fitting context pools in priority order with cosmetic odds (`JONH_TALK` [PROPOSED]), then falls back to the plain pool.
+  - A line does not return within the last 8 picks while the pool has fresh ones. Consecutive repeats are still never allowed (SPEC §10.1).
+  - Without a context it behaves as before (existing tests unchanged).
+- Added `selectArrival(mapId)` (per-garden opening lines; the level's `arrivalLine` is the fallback) and `selectHeckle(missStreak)`.
+- The "Take your time. Apparently you need it." line now belongs to the miss-streak pool, as SPEC §10.1 intended ("several consecutive misses"). Before, it was a random overhead/over line.
+- `HeckleTimer` (pure): first heckle after 9 s of untouched aim, then every 15 s, at most twice per aim. Any aim change restarts it.
+- `AudioManager.playMutter`: a quiet low formant babble with 2–5 syllables, played with miss lines, arrival lines, heckles and "moved" lines. Hits keep the yelp.
+- The scene passes the context: map, hat, obstacles touched and a session miss streak. Solo also passes first shot and hit streak (multiplayer turns are shared, so those two are left out there).
+
+**Verified**
+- `tests/jonhTalk.test.ts` (12 tests) covers:
+  - each context pool, the miss-streak threshold, and the obstacle id/material match;
+  - the fallback when the odds say no;
+  - the 8-pick recency window over 200 picks;
+  - per-garden arrivals, heckle escalation and the HeckleTimer rules;
+  - every line ≤ 60 characters with no "John", and `MAP_LINES` naming only real maps.
+- Browser (frame clock): Lunar Picnic opened with "Finally. Some peace and quiet."; after 9 s of untouched aim Jonh said "Lovely afternoon for doing nothing."; no page errors.
+
+**Not verified:** how the mutter sounds (no listening possible); only its scheduling runs.
+
+### 4. Campaign — done
+
+**Done**
+- `src/rules/campaign.ts` (pure) derives everything from the existing solo bests in `hitJonh.v1`, so there is no new save field:
+  - `CAMPAIGN_ORDER` [PROPOSED]: Backyard → Fence → Rooftop → Rubber Yard → Bank Shot → Lunar Picnic → Bounce House → Valley. Other maps join at the end.
+  - Stars by shots used (3/2/1, unchanged), a per-garden trick badge, totals, unlocks, the next garden and the Continue target.
+  - Unlock rule [PROPOSED]: clear the previous garden (any star). A garden with an existing record stays open, so saves from before the campaign keep every map they had played.
+- **Map select:** numbered cards in campaign order; a star tally with a progress bar, trick shots and gardens cleared; locked cards (greyed preview, padlock, "Clear X to unlock", disabled with an aria-label); "Up next" on the Continue target, which also gets focus; a trick badge on every unlocked card.
+- **Win screen:**
+  - "Next garden ›" is primary and focused (N); Retry (R) and Map select follow.
+  - It shows the campaign star total, an "Unlocked: …" card on a first clear, and a "Trick badge!" ribbon the first time.
+  - Several hat unlocks from one shot collapse into one compact card.
+  - The buttons stay pinned while the celebration scrolls on short screens.
+- **Title:** returning players get a big "Continue · {garden}" button and "All modes ★ n / 24". First-time players still see "Play".
+- Daily Bonk, hot-seat and online are not gated. Daily wins show no Next button and no campaign total.
+
+**Decisions:** SPEC §5 "Choose any map (all unlocked)" is superseded by the owner's request. Stars stay "shots used" (SPEC §5 [PROPOSED]). The trick shot is a separate badge rather than a fourth star, so the existing 3/2/1 rating and the crown hat rule ("three stars on every garden") are unchanged.
+
+**Verified**
+- `tests/campaign.test.ts` (6 tests):
+  - order covers every map, and new maps join at the end;
+  - star mapping;
+  - a fresh save unlocks only the first garden;
+  - clearing unlocks the next, a failed try does not;
+  - old records stay open;
+  - totals, Next and Continue targets.
+- Browser, from a fresh save:
+  - only Backyard was open, with 7 padlocks and unlock hints;
+  - a Backyard 56°/32% first-shot trick hit showed "Next garden ›" (focused), "Campaign ★ 3 / 24", "Unlocked: The Fence Dispute" and "Trick badge!";
+  - N loaded The Fence Dispute;
+  - Home then showed "Continue · The Fence Dispute" and "All modes ★ 3 / 24";
+  - at 844×390 the result buttons stayed pinned and visible;
+  - no page errors.
+
+**Not verified:** touch on a real phone.
+
+### 5. Launch feel scales with power — done
+
+**Done** (all cosmetic, values [TUNE] in `FX.launch*`)
+- `ShotEffectsRenderer.launch(…, power)` scales with power:
+  - smoke puffs 4 → 12, with spread, speed, size and lifetime;
+  - sparks 3 → 13;
+  - muzzle flash size ×0.75 → ×1.35, and one extra flash frame above 66%;
+  - barrel recoil from 40% of `FX.recoilPx` at 0% power to 100% at full.
+- New camera kick backwards along the barrel: up to 9 px plus a small zoom punch at full power. It goes through `CameraRig.impact`, so reduced motion suppresses it.
+- Above 60% power the wheels throw up dust from the surface under the cannon (`floorAt`, so it works on the Valley cliff).
+- `AudioManager.playCannonFire(power)`: low power is a short, higher "pop"; full power is a deeper, longer boom with a low rumbling tail.
+
+**Verified**
+- `tests/shotEffects.test.ts`: a full-power launch has more particles and a bigger recoil peak than a 0% one, bounded by `FX.recoilPx`; reduced motion has no particles or recoil.
+- Polish determinism and audio tests unchanged and passing.
+- Browser frames 9 and 15 after Fire at 10% and 100%: the full-power shot shows a bigger flash, wheel dust, more smoke and the kick.
+
+**Not verified:** how the boom sounds (no listening possible).
+
+### 6. Title screen with character — done
+
+**Done**
+- **Jonh is on stage.** The title card now sits between the cannon (left) and Jonh (right) on desktop and phone landscape; on portrait phones it sits under the stage.
+  - The menu backdrop lets pointer events through outside the card, so the garden can be poked.
+  - Jonh greets you with a title quip ("Nobody press Play.", "Oh good. Visitors.") and a mutter.
+- **Demo shot.** About 4 s after the title appears, then every 11–15 s, the cannon swings round, winds up and fires one of the garden's reference solutions. Clicking or tapping the garden ("Psst: poke the garden.") fires it at once.
+  - The flight is a genuine Matter run: `physics/shotRecorder.ts` records it on a private engine and the title animates the recorded path.
+  - Impact: the real impact profile with the shared hit-stop clock, comic word, flash, ring, particles, camera punch, hit sound and Jonh's knock-back with a title line ("Was that the tutorial?").
+  - Afterwards the ball bounces away, and Jonh climbs back into his chair 3.4 s later.
+  - Under reduced motion there is no flying ball; a poke just gets a line.
+- **Variety.** The title garden is picked at random from your unlocked gardens of ordinary width, with the selected hat. "Continue" and the star total (item 4) live on the same card.
+
+**Verified**
+- `tests/shotRecorder.test.ts`: every map's first reference shot, recorded, reaches Jonh's body, and its trick flag matches the headless runner. Sampling is linear and clamped.
+- Browser (frame clock):
+  - At 1440, 844×390 and 390×844 the cannon and Jonh are both visible around the card.
+  - Clicking the garden fired the Backyard demo trick shot: flash, "TRICK SHOT!", ring and knock-back.
+  - Jonh's quip bubble anchors over his head when every frame is rendered. A top-left bubble seen with skipped renders was an artefact of headless stepping: the camera world view updates only on rendered frames.
+  - No page errors.
+
+**Not verified:** on real touch hardware, whether the pass-through backdrop ever swallows a scroll gesture on the home card.
+
+### 7a. Multiplayer party: stakes, final round, taunts — done
+
+**Done**
+- `src/rules/matchStakes.ts` (pure):
+  - `verdictFor` applies the existing SPEC §7.1 winner rule (total, then body hits, else shared) after one more shot.
+  - `matchStakes` returns a banner, a stakes line and a "decisive" flag for the active player.
+  - `shotsLeftPerPlayer` derives remaining shots from the machine's counters; it uses a new read-only `MultiplayerMatchMachine.shotIndexInRound`, with no rule change.
+  - `tauntFor` picks a taunt by outcome.
+- **Handover card**, with `HandoverParty` passed to `showMPHandover`:
+  - a "Final round", "Your last shot" or "Last shot of the match" banner (the decisive one is red and throbs);
+  - the stakes line;
+  - a taunt bubble in the previous scorer's colour ("PLAYER 2: 'Watch and learn.'").
+  - Cards with extras stay 0.6 s longer and decisive ones 1.2 s longer (`FLOW.*HandoverExtraSeconds` [TUNE]). The auto-advance bar matches.
+- `AudioManager.playDrumroll()` plays a snare roll that speeds up and swells, with a cymbal hit, on the match's deciding shot.
+- **HUD while aiming:** "Player 1's turn · Only a trick shot wins it! A hit ties." The map chip says "Shot n/3" instead of the jargon "Cycle n/3".
+- **Round summary** before the final round: "Final round next. Everything to play for." with a "Final round ›" button.
+
+**Verified**
+- `tests/matchStakes.test.ts` (7 tests):
+  - the winner rule with the body-hit tie-break;
+  - every last-shot line (hat wins, any hit wins, trick only, trick ties, trick wins with a hit tying, can't catch up, already won);
+  - the final-round and last-shot banners;
+  - `shotsLeftPerPlayer` against real 2/3/4-player two-map matches;
+  - taunt pools.
+- **Browser:** a two-player Backyard + Fence match showed the "FINAL ROUND" banner; then "PLAYER 2: 'Watch and learn.'" after Player 2's hit; "Trailing Player 2 by 100"; "YOUR LAST SHOT"; then "LAST SHOT OF THE MATCH · Only a trick shot wins it! A hit ties." (also in the HUD); then the result. No page errors.
+
+**Not verified:**
+- How the drumroll sounds.
+- Online taunts were exercised only through shared code (`applyOfficialOutcome` records the shooter); there was no live online room.
+
+### 7b. Winning-shot replay — done
+
+**Done**
+- `render/demoStage.ts` (new) is a self-contained garden that plays a recorded shot at Jonh. The cannon swings, winds up and fires with power-scaled launch effects; the ball follows the recorded Matter path; then the full impact plays (hit-stop clock, comic word, flash, particles, camera punch, sound, knock-back) and the ball bounces away. The title screen (item 6) now uses it too.
+- `scenes/ShowcaseScene.ts` (new, registered in `main.ts`) runs over the game when a multiplayer match ends.
+  - It shows the garden and Jonh's spot where the winner's best hit happened (`levelAtMultiplayerPosition`), with the winner's cannon colour and pattern.
+  - A "Winning shot · {name}" letterbox shows (via a new `ReplayOverlay.setText`), and Jonh delivers a line ("Must we watch it again?").
+  - Tap, Enter, Space or Escape skips it. The keys are captured so the game underneath never sees them, and pausing is ignored while it plays.
+- Every body hit of a match (hot-seat and online official outcomes) is remembered with its map, position and exact aim. The match result waits for the replay. Rematch, Home and a rebuilt online match stop the replay cleanly.
+- It is not played under reduced motion, when the winners never hit Jonh, or when a local re-simulation no longer reaches Jonh (cross-browser drift online).
+- The HUD steps aside during the replay (`body.showcase-on`); the player panel stays.
+
+**Verified**
+- Browser (frame clock): a two-player Fence match where Player 2 hit with the position's reference shot. At the end, "WINNING SHOT · PLAYER 2" played: the blue striped cannon fired and BONK landed at the hit position. Then "PLAYER 2 WINS!" appeared with Rematch and Main menu. No page errors.
+- `npm run check` passes (below). The title screen still plays its demo through `DemoStage`; the recorder tests cover every map.
+
+**Not verified:**
+- A live online room.
+- Real-time feel and pacing: the browser here runs at about 4 fps, so the replay was stepped at an exact 60 Hz.
+
+### 10. Transitions and HUD polish — done
+
+(Done before items 8 and 9, which are being built in parallel worktrees and merged afterwards.)
+
+**Done**
+- **Chapter cards** (`ui/transition.ts`, CSS in `menu.css`). Entering a garden now shows an ink panel stamped with its name and a kicker, then an iris opens onto play (about 1.2 s; decorative; pointer events pass through). Before, maps swapped instantly.
+  - Kickers: "Garden 3" (campaign number), "Daily Bonk", "Round 2 of 4", "Final round".
+  - Retry never shows a card, so the one-more-try loop stays instant.
+  - The first hot-seat or online handover of a round waits out the card, and its auto-advance bar includes that wait.
+  - Off under reduced motion. The menu's own iris is skipped when a card is already covering the way in.
+- **Desktop FIRE out of the field.** With a mouse (`hover: hover`, `pointer: fine`, at least 1000×640), FIRE (84 px) and the Next/Skip pill sit in the control row under the garden, right of the sliders, so they no longer cover the playfield. Touch screens keep the thumb-side in-canvas button.
+- **Readable on phones.** `fx/readability.ts` scales Jonh's speech bubble and the landing label up as the canvas shrinks (1× at full size, about 1.3× at 844×390, capped at 1.6×). It is re-measured whenever the canvas refits.
+
+**Verified**
+- `tests/readability.test.ts`.
+- Browser: the chapter card read "GARDEN 1 / JONH'S BACKYARD", shown by pausing CSS animations at 320 ms, then the iris opened onto play.
+- The desktop rules, injected unconditionally because headless Chrome reports `hover: none` / `pointer: none` and cannot emulate them, put FIRE below the canvas: solo canvas bottom 699 px, FIRE 703–787 px at x 1332–1416, sliders end at x 1140; hot-seat similar; no page overflow.
+- At 844×390 the boost measured 1.31 and the bubble read clearly.
+
+**Not verified:** the desktop media query on a real mouse-driven browser (reasoned from the injected-rule check), and card timing in real time (headless runs at about 4 fps).
+
+### Independent review fixes
+
+A read-only Sonnet review of the pass's commits found three bugs and some risks. All are fixed:
+- **Stale R/N shortcuts (bug).** Hiding the solo result never removed its key listeners, so R during play re-ran Retry (unlimited attempts) and N reloaded the garden. `MenuOverlay.hide()` now aborts the view's listeners, and shortcuts act only while their view is on show. Browser: after Retry and a miss, R and N during play left "2 of 3 attempts" and the garden unchanged.
+- **Second winning-shot replay not skippable by keyboard (bug).** Phaser reuses the scene instance, so its aborted listener controller added nothing the second time. A fresh controller is now made per run.
+- **Winning shot on Across the Valley played off-screen (bug).** `DemoStage` now frames a garden with its resting view (`levelView`), zoomed out as in play, with the matching cannon and bubble UI scale.
+- **Held Enter/Space pressed the next screen's button (risk).** Key repeats never activate menu buttons now (capture listener on the overlay), so holding a key after a skip cannot hit Retry, Next garden or Rematch. A fresh press still works.
+- **Nits:**
+  - canvas aim checks pointer type and button before it can skip a result (a right-click or second finger no longer skips);
+  - the chapter-card handover delay is cleared when no handover follows, and on Home;
+  - Jonh's miss streak resets on Home;
+  - the replay's speech bubble gets the phone text boost.
+
+`npm run check`: `Tests 522 passed | 8 skipped`.
+
+### 8a. Cosmetic unlocks: cannon skins and Jonh outfits (art, rules, saved selection, renderer API) — done
+
+The wardrobe screen and the scene wiring are a separate task; this item delivers everything they need.
+
+**Done**
+- **Rules** (`src/rules/cosmetics.ts`, pure): `CANNON_SKIN_RULES` and `OUTFIT_RULES`, each with a name, a hint and `unlocked(progress, ctx)`, where `ctx = { stars, cleared }` comes from `cosmeticContext(mapIds, solo)` (built on `campaignStatus`/`campaignTotals`). Helpers: `unlockedCannonSkins`, `unlockedOutfits`, `newlyUnlockedCannonSkins`, `newlyUnlockedOutfits`, `sanitizeCannonSkin`, `sanitizeOutfit`. All thresholds are [PROPOSED] (`COSMETIC_GATES`).
+  - Cannon skins: Classic iron (always) · Admiral (6 stars) · Garden Party (clear 4 gardens) · Pirate (3 trick hits) · Moonshot (12 stars) · Golden Bonk (24 stars).
+  - Outfits: Cardigan (always) · Argyle jumper (best streak of 5) · Hawaiian shirt (12 stars) · Tracksuit (50 total hits) · Stripy pyjamas (3 stars in a Daily Bonk) · Tuxedo (18 stars) · Sunday best (Daily Bonk on 3 different days).
+- **Saved selection:** `Progress.selectedCannon` and `selectedOutfit`. `sanitizeProgress(raw, mapIds, ctx)` falls back to the default for an unknown or locked id and old saves get the defaults. `storage.ts` passes the real star context (from the saved solo bests) on load and on `saveProgress`.
+- **Art:** `src/art/cannonSkins.ts` (themes and decals), `cannonArt.ts` (parameterised barrel/carriage/wheel), `src/art/outfitArt.ts` (torso, trousers and both arms per outfit). Every variant has exactly the canvas size, pivot and silhouette of the original, so every pose and the muzzle/recoil/fuse maths are unchanged (a test asserts the sizes and pivots). Six new palette tokens (`coal`, `coalLight`, `silver`, `silverDark`, `grape`, `grapeDark`) in `palette.ts`; nothing else adds a colour.
+- **Renderers:** `JonhRenderer` has an `outfitId` option and `setOutfit(id)`; `CannonRenderer` has a sixth constructor argument `skin` and `setSkin(id)`. Switching only swaps textures; everything is rasterized at boot.
+
+**Decisions**
+- A skin shows only on the solo/title cannon (`draw()` with no colour). In multiplayer the whole cannon (barrel, carriage, wheel) stays classic so the player's colour and pattern band read exactly as before; the alternative (skin × 4 colours × 4 patterns) would be about 96 more barrel textures.
+- Jonh holds a newspaper over most of his torso at rest, so the outfit reads mainly through sleeves and trousers; torsos show fully on hit reactions. The wardrobe figure omits the paper by default.
+- Texture keys: `cannonSkinKeys(id)` → `{ barrel, carriage, wheel }`, `outfitKeys(id)` → `{ torso, legs, armFront, armBack }` (classic and cardigan keep the original keys). Inline-SVG preview figures that need no boot: `cannonSkinFigureSvg(id, angleDeg?)` and `outfitFigureSvg(id, hat?, withPaper?)`.
+
+**Verified**
+- `tests/cosmetics.test.ts`: every gate boundary, feats, the `newlyUnlocked*` helpers, `cosmeticContext`, sanitising (old saves, unknown ids, locked and unlocked selections), art registered under the documented keys with unique keys, identical sizes and pivots, and preview figures. `tests/storage.test.ts`: a selection is dropped until the saved solo bests unlock it. Existing `jonhPose` tests unchanged.
+- **Texture budget (measured in Chromium via the dev server):** 39 new textures (15 cannon + 24 outfit), about 0.64 Mpx ≈ 2.45 MB of the 33.5 MB all art occupies (180 textures); rasterizing them took about 64 ms on a loaded machine. The full `npm run check` and `npm run build` passed.
+- **Browser:** the real `JonhRenderer.setOutfit` and `CannonRenderer.setSkin` were run on every id in a throwaway Phaser scene after `loadArt(ALL_ART)`: all seven outfits and six skins drew, no page errors. The inline preview figures were checked on a contact sheet.
+
+**Not verified:** the wardrobe screen and scene wiring (parent task); how the skins look in the full game scene at the 1.8× hit zoom and on zoomed-out maps; real-device performance.
+
+### 8b. Cosmetics wired into the game — done (item 8 complete)
+
+**Done**
+- **Wardrobe** (`ui/wardrobe.ts`): Hats, Outfits and Cannons tabs, each with a count. Outfits preview as Jonh in the outfit and your current hat; cannons preview their skin (inline SVG from the art code). Locked items show how to earn them.
+  - Picking an item saves it and immediately re-dresses the title-screen Jonh or cannon.
+  - The home button reads "Wardrobe n/21".
+- **Worn everywhere.**
+  - The selected outfit is on Jonh in solo, hot-seat, online, the title screen and the winning-shot replay.
+  - The selected skin is on the solo and title cannon. Multiplayer stays classic by design (player colour bands).
+- **Unlocks.** Every shot and solo finish checks hats, outfits and skins, using the campaign star totals before and after the result (computed in memory, since the save is deferred past the contact frame).
+  - One compact card on the result screen lists all new items ("New cannon: Admiral. Try it on in the wardrobe.").
+  - Multiplayer and online show a caption instead. Online only checks feats (online play doesn't change campaign stars).
+
+**Verified**
+- Browser, with a save holding 18 stars and the feats:
+  - the wardrobe showed Hats 7/8, Outfits 7/7 and Cannons 5/6;
+  - choosing the Hawaiian shirt and the Pirate skin saved both;
+  - Continue opened Bounce House with Jonh in the Hawaiian shirt and fez and the Pirate cannon.
+- Browser, from 5 stars: a first-shot Rooftop clear showed "Campaign ★ 8 / 24", "Unlocked: Rubber Yard" and "New cannon: Admiral".
+- No page errors.
+- The figures' chairs no longer overlap their captions.
+
+**Not verified:** how skins look at the 1.8× hit zoom on a real screen (seen only at the screenshot scale above).
+
+## Breakable props and portals (2026-11-24, branch `t3/breakables-portals-maps`)
+
+Owner request (2026-11-24): "new obstacle types and map mechanics (moving platforms, breakables, portals or wind), all in SI level data with reference solutions that pass the existing tests". The lead chose breakable props and portals; moving platforms and wind stay deferred.
+
+**Done**
+- **Physics** (`src/physics/matterAdapter.ts`, SPEC §8.6). Breakable obstacles (`breakable: { minImpactSpeedMs, speedKept }`): a hit at or above the threshold (normal speed, same incoming velocity a bounce uses) switches the prop off in Matter (collision mask, so the body order never changes) and in the swept guard for the rest of the shot; the ball carries on from the contact point with the kept share of its velocity. One-way portals (`portals: [{ entry disc, exit point + heading }]`): touching an unused entry before any solid teleports the ball to the exit at the same speed, heading the exit's way; once per shot; a blocked exit is skipped. Per-shot state is restored on every spawn. `ProjectileState` gains `brokenObstacleIds`, `portalsUsed` and per-step `events`; the headless runner and difficulty tool report them.
+- **Validation**: breakable ranges, unique obstacle/portal ids, portal exits clear of every collider, Jonh (each target position) and every entry, entries out of muzzle reach.
+- **Maps** (appended to `MAPS`, so every mode has them): **The Greenhouse** (breakables) and **The Magic Act** (portals), each with three target positions and references that miss the other positions. New materials `glass`, `velvet` [TUNE].
+- **Difficulty guard**: `DIFFICULTY.minMechanicShare` (1 for both maps: every hit must smash glass / use the hoop, on every position).
+- **Presentation**: `src/render/mechanicsRenderer.ts` (owned by `SceneryRenderer`) draws panes, hoops and interiors and plays the events: shards + glass crash, sparkles + "fwoop", dimmed spent hoop; `reset()` restores everything. Art in `src/art/mechanicArt.ts`; palette tokens and rules in `docs/art-direction.md`. Map previews and blurbs. Audio: glass smash, glass "tink" for an unbroken pane, portal fwoop. The replay holds the ball across a teleport instead of sliding it between hoops.
+- **Scene** (`PrototypeScene.ts`): three marked lines only — forward each step's events (a break or teleport is not read as a bounce), reset mechanics in `resetEffects()`, glass/velvet surface sounds.
+
+**Decisions [PROPOSED]**
+- Portals keep the speed and set the direction to the exit heading (not the incoming vector), so the hoop always throws the same way and power alone sets the distance. They work from either side.
+- Smashing through and going through a portal are never ricochet or obstacle contacts. No surface on the new maps is ricochet-eligible, so both score plain body hits (100).
+- Greenhouse glass breaks at 6.5 m/s and keeps 35 % of the velocity. Both maps are difficulty 2.
+- Magic Act exit hoop sits inside the tent's left side (heading 65°): at first it was on the right, under the HTML Fire button.
+- Map presets unchanged: "Every map" includes the new maps, "Trick shots" is still the four 2026-10-10 mechanic maps. Owner to decide whether to add them.
+
+**Measured difficulty** (share of the aim grid that scores a body hit, near / middle / far)
+
+| Map | 1° × 1% grid | 5° × 5% guard | Hits using the mechanic |
+| --- | --- | --- | --- |
+| The Greenhouse | 7.10 / 5.11 / 3.83% | 6.2 / 5.0 / 4.2% | 100% smash glass |
+| The Magic Act | 2.71 / 3.34 / 2.37% | 2.8 / 3.1 / 2.2% | 100% through the hoop |
+
+References: Greenhouse near 24°/58% (front window), middle 53°/46% (roof), far 44°/57% (roof, off the back wall); Magic Act near 55°/24%, middle 48°/29%, far 42°/40%.
+
+**Existing maps unchanged**
+- Per-map cross-check digests (outcomes plus exact end positions and step counts for every reference and a 10 × 7 grid on every position) are identical before the change (`deae97b`) and after (`2a522af`, `ae26c48`).
+- The full `DIFFICULTY_REPORT=1` 1° × 1% table for the eight existing maps is byte-identical before (`deae97b`) and after (`ae26c48`): all 24 rows, including hit and ricochet counts, widest runs and suggested references.
+
+**Verified**
+- `npm run check`: typecheck and lint passed; `Test Files 50 passed (50)`, `Tests 508 passed | 10 skipped (518)` (the skips are the opt-in difficulty report). `npm run build`: succeeded, 180 modules transformed.
+- New tests: `tests/mechanics.test.ts` (smash vs bounce, no contact or ricochet, restore and identical replays, teleport speed and heading, once per shot, blocked exit, validation, low shot stopped by a solid on each mechanic map, headless reporting) and `tests/mechanicsRenderer.test.ts` (pane swap and restore, spent hoop, reduced motion), plus a replay teleport case.
+- Browser (Vite dev server on port 5199, headless Chromium via playwright-core, screenshots reviewed): Greenhouse solo 53°/46% smashed a roof pane (shards, jagged gap) and hit Jonh ("Bullseye", 1 shot); 24°/58% smashed the front window and fell short, the window was whole again for attempt 2, and 53°/46% then hit ("hit Jonh in 2 shots"). Magic Act solo 48°/29% went through the hoop, the swirl dimmed, the ball popped out of the exit hoop and hit ("Direct hit +100"). Emulated reduced motion: fixed camera, no shards or sparkles, but the smashed pane and the dimmed hoop still show. The map list shows all ten cards. Hot-seat Greenhouse-only match: four turns, Jonh drawn at the far position, panes whole between turns. No console errors in any run.
+
+**Not verified**
+- Sound: the new voices were not listened to (headless browser); unit tests only check they do not throw.
+- A hot-seat hit in the browser (my driver's timing around the handover card was flaky); scoring is covered by the automated multiplayer tests.
+- Online play on the new maps: needs a Convex redeploy, not done. Real devices, touch, Firefox and Safari.
+
+**Known issues / consequences**
+- Online: the Convex server validates map ids from `src/levels` (`MAP_IDS`), so online hosts can pick the new maps only after the Convex functions are redeployed. Nothing was deployed.
+- Daily Bonk draws from all maps' target positions, so adding maps changes the date → map mapping.
+- The crown hat ("three stars on every garden") now needs all ten maps.
+- The scene's cosmetic post-hit ball and bounce-sound lookup read level data, so they do not know a pane is smashed. On these two maps the panes are above the cosmetic ball's arc, so nothing visible happens.
+- After a teleport the ball's speed ribbon leaves a short fading streak at the entry hoop.
+- Magic Act: a fast flat shot that misses the hoop can rebound off the tent wall back through it from behind. This is legitimate and deterministic.
+
+**Next**
+- Owner playtest of both maps; tune the glass and hoop placement from feedback; decide on presets; redeploy Convex so online rooms can use the maps.
+
+### 9b. New gardens wired into the pass — done (item 9 complete; all ten items done)
+
+**Done**
+- **Merge.** The only conflict was in `PrototypeScene.ts`: the mechanics hook from the old inline step loop now lives in `simulateStep()`. It runs even during Skip, so broken panes and spent hoops stay correct. All existing outcomes are unchanged.
+- **Campaign order** [PROPOSED]: Backyard → Fence → Rooftop → **Greenhouse** → Rubber Yard → Bank Shot → **Magic Act** → Lunar Picnic → Bounce House → Valley, so each mechanic gets its own step. Gardens with a saved record stay open, so existing saves keep their progress.
+- **Jonh:** opening, miss and hit lines for both gardens, and complaints about glass ("That glass was imported.") and velvet ("That velvet was hired.").
+- **Replays show the mechanics.** `recordShot` captures each step's smash and portal events. `DemoStage` replays them through the same `MechanicsRenderer` (new `playRecorded`), so the title demo and the winning-shot replay smash panes and spin hoops. Every demo starts with whole panes.
+- **Trick shots preset** now includes both new maps [PROPOSED].
+- **Golden Bonk** now needs every campaign star (`COSMETIC_GATES.starsAll`, derived from the campaign: 30 with ten gardens), as the cosmetics tests intended.
+
+**Verified**
+- `npm run check` (below).
+- The full fast-forward/Skip identity suite, the recorder suite and the campaign suite now cover all ten maps.
+- New test: the Greenhouse reference replay records a `break`, the Magic Act a `portal`, and the Backyard none.
+- Browser (dev server and headless Chromium, started and stopped per check):
+  - from a save with three gardens cleared, Continue offered The Greenhouse;
+  - the map list was `backyard fence rooftop greenhouse rubber(L) bankshot(L) magic(L) moon(L) trampoline(L) valley(L)`;
+  - the home tally read ★ 9 / 30;
+  - the title demo on The Greenhouse smashed a roof pane with shards and hit Jonh;
+  - no page errors.
+
+**Owner follow-ups (not done here)**
+- Online rooms can pick the two new maps only after the Convex functions are redeployed (`npx convex dev --once` for dev). No deploy was run.
+- Daily Bonk's date-to-map mapping changed (more maps), and the crown hat now needs three stars on all ten gardens.
+
+### Pass summary and next 10
+
+**All ten done**, in value-per-effort order. Item 10 landed before 8 and 9, which were built in parallel worktrees and merged afterwards.
+1. Snappy misses: fast-forward, Skip, floor out-of-bounds, instant retry.
+2. Phone landscape layout.
+3. Jonh's context lines, heckles and mutter.
+4. Campaign: stars, trick badges, unlocks, Next garden, Continue.
+5. Power-scaled launches.
+6. Title screen with demo shots and poke-to-bonk.
+7. Party stakes, taunts, drumroll, winning-shot replay.
+8. Cannon skins, outfits and wardrobe.
+9. Breakables and portals, with The Greenhouse and The Magic Act.
+10. Chapter cards, desktop FIRE placement, phone text size.
+
+There were also fixes from an independent review.
+
+**Owner decisions needed** (reversible defaults are in place and labelled [PROPOSED]):
+- Ricochet eligibility on the new gardens. Should a portal hit or a glass-smash hit count as a 125-point trick shot? Today neither does (SPEC §7.1 [OPEN]).
+- SPEC §4.2 now reads "destructible terrain" (deferred) as different from single breakable props that reset every attempt. Please confirm.
+- Unlock thresholds (campaign order, star gates, feats), the Trick shots preset contents and timing values are all [PROPOSED]/[TUNE].
+- Online play needs the Convex functions redeployed before rooms can pick the two new gardens.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Shareable Daily Bonk result.** A copyable line ("Hit Jonh Daily · 24 Nov · ★★☆ in 2 shots") with the link. Low effort; friends bring friends.
+2. **First-garden coach.** A ghost hand shows drag-to-aim on Garden 1. After a first miss, a hint names the fix ("Short: add power"). Better first two minutes.
+3. **Practice on cleared gardens.** Unlimited shots that never touch bests or stars (SPEC §4.2 "optional, only if cheap"). Lets players hunt trick badges and star improvements without pressure.
+4. **Online emotes.** Quick reactions everyone in the room sees ("Beat that!", "Unlucky"), matching the hot-seat taunts. Needs a small Convex mutation and schema field, plus a deploy.
+5. **A wind garden.** A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match. Variety at modest cost.
+6. **Feats screen.** "Hit him on the moon", "three trick shots in a row", with progress bars feeding cosmetics. A long-term goal list.
+7. **Sudden-death tie-break for hot-seat.** A one-shot shoot-out on the last garden. Party drama, but SPEC lists it as deferred, so it needs owner approval.
+8. **Accessibility pass.** Screen-reader announcements for stakes and results, remappable keys, a colour-blind check of trails and patterns, larger touch targets on small phones.
+9. **Mobile performance and install.** Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone. Today's GPU cost is unknown (headless SwiftShader only).
+10. **A walking-Jonh garden.** A predictable route timed from Fire (a timing challenge). SPEC lists "Jonh moving during shots" as deferred, so it needs owner approval.
+
+
+## Online emotes (2026-11-25, branch t3/online-room-emotes)
+
+Owner request approved 2026-11-25: "Online emotes. Quick reactions everyone in the room sees ('Beat that!', 'Unlucky'), matching the hot-seat taunts. Needs a small Convex mutation and schema field, plus a deploy." Built from `real-game-pass` at ef4bf12. **Nothing was deployed**: the redeploy is the owner's step (`npx convex dev --once` for dev, `npx convex deploy` for production; details in `convex/README.md`).
+
+**Done**
+- **Server** (`convex/emotes.ts`, `convex/schema.ts`, `convex/model.ts`).
+  - `emotes:sendEmote({ code, token, emote })` authenticates exactly like the other mutations (room by code, member by token; a seat that left is `NOT_MEMBER`). The emote id must be one of the fixed set (`INVALID_EMOTE`), and the seat must have allowance (`RATE_LIMITED`).
+  - `emotes:getEmotes({ code, token })` returns each seated player's latest emote, with `mine` for the caller.
+  - Stored in a new `emotes` table, one row per player, rewritten in place. A new table keeps every existing document valid (no backfill, no migration).
+  - Why a table and not a field on `players`: every turn, shot and rematch mutation reads the `players` row, so an emote patching it would make them retry or conflict. The schema guidelines also say to keep high-churn data off shared documents. This mirrors `presence`. It also gets its own subscription, so emotes never re-run `getRoom`.
+  - An emote never calls `touchPresence` and never touches `rooms.updatedAt`: it is not a check-in and cannot keep a dead room alive. It writes only the caller's `emotes` row.
+  - Rows are deleted with their player (`deletePlayer`) and with the room (`deleteRoomCascade`).
+- **Rules** (`src/rules/onlineEmotes.ts`, pure). The set, the token-bucket limit, `EmoteTracker` (baseline on the first list, per-sender `seq`, own-echo swallowing) and `EmoteBoard` (bubbles for a few seconds, one per seat, newest few).
+- **Client.**
+  - `OnlineSession` gained a third subscription and `sendEmote` (not retried, since a late emote is stale).
+  - `src/ui/emotes.ts` + `emotes.css` hold the button, picker and bubble stack.
+  - `PlayerPanel` shows the bubble in the sender's row; `playerPresence.emotes` carries it through the existing refresh path, so `htmlControls` needed no change.
+  - `AudioManager.playEmote()` is a quiet two-note pop for other players' emotes.
+- **Keyboard and touch.** Emote button (44 px tap target; icon-only on short landscape phones), `E` opens and closes, `1`–`6` pick, Esc closes without pausing the game. A mouse or finger press never leaves a button focused and picking always lets go of focus, because the game ignores Space and Enter while a button has focus. Only opening the picker from the keyboard (Tab to the button, Enter) moves focus into it.
+- **Reduced motion.** The bubble pop uses the global reduced-motion rules (verified: 1 ms animation under `prefers-reduced-motion: reduce`).
+
+**Tests added** (628 passed | 10 skipped in the full run)
+- `tests/onlineEmotes.test.ts`: the set, the rate limit (burst, refill, fractions, spammer bound, clock going backwards), the tracker and the board.
+- `tests/emotesServer.test.ts`: `storeEmote` against an in-memory stand-in for `ctx.db` (auth, validation, rate limit per seat, seq, lobby/playing/finished, writes only its own row). The repo has no Convex runtime test setup (`convex-test` is not a dependency and I did not add one), so this proves the function's own logic only.
+- `tests/onlineController.test.ts`: 13 emote tests (baseline, no replay, sound, panel presence and expiry, optimistic bubble and echo, rejection rollback, local burst limit, lobby and result, room change, stale room).
+- `tests/onlineSession.test.ts`: the new subscription (updated count, name and args) and `sendEmote`.
+
+**Verified in a real browser** (headless Chromium against the dev server, with a fake session driving the real controller, scene and panel; no backend)
+- Desktop 1280×760, phone landscape 844×390 and portrait 390×844: button, picker, dock bubbles, panel bubbles, lobby, handover overlay.
+- Pointer click on the button and an option: focus ends on `BODY`. Keyboard: Enter on the button moves focus to the first option, Enter picks, focus ends on `BODY`. Esc closes the picker and leaves the lobby overlay as it was.
+- Panel rows keep their height with a bubble except where a long name already wraps (68→68 desktop, 46→46 phone for short names).
+- Screenshots (scratch, not committed): `/tmp/claude-1000/-home-aalish--t3-worktrees-hit-jonh-t3-71ae5f1b-06c8d536272d9c76/f2d9db46-8795-4034-8b54-2b82f61b1634/scratchpad/pw/shots/` (`desktop-match2.png`, `phone-match2.png`, `portrait-match2.png`, `phone-lobby-picker.png`, `desktop-lobby.png`).
+
+**Not verified**
+- **Anything against a live Convex deployment**: the schema push, the two functions running, validators, OCC behaviour, `getEmotes` reactivity, two real browsers seeing each other's emotes, and an old backend with the new frontend (reasoned: the subscription error is swallowed and the button stays disabled, but not exercised).
+- The sound is only unit-tested via the hook; I did not listen to it.
+- Real touch devices; screen-reader announcements (the dock's `role="log"` live region is in place but was not tried with a reader).
+- `convex/_generated/api.d.ts` was edited by hand (one import and one line for `emotes`); `tsc` accepts it, and the next `npx convex dev`/`deploy` regenerates it.
+
+**[PROPOSED] decisions and open questions for the owner**
+- The set of six, and the wording, in `EMOTES`. Ids are stable on the wire, so wording can change without a deploy-order problem.
+- Rate limit: burst 3, then one per 2 s (`ONLINE.emoteBurst`, `emoteRefillSeconds`); bubble 4 s; drop an emote delivered over 10 s late; at most 3 bubbles (`emoteShowSeconds`, `emoteMaxAgeSeconds`, `emoteMaxVisible`).
+- Emotes are allowed on every screen of a room (lobby, match, result). Spectators do not exist, so every sender is a seated player.
+- A seat that has left cannot send (`NOT_MEMBER`).
+- Presentation: panel row while the match is on screen, a dock stack elsewhere (lobby, result, overlays, portrait phones); `E` and `1`–`6` shortcuts.
+- Emotes do not count as a check-in or game action, so they do not keep a room alive past its 24 h cleanup.
+- No per-recipient mute. If an emote ever needs moderating, the fixed set already means there is no text to moderate.
+
+**Files touched that other sessions are also editing:** `src/scenes/PrototypeScene.ts`, one added line in `onlineHooks()` (`playEmoteSound: () => this.audioManager.playEmote()`). Nothing else on the list (`menuOverlay.ts`, `htmlControls.ts`, `menu.css`, `style.css`, `progression.ts`, `cosmetics.ts`, `multiplayerMatch.ts`, `storage.ts`) was touched; the emote styles live in `src/ui/emotes.css`, imported by `src/ui/emotes.ts`.
+
+## Wind garden (2026-11-25, branch t3/constant-wind-garden)
+
+The owner approved item 5 of the "next 10" on 2026-11-25: "A wind garden. A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match." Built on `real-game-pass` at ef4bf12 (breakables and portals were the template). Rules and values are [PROPOSED][TUNE] in SPEC §8.7; nothing was deployed.
+
+**Done**
+- **Mechanic** (`src/levels/types.ts` `WindData`, `levelPhysics().windMs2`, `MatterAdapter`).
+  - A level may carry `wind: { accelerationMs2, windsockX? }`: a horizontal acceleration on the ball only.
+  - It is a Matter body force (`mass × a`), added the way Matter adds gravity and re-added after each fixed step, because Matter clears forces every update. No second integrator and no change to `FixedStepper` or the swept guard, which simply reads the velocity Matter produced.
+  - With no wind, no force is touched at all. `stepProjectile` now wraps the old body (renamed `stepSwept`) and the new `supportMaterial` helper was extracted from the rolling-damping check with the same logic.
+  - It is not applied while the ball rests on a top surface, so a rolling ball still settles ([PROPOSED]; otherwise a 3 m/s² wind keeps a ball rolling at about 1.2 m/s until the 15 s timeout).
+- **Launch preview.** `previewDotsPx` (`src/sim/ballistics.ts`) is the pure maths for the 0.3 s dots and includes `½·a·t²`. `CannonRenderer.drawGuide` uses it. Still never shows the landing point.
+- **Readability** (`src/fx/windVisuals.ts` pure, `src/render/windRenderer.ts`, `src/art/windArt.ts`).
+  - A windsock on a pole behind the playfield, a "Wind ← 3" caption and 16 drifting streaks.
+  - Under reduced motion the sock hangs still and the streaks stop.
+  - The map picker thumbnail shows a windsock and arrow.
+  - The one scene edit is `PrototypeScene.detectBounce`, which now subtracts the wind's per-step speed change so the bounce-sound detector is not fooled.
+  - Optional gust sound: **not done** (needs a hook in the scene's fire path; skipped to keep the shared files untouched).
+- **Windy Washday** (`src/levels/washday.ts`, SPEC §11 row 11).
+  - A 3 m/s² headwind, a 6 m stone garden wall at x 10.6–11.1 m, a low planter and Jonh at x ≈ 19 m.
+  - In `MAPS` (last), in the Trick shots preset, in `CAMPAIGN_ORDER` after The Greenhouse.
+  - Own arrival, miss and hit lines, a garden-wall complaint and a sky theme.
+  - 1° grid: 3.2 / 3.4 / 3.3 % (cap 8 %).
+  - Three multiplayer positions (offsets −2, 0, +2 m), each with two reference solutions.
+  - Recorded flights (title demo and winning-shot replay) include the wind because `recordShot` runs through the same adapter.
+- **Validation.** Wind must be non-zero, finite and at most 8 m/s², and its windsock must be inside the world. The collider thickness rule adds `|a| × 4 s` of wind speed. This affects only maps with wind.
+- **Docs.** SPEC §3.2, §4.1, §4.2, §8.7, §9.2, §11; `CHANGELOG.md`; `docs/art-direction.md`.
+
+**Tests added**
+- `tests/wind.test.ts` (25).
+  - Drift equals ½·a·t²; the horizontal velocity changes by `a`; vertical is untouched.
+  - Jonh, the ground and obstacles never move, and there is no contact in free flight.
+  - A resting ball settles in the wind.
+  - Identical outcome, end point and step count at 30/60/144 Hz.
+  - No tunnelling through a 0.2 m wall in ±8 m/s² at max power for 9 angles.
+  - The reported velocity equals Matter's.
+  - After a bounce the wind keeps acting.
+  - **All ten pre-wind maps reproduce golden results recorded at ef4bf12** (4 aims × 10 maps, outcome, step count, end point and the recorded path), bit for bit.
+  - The preview agrees with the simulated flight within 5 cm for several winds and aims, and bends the right way.
+  - Validation, level physics, and `recordShot` includes the wind.
+- `tests/windGarden.test.ts` (15).
+  - All reference solutions (map and positions) hit with the wind and **miss without it**.
+  - Of the calm-air hits on a 2°×2% grid, fewer than 15 % still hit in the wind.
+  - Nothing tunnels at 9 angles at 100 % and 75 % power.
+  - The recorded reference shot hits in the wind and misses without it.
+  - Pure wind visuals, and `WindRenderer` with a mock scene (nothing on a calm level, caption, drift direction, still under reduced motion, rebuilds).
+  - Plus the existing per-map suites (`levels`, `multiplayerPositions`, `headlessShot`, `difficulty`, settle fast-forward, campaign) which now include the new map.
+
+**Verified**
+- `npm run check` and `npm run build` (summary lines in the report; see below).
+- Browser (Vite 5181, headless Chromium CDP 9231, manual 60 Hz clock; servers started and stopped per run, 0 page errors):
+  - From a save with four gardens cleared, the title's Continue button read "Windy Washday".
+  - The garden shows the windsock, the "Wind ← 3" caption, streaks and the bent preview.
+  - 45° / 60 % fired in the real scene gave a DIRECT HIT, at 1440×900 desktop, 844×390 phone landscape and with reduced motion on.
+  - Screenshots: `scratchpad/pw/shots/wash-{desk,phone,reduced}-{aim,flight,after}.png` under the session scratchpad.
+
+**Not verified**
+- Real GPU, real device or real-time frame pacing (headless SwiftShader at about 4 fps, driven by the manual clock).
+- The Convex side. Room map ids come from `validMaps(MAP_IDS)` in `src/rules/onlineRules.ts`, bundled into the Convex functions at deploy time. **Online rooms can pick Windy Washday only after the Convex functions are redeployed** (not run). A client on the new build and a server on the old one gets `INVALID_MAPS`. Each client simulates the same fixed-step wind locally.
+- Audio: no new sound.
+
+**Owner decisions / open questions**
+- Wind strength 3 m/s² headwind, the 8 m/s² cap, and the sock's "flat at 5 m/s²" are [TUNE].
+- Wind is switched off while the ball rests on a surface ([PROPOSED]); the alternative is a constant wind that never lets a ball settle.
+- Should a hit that depends on the wind ever count as a trick shot? Today it does not (SPEC §7.1 [OPEN] for every mechanic).
+- Campaign slot (after The Greenhouse) and the Trick shots preset are [PROPOSED].
+- A tailwind garden, or several winds on one map, would be new content on the same mechanic.
+
+## Walking-Jonh garden (2026-11-25, branch t3/walking-jonh-garden)
+
+**Owner request (2026-11-25):** "A walking-Jonh garden. A predictable route timed from Fire (a timing challenge)." It is the one exception to "his collider does not move during a shot" (SPEC §10); every other map behaves exactly as before.
+
+**Done**
+- **The Afternoon Stroll** (`src/levels/stroll.ts`, id `stroll`) [PROPOSED name and layout]. A 4.8 m hedge at x 11.4–12.2 m blocks low shots. A gravel path runs x 12.6–23.4 m, and the gravel kills a ball's roll. A pear-tree canopy (x 16.8–25 m, ricochet surface) sits on a trunk beyond the path. Jonh stands on the lawn end while you aim. After Fire he waits 0.5 s, strolls 5 m into the shade at 1.25 m/s, pauses 0.4 s, then walks 3 m back and stays there (6.7 s in all).
+- **Target positions** shift the route: near −2.1 m (and sets off 1.5 s later, using the new optional `routeDelayS`), middle 0, far +2.0 m. Each has a reference shot that hits only its own position: near 45°/47 % (a bank off the canopy), middle 65°/44 %, far 46°/44 %. Solo uses 65/44 and 65/45.
+- **Route data and clock.** `jonhRoute` in `LevelData` holds waypoints with `dx`, `speedMs` and `pauseS`. `levels/jonhRoute.ts` is pure (no Phaser) and gives his pose as a function of fixed steps since Fire (`routePoseAtStep`). The Matter colliders, the swept guard, the renderer and the replays all read it.
+- **Physics** (`matterAdapter.ts`):
+  - Every fixed step, his body and hat are placed for that step before Matter steps. `stepProjectile` advances him afterwards, so every caller (scene, headless runner, recorder, tests) gets it without changes.
+  - The swept guard and the hat/overhead checks use the same moved boxes.
+  - A bounce off him reflects the ball's velocity relative to his walk.
+  - The first touch on his body or hat stops him for good.
+  - Reset (`removeProjectile`) puts him back at the start of the route.
+  - New: when two surfaces tie on time of impact, Jonh wins, so a ball lying on his path that he walks into counts as a touch. Without this the ground contact won the t = 0 tie and he walked straight through resting balls. Found by a test.
+  - All of this is gated on the level having a route. **Bit-identity check:** about 4,900 shots over a grid on every position of the other ten maps, plus recorded flight paths, gave byte-identical JSON on this branch and on `ef4bf12`.
+- **Validation:**
+  - at least two waypoints;
+  - speeds in (0, `JONH_WALK.maxSpeedMs` = 2] m/s, i.e. at most 1.7 cm per step;
+  - level routes only;
+  - inside the bounds, never through an obstacle, and one floor under every leg;
+  - portal exits stay clear of everywhere he walks.
+- **Presentation:**
+  - He stands without his chair. A distance-driven walk cycle (`standingPose` in `fx/jonhPose.ts`) swings his legs and his free arm while he keeps reading. He mirrors to face the way he walks, eases in and out at stops, and keeps his outfit and hat.
+  - His speech bubble follows him.
+  - `position` follows the route, so impact effects, the incoming-ball flinch and the camera punch land where he is.
+  - The tea table is not drawn on a walking map, so he never walks through it.
+  - The route is painted on the path (`render/routeRenderer.ts`): a chalk line, footprints and an arrow per leg, and rings at the stops (filled where he waits). The map preview draws a dashed route with an arrow.
+- **Replays:**
+  - `recordShot` records his pose per point and `sampleRecordedJonh` reads it back; DemoStage (title demo and the ShowcaseScene winning-shot replay) follows it.
+  - The in-game slow-motion replay asks the adapter for his pose at the replayed simulated time.
+- **Scoring is unchanged.** [PROPOSED] Weak/strong uses the ball's own incoming speed, not the speed relative to Jonh: he walks at most 2 m/s, it matches every other map, and a ball he walks into is a weak hit. A ball he walks into, even one at rest, counts as a contact (SPEC §7.1).
+- **Integration:**
+  - added to `MAPS`, the Trick shots preset and `CAMPAIGN_ORDER` (after The Magic Act);
+  - his own lines in `jonhLines.ts` ("Mid-stroll! Have you no decency?");
+  - map description and theme;
+  - SPEC §4.1, §4.2, §5, §6, §7.1, §8.7 (new), §9.2, §10 and the §11 row.
+
+**Verified**
+- `npm run check`: typecheck, lint and 60 test files (616 passed, 11 skipped). `npm run build` passes (see the report).
+- New tests:
+  - `tests/jonhRoute.test.ts`: the route function and validation.
+  - `tests/walkingJonh.test.ts`:
+    - the Matter body/hat bounds, the adapter's swept box and the route agree on every step of a long shot;
+    - he stops at the first touch, the hit resolves at that very step, and impact speed and position never change afterwards;
+    - reset puts him back;
+    - walking into a resting ball is a weak touch and shoves it;
+    - no tunnelling at 100 % power from every angle, on a ×1.6 cannon rig with Jonh pacing at 2 m/s and on all three garden positions;
+    - identical outcome, steps, end point and stop pose at 30, 60 and 144 Hz;
+    - the recorded route matches `routePoseAtStep` at every point and the adapter's replay pose;
+    - the walk changes which aims hit at every position.
+- The existing suites that iterate `MAPS` cover the reference shots (levels, multiplayer positions, headless, recorder), low-shot blocking, the coarse difficulty cap (5°×5 %: near 3.6 %, middle 5.0 %, far 3.1 %; cap 8 %; the 1° report gives 3.35 / 5.01 / 3.19 %, and a static-Jonh comparison during tuning (2° grid) showed over half of the near and middle hits exist only because he walks) and the 30/60/144 Hz fast-forward and Skip determinism.
+- Headless Chromium (manual 60 Hz clock, ports 5184/9234), 1440×900 and 844×390, at 65°/44 %:
+  - he walks and the hit lands at simulated 2.90 s, 3 m into his walk, the same contact time as the headless runner;
+  - BONK and the camera punch land on him;
+  - no console errors.
+- At 47°/45 % (a trick hit), the slow-motion replay re-walks him from x 790 to 834 px in step with the replayed ball, then plays the reaction at the contact spot.
+
+**Not verified**
+- The title-screen demo and the ShowcaseScene winning-shot replay on this garden were not watched in a browser. Only the recorder/sampler sync is unit-tested.
+- Online play: not tried (it needs a Convex redeploy, below).
+- Real devices and real-time frame rates: only headless SwiftShader.
+
+**Owner decisions / open questions** (reversible defaults, labelled [PROPOSED])
+- The name "The Afternoon Stroll", the layout, the route, the speeds and the 2 m/s cap.
+- Whether a hat touch should stop him like a body hit does (today it does).
+- Whether a ball he walks into while it lies on his path should count as a hit (today it does, as a weak hit).
+- Whether weak/strong should use the ball's own speed (today) or the speed relative to Jonh.
+- The pear-tree canopy is a ricochet surface (as in the Backyard), so trick hits exist here; the near reference is one.
+- The positions are an offset plus, for near, a 1.5 s delayed start (`routeDelayS`), because offsets alone gave the middle position no aims of its own.
+- Routes must be level (dy 0) for now.
+- The campaign slot (after The Magic Act).
+
+**Owner follow-ups (not done here)**
+- **Online rooms need the Convex functions redeployed** before a room can pick `stroll`. `convex/rooms.ts` validates map ids through `src/rules/onlineRules.ts` → `MAP_IDS`, and `mapHasRicochet` is used for outcome checks. No deploy was run.
+- Daily Bonk's date-to-map mapping shifts again (eleven maps).
+- The crown hat ("three stars on every garden") now also needs this garden, so a player who wore the crown loses it until they three-star the Stroll (locked selections fall back to the default).
+- Concurrent edits: the parent session and the wind-garden agent also touch `src/scenes/PrototypeScene.ts`, `MatterAdapter.stepProjectile`, `levels/types.ts`, `levels/index.ts`, `campaign.ts`, `jonhLines.ts` and `mapPreview.ts`. My edits there are additive (new fields, methods and blocks) except for two one-line changes in `stepProjectile`: the `earliestSolidHit` call gains an argument, and the bounce block computes velocity relative to Jonh.
+
+## Mobile performance and install (2026-11-25, branch `t3/mobile-performance-pwa`)
+
+Owner request (2026-11-25): "Mobile performance and install. Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone."
+
+**The real-phone measurement did not happen.** The OnePlus AC2001 (Android 12) was on its lock screen with a secure keyguard (`isKeyguardShowing=true`, `secure=true`, screen asleep) for the whole session, so Chrome could not be driven. I did not ask for the PIN or unlock it. I opened the device with the T3 device tools, ran `agent-device open com.android.chrome http://localhost:4183/` once, and saw nothing load. The phone's Chrome has the owner's own tabs open (a live chess.com game and others); I never touched them, no tab of mine is open, nothing was installed and no setting changed. The `adb reverse`/`adb forward` ports were removed and the device session closed. All numbers below are headless desktop Chromium (SwiftShader software GL). **GPU cost on a phone is still unknown**; see "Re-running on the phone".
+
+### What the measurements showed
+
+Production build, cold cache, 1280×760, headless Chromium, CDP CPU throttling 4×. The machine was shared with other jobs (load average 6–20), so I interleaved baseline (`ef4bf12`) and new runs and report medians; absolute times are noisy, ratios are the signal.
+
+- **Boot is dominated by rasterizing SVG art, not by Phaser or the network.** Rasterizing all 228 images one after another took 11.2 s unthrottled in a micro-benchmark, about 45–50 ms per image whatever its size. The count matters, not the pixels.
+- **A session needs a fraction of it.** At boot the game rasterized every garden's sky, hills, obstacles, all 8 hats, 7 outfits, 6 cannon skins and 16 painted barrels, although the title shows one garden, one hat, one outfit and one cannon.
+- Phaser renders to a fixed 1280×560 canvas that CSS scales, so device pixel ratio does not change fill rate. A DPR/render-scale cap would change nothing, and I did not add one.
+
+### What changed
+
+1. **Lazy art by group** (`src/art/library.ts` `ART_GROUPS`, `src/render/artTextures.ts` `ensureArt`/`whenArtReady`). Groups: `core` (Jonh's body, faces, effects, ball, classic cannon), one per hat, outfit, cannon skin and player barrel, `scenery-common`, one per theme and one per garden. Sizes and pivots of all art are registered at boot, so only pixels are lazy. Boot loads core, the worn cosmetics and one garden. Solo start, hot-seat start/rematch/next round and wardrobe selections wait for their groups (a `then` continuation on `loadMultiplayerMap`); the cannon renderer requests a missing skin or barrel itself.
+2. **Atlas pages** (`src/art/atlasPack.ts`). Everything one `ensureArt` call needs is shelf-packed into pages of at most 2048 px with a 2 px gutter, rasterized as one SVG document (ids prefixed per cell), and the gutter is filled by copying the cell's edge pixels (what CLAMP_TO_EDGE does for a lone texture). Every art key still has its own Phaser texture, sharing the page's GPU texture, so no renderer changed. Tiled textures (`far-*`, `mid-*`, `stars-*`, `ground-top*`, `earth*`, `fence-back`) keep a texture of their own because an atlas cell cannot wrap.
+3. **Wardrobe hat icons** now come from the hat's SVG as a data URL (`hatImage`), because they used to read the hat texture's canvas.
+4. **Title garden** (`src/scenes/attractLevel.ts`): the title backdrop picks an unlocked garden whose art is already loaded (boot loads one random pick), so the title never waits.
+5. **PWA** (production only): `build/pwa.ts` Vite plugin emits `manifest.webmanifest`, injects the manifest/apple-touch links, and writes `dist/sw.js` from `build/sw.template.js` with the precache list and a content-hash cache name. `src/pwaRegister.ts` registers it (never in `npm run dev`) and shows a small "Updated — reload" note when a new worker takes over a page that already had one. Icons: `public/icons/*.png` from `scripts/make-icons.mjs` (Jonh in his chair beside the cannon on the sky gradient, from `outfitFigureSvg`/`cannonFigureSvg` and the palette).
+6. `@types/node` 22.20.5 (exact, dev only) added so the build plugin type-checks. Without it `node:fs` has no types. It also adds Node's globals to the whole program's types; `tsc` and ESLint stay clean.
+
+### Before / after
+
+| Measure (headless desktop Chromium, production build, cold) | Before (`ef4bf12`) | After |
+| --- | --- | --- |
+| Time to an interactive title screen, 4× CPU throttle, median of 3 | 13.0 s (12.6 / 13.4 / 13.0) | **8.1 s** (8.1 / 7.5 / 8.1) |
+| Same, no throttle, median of 2 | 10.1 s (11.4 / 8.8) | **4.4 s** (4.8 / 4.0) |
+| Same under heavy machine load (load avg ≈ 15, 4×), 3 runs | 39.5 / 50.9 / 42.0 s | 17.9 / 14.3 / 16.9 s |
+| Art rasterizing during boot (new build only has the marks) | not marked; about 9–11 s | 3.7–4.7 s throttled, 2.5–2.9 s unthrottled |
+| Generated textures at title | 228 keys, 228 GPU textures | 72 keys on **17** GPU textures |
+| Generated texture pixels at title | 11.44 MP, **43.6 MB** RGBA | 3.40 MP, **13.0 MB** RGBA |
+| After starting a solo garden | 230 / 43.7 MB | 74 keys, 19 GPU textures / 13.1 MB |
+| JS heap at title / after a solo shot | 7.0 / 9.3 MB | 6.9 / 9.1 MB (JS heap excludes canvas and GPU memory) |
+| Frame time, title demo shot, mean (4×) | 120 / 124 / 138 ms | 138 / 117 / 127 ms |
+| Frame time, solo shot, mean (4×) | 128 / 227 / 137 ms | 177 / 124 / 157 ms |
+| Frame time, unthrottled demo / solo mean | 115, 112 / 132, 133 ms | 338, 92 / 125, 131 ms |
+| `main` chunk | 323.9 kB (97.65 kB gzip) | 329.7 kB (99.88 kB gzip) |
+| `phaser` chunk | 1,431.4 kB (375.6 kB gzip) | 1,432.3 kB (376.1 kB gzip) |
+| `dist/` without source maps | 1,966 kB | 2,096 kB (adds icons, manifest, `sw.js`) |
+
+**Frame time did not improve and I do not claim it did.** Headless Chromium draws with SwiftShader on the CPU, about 8 fps whatever the scene, so frame time here measures the software rasterizer. One unthrottled run's first title demo shot averaged 338 ms per frame (the other 92 ms); I did not find the cause (a first-use texture upload or shader compile is my guess). Fewer, larger textures should help real GPUs (fewer binds and uploads, 30 MB less texture memory), but that is not measured.
+
+### PWA verification (headless Chromium, production build on `vite preview`, port 4183)
+
+- `Page.getInstallabilityErrors`: `[]`. `Page.getAppManifest`: no errors; name "Hit Jonh", `display: standalone`, `theme_color #5EC2EC`, 192/512 and a maskable icon.
+- First visit: the worker installs, precaches 30 files under `hit-jonh-<hash>`, activates and controls the page.
+- **Offline.** Network offline via `Network.emulateNetworkConditions`, then reload: boots to the title with no failed requests, every non-`data:` request served by the worker; a solo shot from Play to "DIRECT HIT +100" played with the network off.
+- `?room=ABCD` offline loads the app shell (the online flow itself needs a connection). With a placeholder `VITE_CONVEX_URL` (an unresolvable host) the `?room=` link opens normally, Convex opens its own WebSocket, none of that traffic touched the worker, and the caches hold no Convex entries.
+- **Update.** After redeploying a different build over the running preview and reloading, the new worker took over about 4.3–4.7 s later, the old cache was deleted (one cache left), the new file was served and the "Updated — reload for the newest Hit Jonh." note appeared.
+- `npm run dev`: no worker registered, no manifest link, no caches.
+
+### Visual equivalence
+
+- **Texture level (exact).** For all 217 art pieces I rasterized the SVG standalone the old way and compared it with the pixels in its atlas cell: **0.017 % of pixels differ by more than 8/255 and 0.13 % by more than 2**, in 10.3 M pixels. The differences are anti-aliasing noise on curved edges (the ball, rings, sun, rays; a few pixels reach 255 on a 1 px edge). Every gutter equals its cell's edge pixel. Rasterizing a page on a software (`willReadFrequently`) canvas gave 1.1 % of pixels off by more than 8, so the page deliberately uses the same GPU-canvas path as the lone textures.
+- **Scene level (by eye, not pixel diff).** Dev-build screenshots of all ten gardens with the full-unlock look and of Backyard with the default look, before and after, with a seeded `Math.random` and a manual 60 Hz clock: gardens, obstacles, panes, hoops, cannon, Jonh and HUD look the same. Pixel diffs there are only the animated and random bits (cloud and bird drift, the swirl phase, Jonh's random quip, flora placement), because lazy loading changes how many random numbers are drawn.
+- Flows (dev server, headless): wardrobe pick of a hat, outfit and cannon (the title shows the new look), solo on never-loaded gardens (Moon, Valley), a four-player hot-seat match (all four painted barrels load). No console errors. This caught one bug in my change: the hot-seat start ran its UI update before the deferred map existed (`Cannot read properties of undefined (reading 'setVisible')`); fixed by passing the UI update as a continuation.
+
+### Re-running on the phone
+
+Unlock the phone and keep the screen awake, then: `npm run build`, `npm run preview -- --port 4183 --host 127.0.0.1`, `adb reverse tcp:4183 tcp:4183`, open Chrome at `http://localhost:4183/` with the device tools, and for traces `adb forward tcp:9235 localabstract:chrome_devtools_remote` (CDP for reading only). Compare against a build of `ef4bf12`. `performance.getEntriesByName('hj-boot-create' | 'hj-art-done' | 'hj-boot-done')` give the art phase. `localhost` counts as a secure context, so the worker and Chrome's install option work there; on a real host it needs HTTPS.
+
+### Decisions [PROPOSED]
+
+- Atlas pages ≤ 2048 px with a 2 px gutter; tiled textures stay lone. Pages are rasterized per `ensureArt` call, so one call is one atlas.
+- Worker: `skipWaiting` + `clients.claim`, so a new build takes over open pages as soon as it is installed (about 4 s after the load that found it); the page gets an "Updated — reload" note and the files are used from the next load. Pages are network-first with a 4 s timeout then the cached shell; assets are cache-first; only same-origin GETs are handled. Precache excludes `*.map` and `licenses/`. Only the current cache is kept; no old-version fallback (nothing is lazy-imported in production apart from `phaser`, already loaded).
+- Manifest: `display: standalone` with `display_override: [fullscreen, standalone]`, `orientation: any` (the portrait "turn your phone" hint stays), `theme_color` = `PAL.skyTop`, `background_color` = `PAL.paper`. Icon art: Jonh and the cannon on the sky; regenerate with `scripts/make-icons.mjs`.
+- The title garden is picked among gardens whose art is already loaded, so a returning player with many gardens unlocked sees the garden loaded at boot plus any played since, not a fresh random one each return to the title.
+- Comic-word textures (9, 1.1 MP, drawn from canvas text at boot) stay eager: they are cheap to draw and must not appear late on the contact frame.
+
+### Not verified
+
+- **The real phone** (locked), so no phone frame times, GPU memory, heap or boot time; **iOS/Safari and Firefox**; the Android "Install app" prompt itself (only CDP's installability check) and a WebAPK; HTTPS on a real host.
+- Real GPU behaviour of the atlas (one texture bind per page) versus lone textures; the first-demo-shot hitch noted above.
+- Online rooms against the real Convex backend with the worker active (only a placeholder host); hot-seat shots played to the end after a lazy load; a full online match; sound.
+- The first-load cost on a slow connection of precaching ~2 MB.
+
+### Next
+
+- Phone run (above). If frame time on the phone is high, the next levers are the shot-time particle pools and fewer simultaneous sprites, not texture count.
+- Optional: warm the next campaign garden's art while the player is aiming (idle time) so "Next garden" never waits.
+
+## Next 10 (2026-11-25)
+
+The owner approved the proposed next 10 ("I like the proposal. Continue with them"), including the two items the spec had deferred (hot-seat sudden death and a walking-Jonh garden). Independent items run in parallel worktrees: the wind garden (5), online emotes (4), mobile performance and install (9) and the walking-Jonh garden (10). Items 1, 2, 3, 6, 7 and 8 are built on `real-game-pass` directly.
+
+### 1. Shareable Daily Bonk result — done
+- `rules/dailyShare.ts` builds the text: "Hit Jonh Daily · 25 Nov · ★★☆", one symbol per shot (⬜ miss, 🎩 hat, 💥 hit, 🎱 trick, or "Jonh wins"), "🔥 3-day streak" from two days, and the game's address with `?daily`. Format and symbols are [PROPOSED].
+- The day's counted run is saved as `progress.dailyShots` (sanitized: up to three shots, only the last may be a hit). Older saves share stars only.
+- The Daily result card offers **Share result** (focused), **Play again** (R) and **Home**. The Daily screen offers Share once today's run exists. A replay shares the counted run and says so.
+- Phones get the share sheet (`navigator.share` on coarse pointers); elsewhere the text is copied. Without the Clipboard API (plain-http LAN addresses) the text becomes a selected box to copy by hand.
+- `?daily` opens today's Daily Bonk directly, then drops the parameter so a reload starts at Home.
+- Verified: `tests/dailyShare.test.ts` (text, codes, dates, saved patterns, share/copy fallbacks). Headless Chromium: `/?daily` opened the Daily screen; a miss then the reference shot gave "★★☆ ⬜🎱 trick shot!"; Share copied exactly the previewed text (read back from the clipboard); the Daily screen then offered Share. Emoji show as boxes in headless Chromium (no emoji font); not checked on a phone.
+
+### 2. First-garden coach — done
+- `rules/coach.ts` (pure) decides when to coach and words one fix per miss; values in `COACH` (tuning). Coaching lasts until the first hit ever. All of it is [PROPOSED].
+- Ghost glove (`render/coachRenderer.ts`): on the first campaign garden, before the first shot, it presses on the cannon and drags up and away with a red dashed pull line, on a 3 s loop. Touching the aim or firing removes it. Reduced motion: a still glove at the end of the drag.
+- Miss tips: the next aiming caption becomes a "Tip" chip (`feedback-coach`, no fade) such as "Short. Add power. 2 shots left." It survives Retry after a failed run. A ball that lands before an obstacle and rolls into it is treated as short, not blocked (it was "Blocked. Aim higher." in the first browser run, which was the wrong advice).
+- A brand-new player's home button is now **Play · Garden 1** (one tap into the coach) with **All modes** beside it. Returning players still see Continue.
+- Verified: `tests/coach.test.ts`. Headless Chromium at 1280×800 and 844×390 with a fresh save: Play went straight to Garden 1, the glove showed and vanished after one arrow key, and an 8% shot that rolled into the shed gave "Short. Add power. 2 shots left." Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/47-sheet.png`. Real-time feel of the glove loop not judged (the headless page runs on a manual clock).
+
+### 4. Online emotes — merged
+Built in a parallel worktree (branch `t3/online-room-emotes`, section above) and merged after review. **The Convex functions are not deployed**: online rooms need `npx convex dev --once` (dev) or `npx convex deploy` (production) before the new build can send or show emotes. Until then the emote button stays disabled. Not tested against a live deployment.
+
+### 3. Practice on cleared gardens — done
+- `SoloChallengeMachine` takes `{ practice: true }`: unlimited shots, never a result, hits counted. Challenge rules are unchanged (`tests/practice.test.ts`).
+- In practice the scene records nothing: no progress (hits, streak, unlocks), no solo best or trick badge, no saved aim. Its result window then goes straight back to aiming.
+- Entry: a Challenge/Practice switch on the garden list (shown once a garden is cleared; uncleared gardens say "Clear it to practise here"), and **Practice (P)** on the result card of any cleared garden. Pause offers **End practice**, which returns to the practice list.
+- HUD: "Practice · {garden}", no attempt pips, "Practice: 2 hits in 4 shots". The chapter card says "Practice · Garden N".
+- Rules are [PROPOSED]: only cleared gardens, and nothing counts, including hit totals.
+- Verified in headless Chromium (1280×800): the practice list enabled only the cleared Backyard; four practice shots (hit, miss, hit, miss) gave "Practice: 2 hits in 4 shots"; the save was byte-for-byte unchanged afterwards; End practice returned to the practice list; a challenge win offered Practice (P). Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/48-sheet.png`.
+
+### 5. Wind garden — merged
+Built in a parallel worktree (branch `t3/constant-wind-garden`, section above) and merged after review: a constant per-level wind applied as a Matter force after each fixed step (skipped while the ball rests), a wind-bent launch preview, a windsock, a "Wind ← 3" caption and streaks, and **Windy Washday** (the eleventh garden, after The Greenhouse in the campaign). The ten earlier maps are pinned to their pre-wind results by `tests/windlessGolden.ts`. Online rooms need the Convex redeploy before they can pick it (`INVALID_MAPS` until then). Merged check: `Test Files 65 passed (65)`, `Tests 695 passed | 11 skipped (706)`.
+
+### Physics fix: the game now runs exactly the physics the tests prove
+Found while checking the Feats screen: Lunar Picnic's first reference shot (69°/28%) hit the floating slab and stopped in the game, although `tests/headlessShot` proves it lands a trick hit. Two causes, both older than this pass:
+1. **Solver constants.** Phaser's Matter plugin sets the global `Resolver._restingThresh` to 4 and `_restingThreshTangent` to 6 (Matter's defaults are 2 and √6), but only in the copy of Matter that Phaser bundles. The adapter, the headless runner, the recorder and every test use the other copy (`@matter-js`), so slow contacts behaved differently in the game. `PHYSICS.matterSolver` now holds the tested values. `config/matterWorld.ts` passes them to Phaser (main.ts), and `physics/matterSolver.ts` sets them on the adapter's Matter.
+2. **Spawn rounding.** The scene spawned the ball at `pivotPx + offsetPx·cos`, the runner and recorder at `px(spawn + offset·cos)`. They are equal on paper but differ in the last bit. All three now use `muzzleSpawnPx` (`sim/units.ts`), keeping the tested formula.
+
+Evidence: in headless Chromium the in-game ball now matches the headless runner at every one of 946 fixed steps (max difference 0), and the shot is a hit ("Bullseye!"). `tests/matterSolver.test.ts` pins the constants and shows the moon shot misses with Phaser's values. No test results changed, because the tests already ran the tested values; the game's feel for slow rolls and grazing contacts changes to match them.
+
+### 6. Feats screen — done
+- `rules/feats.ts` (pure): 22 feats in five groups, each with a target, current value and rewards. Sixteen mirror every cosmetic unlock rule (hats, outfits, cannon skins); `tests/feats.test.ts` proves each completes exactly when the cosmetics it lists unlock, and that every unlockable appears once. Six new feats are bragging rights: Neighbourhood legend (100 hits), Hat trick (three trick shots in a row), Moonstruck, Long distance (Valley), Grand tour (every garden) and Week of bonks (a 7-day Daily streak). All [PROPOSED].
+- New progress fields: `trickStreak`, `bestTrickStreak` (solo and daily, like the hit streak), `hitMaps` (any local mode except practice; online shots too). `bestDailyStreak` is derived from the saved daily dates. All sanitized.
+- UI (`ui/feats.ts`): Home gets **Feats n/22**. Each row shows a medal, the instruction, a progress bar with "3 / 5" or "Done", and the reward art (greyed until earned) or "Bragging rights". Wardrobe and Back buttons. Narrow screens put the rewards under the text.
+- Newly completed feats appear as "Feat: …" ribbons on the solo result card (also on failed runs, e.g. Hat's off) or as a multiplayer caption.
+- Verified: `tests/feats.test.ts`; headless Chromium at 1280×800 and 390×844 showed 22 feats with 10 done for a mid-campaign save; a hit at the Lunar Picnic added "Feat: Moonstruck" to the result card. Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/49-sheet.png`, `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/49-portrait-feats.png`.
+
+### 7. Sudden-death tie-break (hot-seat) — done
+- `MultiplayerMatchMachine` takes `{ suddenDeath: true }` (hot-seat only; online replays the server's match without it). Players still level after the tie-break each take one shot on the last garden from a fresh spot. Best outcome wins; those still level go again with the order rotated, up to 3 rounds, then share the win. Shoot-out shots don't change totals. Jonh stays put within a shoot-out round so every contender faces the same spot.
+- `suddenDeathStakes` (rules/matchStakes.ts) writes the handover lines: "One shot each. Best hit wins.", "Ana hit him. Match it!", "Only a trick shot ties it!", "Last chance: level again and you share it." Every shoot-out card is decisive (drumroll). The chapter card, HUD chip and handover say "Sudden death"; the result says "Won in sudden death!" or that it stayed level.
+- Rules and wording are [PROPOSED] (the owner approved building it).
+- Verified: `tests/suddenDeath.test.ts` (7 tests: off by default, fresh spot, totals untouched, Jonh still within a round, rotation, trick beats hit, shared after 3 rounds, only top-level players, tie-break still decides first, rematch clears). Existing match, replay and online tests unchanged. Headless Chromium hot-seat run: six 5% dribbles left it 0–0, then "Sudden death" (Ana), "Only a trick shot ties it!" (Bo after Ana's trick hit), and "Ana wins! Won in sudden death!" with 0/0 totals. Screenshot: `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/53-sudden-handover.png`.
+
+### 10. Walking-Jonh garden — merged
+Built in a parallel worktree (branch `t3/walking-jonh-garden`, section above) and merged after review: **The Afternoon Stroll**, where Jonh walks a fixed route from Fire (a pure function of fixed steps since Fire, shared by Matter, the swept guard, the renderer and replays). It is the twelfth garden, after The Magic Act in the campaign, and in the Trick shots preset. SPEC: the walking section became §8.8 because wind took §8.7 first. The other ten original maps were proved byte-identical on its branch. Merged check: `Test Files 70 passed (70)`, `Tests 741 passed | 12 skipped (753)`. Online rooms need the Convex redeploy before they can pick it.
+
+### 9. Mobile performance and install — merged (phone not measured)
+Built in a parallel worktree (branch `t3/mobile-performance-pwa`, section above) and merged after review: art is rasterized lazily in groups (core, worn cosmetics, one garden at boot) and small art is packed into atlas pages; the production build is an installable PWA (manifest, icons, a hand-written precaching service worker, never in dev, never touching Convex traffic). Measured on headless desktop Chromium only: interactive title at 4× CPU throttle 13.0 s → 8.1 s, generated textures 43.6 MB → 13.0 MB. **The real-phone measurement did not happen**: the connected phone stayed on its secure lock screen, and the agent did not ask for the PIN. The merge brought `@types/node` (dev, exact) into the main TypeScript program. The two new gardens' art joins the lazy groups automatically (wind art is in the core group). After the merge, the coach, practice, Daily share and sudden-death browser checks were re-run and pass with no console errors. Merged check: `Test Files 73 passed (73)`, `Tests 754 passed | 12 skipped (766)`; `npm run build` passes (main 440 kB, 133 kB gzip).
+
+### 8. Accessibility pass — done
+- **Touch targets:** a headless audit of every visible control on the home, menu, garden list, settings, wardrobe, feats and in-game screens at 390×844 and 844×390 found 10–14 controls under 44 px per layout (40 px icon buttons and home-row buttons, 28 px sliders, 40 px tabs and chips). All are now at least 44 px on phones; the re-audit found none under. The short-landscape home card drops the tagline and tip (and shrinks the logo under 380 px tall) so nothing scrolls, checked at 844×390 and 740×360.
+- **Screen readers:** `ui/announcer.ts` speaks the chapter card ("Garden 2. The Fence Dispute."), handovers (banner, stakes, taunt, shot), round and match results, and the solo result ("Bullseye! 3 of 3 stars. You hit Jonh in 1 shot. New best. Unlocked Rooftop Lunch. Feat: Clean shot. Jonh: …"). Checked by reading the live region in headless Chromium; not tried with a real screen reader.
+- **Remappable keys:** `input/keyBindings.ts` (pure, tested) plus Settings → Keys (Change / Press a key… / Escape cancels / Reset keys). The keyboard coordinator, the "touch the aim to skip" rule, the FIRE label, the Next pill and the result card's retry hint follow the bindings. Headless check: Fire rebound to F showed "F" on FIRE, Space no longer fired, F did; binding Skip to F swapped Fire to ↵.
+- **Colour vision:** `art/colorVision.ts` simulates protanopia, deuteranopia and tritanopia. Normal-vision player colours are ΔE > 50 apart. Under deuteranopia tomato/leaf (≈15) and sky/grape (≈11) come close, and with four hues any three players include such a pair, so colour must never stand alone. It doesn't: cannons pair it with patterns (unique per default player), panels and cards show names, and trails have ink outlines. The palette is unchanged (art direction); a darker grape would widen sky/grape if wanted ([PROPOSED] option).
+
+### Independent review fixes (next 10)
+A fresh read-only reviewer went over `ef4bf12..HEAD`. It found nothing serious in practice saving, wind combined with portals and breakables, the walking Jonh, sudden-death rules (online unaffected), the service worker or saved data. It found one bug and several smaller issues, all fixed:
+1. **Bug: a garden still loading its art built itself after the player had left.** Example: Next garden, then Home within the art decode, which is longer on phones. The garden, HUD and FIRE appeared under the Home card. A load token now drops stale continuations in `loadMap`, `loadMultiplayerMap` and `teardownGameplay`. A multiplayer load that finishes while paused draws its screen on resume. Wardrobe picks that finish after leaving the wardrobe no longer reopen it. Reproduced and fixed in headless Chromium: still Home with no garden built, and a normal load afterwards works.
+2. A Retry key rebound to N or P ran both actions on the result card. The bound Retry key now wins and the card drops its own N/P shortcut. Checked: N retried, and Next garden lost its hint.
+3. Emote keys (E, 1–6) ignored the bindings. A key bound to a game action now belongs to the game, not the picker.
+4. A player with every star saw "Play · Garden 1" on Home. They now get the generic Play.
+5. Sudden death: the last round's summary says "Dead level! Sudden death next." with a **Sudden death ›** button (`suddenDeathNext`, tested), and the winning-shot replay shows the shoot-out winner's deciding hit.
+6. Unlocks already captioned during hot-seat are no longer announced again on a later solo card. Feats or unlocks earned in a solo run abandoned before its result card still appear on the next result card. This is deliberate: they were never shown.
+
+### Next-10 summary, owner decisions and the next proposal
+**All ten done.**
+
+| # | Item | Built | Notes |
+| --- | --- | --- | --- |
+| 1 | Shareable Daily Bonk result | here | |
+| 2 | First-garden coach | here | |
+| 3 | Practice on cleared gardens | here | |
+| 4 | Online emotes | worktree | Needs the Convex redeploy |
+| 5 | Wind garden (Windy Washday) | worktree | |
+| 6 | Feats screen | here | |
+| 7 | Hot-seat sudden death | here | |
+| 8 | Accessibility | here | |
+| 9 | Mobile performance and install | worktree | Phone not measured: it stayed locked |
+| 10 | Walking-Jonh garden (The Afternoon Stroll) | worktree | |
+
+The physics fix (the game now runs the tested physics) came out of item 6's checks.
+
+**Owner decisions needed.** Reversible defaults are in place and labelled [PROPOSED].
+- **Convex redeploy** (`npx convex dev --once` for dev, `npx convex deploy` for production). Until then, online rooms can't pick Windy Washday or The Afternoon Stroll (`INVALID_MAPS`), and the emote button stays disabled. Nothing online was tested live.
+- **Cosmetics re-lock when gardens are added.** The Crown ("three stars on every garden") and Golden Bonk ("every star") now need all 12 gardens. On `main` the Crown needed 8, so a player who had it falls back to the boater until they three-star the new gardens. Should earned cosmetics stay earned? This is cheap to add; see the proposal below.
+- **Trick shots on the new mechanics** (SPEC §7.1 [OPEN]). Glass, portals and wind never make a shot a trick. The Stroll's pear-tree canopy is ricochet-eligible.
+- **The [PROPOSED] rules** for practice (nothing counts, not even hit totals), sudden death (3 rounds, then shared; totals unchanged), the coach (until the first hit ever), and the feats list and names.
+- **Wind and walking values** (3 m/s² headwind, the 1.25 m/s route) and the two new garden names and slots.
+- **Player colours.** Under deuteranopia sky/grape and tomato/leaf come close; patterns and names carry identity. A darker grape would widen the gap if wanted.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Go live online.** After the owner's Convex deploy, test emotes and the two new gardens in a real two-browser room, and fix what turns up. Low effort, and it unblocks two features.
+2. **Earned cosmetics stay earned.** Record unlocks so adding gardens never takes a hat or cannon away, with a one-time migration for Crown holders from `main`. Low effort.
+3. **A first-meeting tip for each mechanic.** The first time a player meets wind, glass, portals, bounce, low gravity or a walking Jonh, one coach line explains it ("Wind pushes the ball. Watch the windsock."). Low effort.
+4. **Real-phone pass.** With the phone unlocked, measure boot, frame time and GPU memory, then fix the worst offender. Medium effort; most players are on phones.
+5. **Sound for the new gardens and a listening pass.** Wind gusts, Jonh's footsteps and the emote pops, then balance all cues by ear. Low to medium effort.
+6. **Save code.** Export and import progress as a short code, to move between devices without accounts. Low to medium effort.
+7. **Shareable winning-shot clip.** Record the replay with MediaRecorder as a few-second video to post. Medium to high effort; viral.
+8. **Chapters for the 12-garden campaign.** Groups of 3 with a chapter-complete moment and a title card per chapter. Medium effort.
+9. **Colour-blind palette option.** Alternative player colours with more lightness separation. Low effort.
+10. **Trick-shot rules for the new mechanics.** Implement the owner's §7.1 decision, with tests and Jonh's lines. Low effort once decided.
+
+## Next 10, round 2 (2026-11-25)
+
+The owner asked to continue with the proposed list and answered three questions first:
+- **Online:** push to the Convex **dev** deployment with a dev deploy key given in a secure card. Production was not touched.
+- **Phone:** the owner unlocked it.
+- **Trick shots (SPEC §7.1, was [OPEN]):** a hit through a portal hoop counts as a trick shot. Glass and wind never do.
+
+Chapters (8), sound (5) and the winning-shot clip (7) were built in parallel worktrees and merged after review. The rest were built here.
+
+### 1. Go live online — done (dev deployment)
+- `npx convex dev --once` with the dev deploy key pushed the emotes table and its two indexes to `proper-lapwing-569`. `.env.local` was unchanged. It was pushed again after item 10 (the server's trick check). **Production is not deployed.**
+- Live test: two separate headless Chromium contexts against the dev deployment, with the dev build on port 5181 from a snapshot of the code.
+  - Room create, then join by `?room=` link. The host picked Windy Washday and The Afternoon Stroll (the server used to reject both as `INVALID_MAPS`).
+  - A full match of 12 shots, each fired on its player's own client. Both clients showed the same result for every shot, including two 125-point bank shots off the Stroll's pear tree. Round summaries, then "It's a tie!" (625–625) on both.
+  - Emotes both ways: host "Unlucky!" seen by the guest, guest "Oof." seen by the host.
+  - After item 10, a Magic Act match: all six shots "HOOP HIT +125" on both screens, accepted by the server.
+  - No console errors or warnings.
+  - Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/a60b04a1-53c9-4751-8498-41a61b2def8c/scratchpad/pw/shots/o4-*.png`.
+- Seen, not changed: each client picks Jonh's reaction line with its own random generator, so the two screens can show different lines for the same shot. Scores always agree.
+
+### 2. Earned cosmetics stay earned — done
+- `Progress` gains `earnedHats`, `earnedCannons` and `earnedOutfits`. Everything unlocked is recorded on every load and save, and when a solo result brings new stars (`recordSoloResult`). Unlock checks are "earned, or the rule holds now".
+- **Migration:** a save without the lists that has three stars on the eight first-release gardens (`FIRST_RELEASE_MAPS`, the gardens on `main`) keeps the Crown. A current save must earn it on all twelve.
+- On the Feats screen, a reward already earned shows in colour even when its feat now has further to go (Every last star after new gardens).
+- Verified: `tests/earnedCosmetics.test.ts` (5) and a storage test proving the stored save itself holds the earned cannon.
+
+### 3. First-meeting tips — done
+- `rules/mechanicTips.ts`. Each mechanic garden names its mechanic in level data: glass, wind, rubber, bank, portal, walking, lowGravity, trampoline or longShot. The first visit to a garden with an unmet mechanic (solo or Daily, never practice) puts a one-line tip in the aiming caption, for example "Wind blows the ball back. Watch the windsock and aim long." After a miss it adds the shots left.
+- The tip stays until the first hit there or leaving the garden. A coach miss tip wins over it.
+- Seen tips are saved in `progress.seenTips`. A garden cleared before tips existed counts as met, so returning players are not tipped. Wording and rules are [PROPOSED].
+- Verified: `tests/mechanicTips.test.ts` (5). Headless Chromium:
+  - The wind tip shows on arrival at 1280×800, 844×390 and 390×844 (two lines in portrait).
+  - After a miss: "… aim long. 2 shots left."
+  - It is gone after the hit, and a revisit has no tip.
+  - An unseen hoop garden shows its tip.
+
+### 4. Real-phone pass — done
+**Phone:** OnePlus Nord AC2001 (Snapdragon 765G, 8 GB, Android 12, Chrome 158). Production build on `vite preview`, reached through `adb reverse`; measured over DevTools (`adb forward` to `chrome_devtools_remote`). Taps went through the device tool.
+- **Portrait only.** The phone refused `adb` rotation changes (`WRITE_SETTINGS` denied, so nothing changed), so every run was in portrait. The canvas renders at a fixed 1280×560 whatever the orientation, so its render cost should be the same in landscape.
+
+**Measurements:**
+- **Boot is fine.** Title interactive (`hj-boot-done`) 0.64 / 0.70 / 0.92 s cold (offline worker and cache cleared, about 700 kB downloaded), 0.65 / 0.72 / 0.76 s warm (0 bytes; the worker serves everything). The art phase takes 0.15–0.22 s.
+- **Frame rate:** about 60 fps on the title, while aiming and through a hit, on both builds below.
+- **Main-thread time** was the headroom problem. A CPU profile showed most render time in Phaser's `GraphicsWebGLRenderer` and `earcut`: the trail's dots were `Graphics` circles that Phaser re-triangulates every frame. After two shots that is 1,770 commands, about 100 circles, and it stays on screen while aiming.
+- **Long tasks:** a 50–67 ms long task on the title in half the runs, and sometimes when the result card appeared. Both were synchronous whole-shot re-simulations: the title demo shot recorded on its first fire, and the clip offer computed as the card appeared.
+- **Memory (Chrome memory-infra dump, game renderer):**
+
+  | Kind | Size |
+  | --- | --- |
+  | JS heap | 23 MB used / 26 MB total |
+  | WebGL | 38 MB |
+  | 2D canvases | 13 MB |
+  | Compositor tiles | 54 MB |
+
+  Of the WebGL 38 MB, the drawing buffer is 32.8 MB: 4× multisample colour 10.9, multisample depth/stencil 10.9, back buffer 2.7, exported buffers 5.5, pool 2.7. Vertex buffers are 5.5 MB. Texture memory sits in the GPU process's shared images (135–174 MB for all of Chrome, three tabs) and can't be separated per page. (Another tab, a chess site, held an 846 MB V8 heap; it is not the game.)
+
+**Fixes** (commit `0b8e85e`):
+- Trail dots are pooled sprites of one 32 px white disc, tinted and scaled per style. Only the landing crosses remain `Graphics`, at 80 commands after two shots instead of 1,770. Old and new screenshots of the same trail look the same by eye; no pixel diff was run.
+- The title's demo shots are recorded in idle time (`requestIdleCallback`, or a timer on Safari).
+- The clip re-simulates only when the player presses Record. If the replay ever failed to reproduce the hit, the press would say "this shot can't be replayed".
+
+**Before / after on the phone.** Same scripted session and seeded save, three runs each. Script time is milliseconds of main-thread script per 12 s (hits) or 6 s (aiming), median.
+
+| Moment | Old (`0633d4b`) | New (`0b8e85e`) |
+| --- | --- | --- |
+| A hit with the previous shot's trail on screen | 4,983 (4,533–5,448) | **3,105** (2,564–3,444), −38% |
+| First hit | 4,395 (3,970–4,709) | **3,539** (3,376–3,668), −19% |
+| Aiming with a trail on screen | 1,748 (1,712–2,108) | **1,546** (1,315–2,114), −12% |
+| Aiming with no trail (control) | 1,334 | 1,389 (no change, as expected) |
+| Long tasks in 15 samples | 6, of 50–67 ms | **0** |
+
+- **Real phone, clip:** on the result card, Record clip recorded the replay in real time ("Clip ready (6 s, 2.0 MB)"). Share clip opened Android's share sheet with "Hit Jonh video"; it was dismissed, and nothing was shared.
+- **Not done:** landscape, a low-end phone, iOS, and a per-page texture figure.
+- **Possible next lever:** turning off 4× multisampling would save about 22 MB of GPU memory and some fill cost, but edges of the remaining vector shapes (ball ribbon, crosses, speech bubble, windsock) would be rougher. Not changed: it is a visual call.
+
+### 5. Sound for the new gardens and a level pass — done (branch `t3/garden-audio-balance`, merged)
+Owner request: "Sound for the new gardens and a listening pass. Wind gusts, Jonh's footsteps and the emote pops, then balance all cues by ear."
+- **Wind bed** [PROPOSED][TUNE] on gardens with level `wind` (`windSound.ts`): a two-layer bed, louder and brighter with the windsock's lift, with deterministic gusts that are audio-only.
+  - It rides the music bus, so it follows the music toggle and ducking, and dips 9 dB under cannon and hit cues.
+  - It stops on leaving the garden, pause, mute, music off and a hidden tab.
+- **Footsteps** [PROPOSED][TUNE] (`footsteps.ts`): gravel steps every half stride of the distance Jonh has walked since Fire, the same distance that drives his legs. So they follow replays and stop when he stops or is hit.
+- **Emote pops:** an incoming emote is a rising two-pop and your own a softer single pop, both rate-limited (`cueGate.ts`).
+- **Level pass** (`AUDIO.cueTrimDb`, `AUDIO.tiers`, a soft clip after the compressor): every cue was rendered through an `OfflineAudioContext` and measured (`audio-levels.html`, dev only).
+  - Impacts are loudest, then voices, scenery and results, Jonh's yelp (about 7 dB under the hit), accents, then the quiet tier.
+  - The worst stack (drumroll, trick hit, sting, wind, music) peaks at −0.9 dBFS before the soft clip.
+  - Hits are about 2 dB quieter overall. Mutter, fuse, click and your own emote pop are louder. The results sting is quieter.
+- A hidden tab now suspends the whole audio context, so the music stops too.
+- **Verified:** unit tests for the loudness maths, soft clip, rate gate, footstep timing against the real Stroll route and the gust schedule. Headless Chromium: the wind started and stopped as above, five footsteps matched the route clock and stopped on the hit, and emote bursts were gated.
+- **Nothing was listened to by a human**: every level and timbre needs an ear.
+
+### 6. Save code — done
+- `storage/saveCode.ts`, under Settings → Your progress.
+- **Copy save code** gives `HJ1-xxxx-…`: compact JSON, `deflate-raw` (`CompressionStream`), base64url and a 4-character checksum. Without `CompressionStream` it is an uncompressed `HJ0-` code. Phones get the share sheet.
+  - It holds the solo bests and `progress`: stars, tricks, hits, streaks, Daily results, earned cosmetics and seen tips.
+  - It does not hold settings, keys, names, the online identity or the selected hat, outfit and cannon.
+  - Daily results pack one character per day.
+- Measured lengths: 219 characters (fresh), about 350 (mid-campaign; 348 in the browser test), 335 (a synthetic year of Daily Bonks).
+- **Load code** ignores the spaces and line breaks of copying and rejects a code copied short, mistyped, garbled or from a newer version, each with its own message.
+  - Loading merges: the better best per garden, any trick badge, the higher count, every map, unlock and tip from either, and every Daily day (the better result where both played it).
+  - So a code can never take anything away; loading an older code changes nothing. Format and merge rules are [PROPOSED].
+- **Verified:** `tests/saveCode.test.ts` (5: round trip, copying noise, the HJ0 path, a year of Daily results, rejection cases, validation of hostile content, merge semantics and idempotence). Headless Chromium with two contexts as two devices:
+  - "Device A" copied its code (348 characters, read back from the clipboard).
+  - "Device B" (390×844) rejected the code with 10 characters cut off, then loaded the full code pasted with a line break. Status: "Loaded. This device now has 9 / 36 stars and 23 hits." Home showed ★ 9/36, and the scene's progress was refreshed.
+- Not done: a `?save=` link or QR code.
+
+### 7. Shareable winning-shot clip — done (branch `t3/shareable-winning-shot-clip`, merged)
+- **Where:** Save clip on the solo result card after a body hit (including trick and Daily hits) and on the hot-seat match result card (the winning shot). Not offered online.
+- **How:** it replays the shot in `ShowcaseScene` while the card steps aside, and records the canvas with `captureStream()` + `MediaRecorder`. A copy canvas adds an in-picture caption ("Hit Jonh · garden · Bullseye!" and the game's address), so HTML overlays are never captured.
+- **Length and format:** from the replay start to 2 s after impact, 3–6 s; mp4 preferred, then VP9, then VP8 WebM; 30 fps at 2.5 Mbps.
+- **Sound:** taps the master output, so Mute and volume apply.
+- **Sharing:** phones that can share files get Record clip, then Share clip (the sheet needs a fresh tap). Elsewhere the file downloads.
+- **Safety:** one recording at a time. Skip, tap, Home, a new match or a hidden tab discards it. Recording never touches the simulation, scores or saved data. The action is hidden without `MediaRecorder`.
+- After the phone pass, the re-simulation runs on the Record press, not when the card appears (item 4).
+- **Verified:** 40 unit tests. Headless Chromium on the real loop: a solo hit gave an mp4 at 1280×560 with audio, saved data unchanged; the hot-seat share path worked against a stub.
+  - After the merge with the sound branch, a re-check gave a 2.3 MB mp4 with VP9 video at 1280×560 and Opus audio (`ffprobe`). This needed one fix: the audio tap now skips the offline report context.
+  - **On the real phone:** a 6 s, 2.0 MB clip recorded in real time, and Share clip opened the Android share sheet.
+- **Not verified:** Safari or iOS mp4, and actually posting a clip.
+
+### 8. Chapters — done (branch `t3/add-campaign-chapters`, merged)
+- `rules/chapters.ts` (pure, 14 tests): four chapters of three gardens in campaign order [PROPOSED].
+
+  | Chapter | Name | Gardens |
+  | --- | --- | --- |
+  | 1 | Jonh Is Reading | Backyard, Fence, Rooftop |
+  | 2 | Mild Inconveniences | Greenhouse, Windy Washday, Rubber Yard |
+  | 3 | Showing Off | Bank Shot, Magic Act, Afternoon Stroll |
+  | 4 | Going Too Far | Lunar Picnic, Bounce House, Valley |
+
+  A chapter is complete when all three gardens are cleared. Unlock and star rules are unchanged.
+- **Garden list:** chapter headers with stars (x / 9), "Complete", or "Locked. Clear … to open".
+- **Title card:** the first garden of a chapter shows a "Chapter N · Name" pill on the existing card, in the campaign only. It appeared on the real phone too.
+- **Result card:** the first completion of a chapter gets a "Chapter N complete!" ribbon, which is also announced.
+- Nothing new is saved: a result completes a chapter exactly when the chapter was incomplete before it and complete after, so old saves never get a flood of celebrations.
+- "Chapter card" in code comments became "title card".
+- **Verified:** headless Chromium at three sizes; title cards for chapters 1, 2 and 4; and the chapter-complete flow by firing Rooftop's reference shot.
+- **Known issue:** in portrait each chapter's three cards wrap to two columns.
+
+### 9. Colour-blind palette option — done
+- Settings → "Colour-blind friendly player colours" draws players in brick, sky, gold and navy (`PLAYER_COLORS_COLORBLIND`), previewed as four dots beside the switch.
+  - The closest pair stays ΔE76 ≥ 43.9 under protanopia, deuteranopia and tritanopia. The standard set falls to 11.0 under deuteranopia.
+  - Lightness runs from L* 28 to 82. The colours were chosen by searching candidate sets with `art/colorVision.ts`. [PROPOSED]
+- **Implementation:** `playerDisplayColor` follows a module-level active palette. Barrels get palette-specific texture keys (the standard keys are unchanged) in their own lazy groups, so only the chosen palette is rasterized.
+  - It is a per-device display choice: saves and online seats keep the same stored colour ids.
+  - Settings is only reachable from the menus, so a palette never changes mid-match.
+- **Verified:** two new colour-vision tests. Headless Chromium: the preview switched colours and the setting was saved and survived a reload. In a hot-seat match, Player 1's barrel and panel stripe were brick and Player 2's sky, and only the colour-blind barrel textures were loaded.
+
+### 10. Trick shots on the new mechanics — done (owner decision)
+- **Rule:** a body hit after going through a portal hoop is a trick shot: `ricochet_body`, 125 points, labelled "HOOP HIT". It has its own Jonh lines ("Ta-da. Ow.", "Nobody said the hoop was loaded.").
+- It counts everywhere a trick does: trick badge, feats, cosmetics, the Daily share's 🎱, the trick replay look. Every Magic Act hit is now a trick, like every Billboard hit. Smashing glass and wind never make a trick.
+- **Code:** `ShotClassifier` takes a `portal` contact (only before the body counts). The scene and headless runner feed `portalsUsed`, and the shot recorder marks hoop hits as tricks.
+- **Server:** `mapHasTrick` (ricochet surface or portal) replaces `mapHasRicochet` for the `IMPOSSIBLE_OUTCOME` check. Pushed to dev.
+- Feats and cosmetic hints now say "a bank shot or a hoop shot". SPEC §7.1 records the decision; wind is decided too.
+- **Verified:** classification, reaction, online-rules and headless tests (every Magic Act reference shot is a trick; Greenhouse and Washday shots are not), and the live Magic Act match in item 1.
+
+### Independent review fixes (round 2)
+A fresh reviewer read `d4c5f39..0b8e85e`. It found nothing that breaks the game, loses saved data or makes online play disagree. It found these, all fixed in `c41a503`:
+1. **A hand-made save code could exhaust memory** (verified: a 1.4 MB code inflated to 1 GiB). Codes over 20,000 characters are refused, and inflating stops past 256 KB ("That's far too long to be a Hit Jonh save code.").
+2. **A forged Daily day number made decoding throw** and left Load code disabled. Day numbers outside 2020–2100 are ignored, nothing after the checksum can throw, and both Settings buttons always recover with a message.
+3. A browser with `CompressionStream` but without `deflate-raw` got no code at all. It now gets an uncompressed `HJ0-` code.
+4. Loading said "Loaded" even when the browser refused to store the save. `writeSaveData` now returns whether it stored, and the message says so.
+5. The hot-seat bench barrels could stay plain if their art was not drawn yet. The reviewer reached this through Pause → Settings, but Pause has no Settings, so the UI can't trigger it. The bench now repaints a barrel when its art arrives.
+6. The wind bed during a winning-shot replay or clip followed the last round's garden, not the replayed one. It now follows the replayed garden.
+- Not changed: the first-release migration restores only the Crown. Saves from `main` have no cannons or outfits; only unreleased builds of this branch could have an "every star" cannon or outfit to lose.
+- Verified: 4 new save-code tests (size caps, forged date, compression fallback, refused write), `npm run check` 869 passed, and the two-device browser test re-run.
+
+### Round-2 summary, owner decisions and the next proposal
+**All ten done.** Final `npm run check` (after the review fixes): `Test Files 89 passed (89)`, `Tests 869 passed | 12 skipped (881)`. `npm run build` passes.
+
+| # | Item | Built | Notes |
+| --- | --- | --- | --- |
+| 1 | Go live online | here | Dev deployment only |
+| 2 | Earned cosmetics stay earned | here | |
+| 3 | First-meeting tips | here | |
+| 4 | Real-phone pass | here | Portrait only; −38% script time per hit, no long tasks |
+| 5 | Sound for the new gardens | worktree | Not listened to |
+| 6 | Save code | here | |
+| 7 | Shareable winning-shot clip | worktree | Recorded and shared on the real phone |
+| 8 | Chapters | worktree | |
+| 9 | Colour-blind palette | here | |
+| 10 | Hoop trick shots | here | Owner decision |
+
+**Owner decisions needed** (reversible defaults in place, labelled [PROPOSED]):
+- **Production deploy.** `npx convex deploy` (and hosting the build) is still yours. Only dev was pushed.
+- **A listening session.** Nothing was heard. `audio-levels.html` is the reference for adjusting `AUDIO.cueTrimDb`.
+- **Wording and names:** chapter names, tip lines, hoop-trick lines, and the colour-blind palette colours.
+- **Save-code rules:** merge, never replace. There is no way to wipe progress through a code.
+- **Multisampling.** Turning off 4× MSAA saves about 22 MB of GPU memory on phones, at the cost of rougher vector edges.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Ship it.** Production Convex deploy, host the build over HTTPS, and a smoke test on the real URL (owner action plus a check).
+2. **A listening pass by ear** with `audio-levels.html`, then retune the trims.
+3. **Same Jonh line on every screen.** Seed online reaction lines from the shot, so both players read the same joke.
+4. **Landscape and low-end phone check.** Rotate the Nord by hand, and try an older Android; decide on MSAA with numbers.
+5. **Gust visuals.** Streaks and windsock that swell with the audio gusts on Windy Washday.
+6. **Warm the next garden** while the player aims, so Next garden never waits on art.
+7. **Save code by link or QR**: a `?save=` link that asks before merging.
+8. **Online winning-shot clip.** Offer Save clip on the online match result too.
+9. **Chapter 5: three new gardens**, each with one new mechanic and its tip.
+10. **Daily Bonk friends board**: compare today's result with friends through a room-style code (Convex).
+
+
+## Next 10, round 3 (2026-11-25)
+
+The owner asked to continue with the round-2 proposal and answered four questions first:
+- **Ship:** a PR to `main` (opened as #2), and the lead merges it at the end of the round once checks pass and the review is fixed, then smoke-tests the live site.
+- **Phone:** the owner unlocked the OnePlus Nord and laid it in landscape with auto-rotate on.
+- **Chapter 5 mechanics:** a big magnet, an ice pond and a skate ramp.
+- **Dev backend:** push to the Convex dev deployment with the saved dev deploy key.
+
+The owner also asked for every subagent to run on Opus. The three Chapter 5 gardens and the friends board were built in parallel worktrees and merged after review; the rest were built here.
+
+### 1. Ship it — in progress
+- PR #2 (`real-game-pass` → `main`) is open. Vercel builds `main` to production at hit-jonh.vercel.app, and its build command runs `npx convex deploy`, so a merge ships the backend and the site together.
+- **Preview builds failed** on the first push. No preview had ever run the Convex step (vercel.json arrived after the last preview), so the likely cause is `npx convex deploy` refusing or lacking a key in the Preview environment; a fresh clone builds cleanly with `npm ci && npm run build`. The Vercel log could not be read (the CLI here has no valid login). **Change:** previews now run `npm run build` only and never touch a Convex deployment; production still runs `npx convex deploy` (`vercel.json`, README).
+
+### 2. A listening pass — tool ready, ear still needed
+- `listen.html` (dev only): every cue with its variants and a ±12 dB slider on its trim bus, the in-game mixes (shot with drumroll and sting, cannon and whoosh over wind and music, the Stroll's steps and mutter, an emote burst), a session-only music switch, and **Copy trims**, which gives an `AUDIO.cueTrimDb` block plus a line per change. Sliders are remembered in that browser. The cue table is shared with `audio-levels.html` (`src/dev/audioCases.ts`), whose report still passes every tier.
+- Verified in headless Chromium at 390×844: cues play, the wind bed stays up for the length of its case, the snippet reflects slider moves, the music switch does not change the game's saved setting, sliders survive a reload. **Nobody has listened yet.**
+
+### 3. The same Jonh line on every screen — done
+- Online, every client simulates every shot, so a line's context was already identical; only the random draw differed. `rules/sharedLines.ts` seeds the draw by the match (room code, room seed, match number) and the moment (`shot:<seq>`, `moved:<n>`, `arrival:<n>`, `winning:<n>`), and keeps a recent-lines memory of this match's online lines only.
+- The miss streak used for streak lines comes from the shared shot list (`missStreakBefore`: misses and hat-only hits back to the last body hit, skipped turns ignored), and hat-specific lines are off online (each screen dresses Jonh in its own hat). Heckles stay local (only the aiming player sees them).
+- Known limit [PROPOSED]: a client that reloads mid-match starts with an empty memory, so for up to eight lines it can pick differently where the others avoid a recent line.
+- Verified: `tests/sharedLines.test.ts` (6). Live, two browsers against the dev deployment, one garden, six shots with misses, hits and trick hits: every shot's line and both "Jonh moved" lines matched on both screens (twice).
+
+### 4. Landscape and low-end phone check — done
+**Setup:** OnePlus Nord in real landscape (viewport 813×287 CSS px; the canvas renders at 1280×560 with 4× MSAA, shown at 612×268 CSS px). Production builds on `vite preview` through `adb reverse`, measured over DevTools. A = the build as is, B = the same with `render.antialiasGL: false`. "4×" is DevTools CPU throttling as a stand-in for a low-end phone. Fresh save, garden 1, reference shot; three runs each, medians.
+
+| Build | Title fps | Aiming fps | Hit fps | Aiming script ms / 6 s | Hit long tasks (max) |
+| --- | --- | --- | --- | --- | --- |
+| A (MSAA on), 1× | 60.3 | 60.5 | 59.9 | 2,606 | 0 |
+| B (MSAA off), 1× | 60.5 | 59.2 | 59.4 | 3,024 | 1 (55 ms) |
+| A, 4× CPU | 52.5 | 35.5 | 50.8 | 4,203 | 9 (122 ms) |
+| B, 4× CPU | 53.5 | 37.8 | 51.2 | 4,296 | 8 (126 ms) |
+
+- **Landscape is fine on the Nord:** 60 fps on the title, while aiming and through a hit; no long tasks at 1×.
+- **MSAA decision, with numbers:** turning it off changes nothing measurable in frame rate or main-thread time at 1× or 4× (the differences are within run-to-run noise). It would save about 22 MB of GPU memory (the canvas size is the same in either orientation). **Recommendation: keep MSAA on**; revisit only if a real low-memory phone struggles.
+- **Low-end stand-in:** at 4× CPU, hits hold about 51 fps but plain aiming drops to 33–40 fps (returning players too, about 39 fps). A named CPU profile of aiming (dev build on the phone, 1×) puts about 38% of the time in Phaser's render, nearly half of it in `GraphicsWebGLRenderer`: Phaser re-tessellates every visible `Graphics` every frame, and while aiming those are the aim guide (234 commands, redrawn every frame), the power meter (217) and Jonh's speech bubble (200), plus the coach's glove and ring for a first-time player.
+  - Tried: the aim guide as pooled sprites (as the trail's dots were last round). Fewer commands, same look, but no difference measurable on the phone within the noise (a 4× A/B of three runs each), so it was not kept.
+  - Kept: Jonh's reduce-motion check called `matchMedia` several times a frame (about 1.5% of the main thread); it now reads one `MediaQueryList`.
+- **Not done:** a real low-end Android, iOS/Safari, and a per-page texture figure.
+
+### 5. Gust visuals on Windy Washday — done
+- The windsock lifts a little higher (`WIND.gustSockLift` 0.18) and flutters harder, and the streaks drift faster and show clearer, at the peak of each gust of the wind bed [PROPOSED][TUNE]. They follow exactly what is heard: `gustLevelAt` (pure, `audio/windSound.ts`) gives the gust envelope on the audio's own layout, and `AudioManager.windGust()` reads it at the audio clock. With no wind bed playing (muted, music off) the same schedule runs on the renderer's clock. Presentation only: the ball's wind never changes. Reduced motion holds everything still, as before.
+- Verified: tests that the envelope is 0 between gusts, reaches each gust's lift at its peak and stays within 0–1. Headless Chromium on Washday: streak opacity 0.38 between gusts and up to 0.54 at a peak, in step with `windGust()`; screenshots at a peak and between gusts show the higher sock.
+
+### 6. Warm the next garden — done
+- About 2.5 s after a garden is built (`FLOW.warmNextGardenSeconds`, after its title card), the next garden's art is rasterized in idle time: the next one in campaign order (locked or not) in solo and practice, the next round's map in hot-seat and online, none in the Daily.
+- Verified in headless Chromium: in solo, Fence's art was not ready 1 s into Backyard and was ready at 4.7 s (Rooftop still not); in hot-seat, the same for round 2's map. On the phone at 4× CPU the warm shows up as one 60–80 ms task while aiming; at 1× it is under 50 ms.
+
+### 7. Save code by link or QR — done
+- Settings → Your progress: **Copy link** gives `…/#save=HJ1-…`. The code rides in the fragment, which browsers never send to the server. **Show QR code** draws that link as a QR code to scan with another phone's camera. A pasted link works in the Load box too.
+- Opening a save link clears the fragment and, at Home only (never mid-game), asks first: "Progress from another device", with what the link holds and what this device has. **Load progress** merges as before; **Not now** changes nothing; a broken link says so. A link opened in a tab that is already open (`hashchange`) asks the same way.
+- `share/qrCode.ts` is a small byte-mode QR encoder (no dependency), modelled on Project Nayuki's reference encoder: smallest version that fits, level raised when free, Reed–Solomon per block, interleaving, mask chosen by penalty. A mid-campaign link is version 13 (69 modules).
+- Verified: tests check the byte capacity of every version at all four levels against the published table, the standard Reed–Solomon worked example, format and version bits, alignment positions, structure and the read-back format copy; save-link tests (fragment, paste, round trip, broken code). **Every code decoded on the real phone's `BarcodeDetector`**: 27 codes from version 1 to 39 at L, M, Q and H, including UTF-8 text. Two browsers: A copied the link (376 characters); B (390×844) opened it, saw "The link holds 9 / 36 stars and 23 hits. This device has 0 / 36…", loaded it and Home showed ★ 9 / 36; a third browser got the broken-link message, then the `hashchange` prompt, and **Not now** left its save empty.
+
+### 8. Online winning-shot clip — done
+- Save clip is now on the online match result too. The card is refreshed every second during the rematch countdown; it now updates only its ready list, countdown and Rematch button in place (`updateMPMatchOnline`), so a recording carries on (and focus and scroll stay put).
+- Verified live against the dev deployment: after a full match on two browsers, the host recorded the winning shot while the guest's Rematch press drove the countdown (29 s → 22 s during the recording): "Saved hit-jonh-jonh-s-backyard.mp4", 6.3 s, VP9 1280×560 with Opus audio (`ffprobe`).
+
+### 9. Chapter 5: three new gardens — done (three worktrees, merged)
+The owner chose the mechanics (ice pond, big magnet, skate ramp); names, layouts, rules and numbers are [PROPOSED]/[TUNE]. Chapter 5 is **Nowhere to Hide** (`rules/chapters.ts`): Frozen Pond, Skate Park, The Scrapyard, ordered easiest first by the difficulty report. Every mode has fifteen maps; the Trick shots preset holds all three.
+
+| Garden | Mechanic (SPEC) | Idea | 1° grid hit rate (near / middle / far) |
+| --- | --- | --- | --- |
+| Frozen Pond (`pond`) | Ice slide surfaces (§8.11) | Jonh ice-fishes in a hut whose door is frozen 0.35 m above the ice; land short on the open ice and skid under it. Snow round the pond stops a ball dead. | 6.66 / 5.45 / 4.46 % |
+| Skate Park (`skatepark`) | Curved ramps (§8.9) | His shelter is walled and roofed on the cannon's side; land in the half-pipe behind it and the ball rolls back over the lip into him. | 2.51 / 2.55 / 2.58 % |
+| The Scrapyard (`magnet`) | Electromagnet field (§8.10) | A crane magnet lifts soft lobs over a car stack or pulls high lobs down onto Jonh; touching its housing holds the ball (a miss). | 1.70 / 2.38 / 4.29 % |
+
+- **Physics, per garden** (each opt-in, so a map without it is untouched):
+  - **Ramp:** an exact thick arc swept by the guard; Matter carries sensor pieces only. A gentle ball rolls with load-proportional drag and launches off the lip; a trapped ball gets extra drag so it settles.
+  - **Magnet:** a pull applied after each fixed step like wind, at most 8 m/s² and 0.85 g, so the ball can never hover or orbit; a smooth fade at the reach, no singularity at the centre.
+  - **Ice:** no Matter friction and a constant 1.5 m/s² slide friction (a frictionless ice made every landing slide into every target spot, so no position could have its own reference shot). A gliding ball rides the top exactly, and the guard skips the slab under it for that step. Snow keeps 20 % of a landing's speed and stops a ball under 0.3 m/s. Jonh's corner of the pond moves with him at each target position (`followsJonh`).
+- **Proof that the old maps did not change:** each branch digested the twelve earlier maps on an aim grid at every target position (26,208 to 27,831 shots) before and after: identical outcomes, end positions and step counts.
+- **Proof that each mechanic matters:** without the ramp no aim hits Skate Park; without the magnet each Scrapyard reference misses and 56 % of its hits need the magnet; with the pond made of snow nothing hits Frozen Pond.
+- **No timeouts:** the slowest aim on each garden's grid resolves well inside 15 s (9.0 s Scrapyard, 9.1 s Frozen Pond); ramps and ice each needed a fix for balls that otherwise rocked or jittered until the timeout.
+- **Each garden has:** art drawn on its colliders, a map card, a first-meeting tip, Jonh's lines, and a sound on an existing bus (ramp rumble and lip clack, magnet hum, ice scrape and knock), measured on the level report but **not listened to**.
+- **Merging:** the three branches changed the same swept-guard step. Skate Park moved box bounces into `reflect()`; the magnet's hold-on-contact now runs just before it, and the ice's own low bounce and the snow rule live inside it. A ball rolling on a ramp or gliding on ice counts as supported for wind and the magnet.
+- **Trick shots [OPEN]:** neither a ramp roll nor an ice skid makes a trick shot by default (both 100 points; every hit on those gardens uses the mechanic). A magnet never does, like wind. One data flag each would change it.
+- **Pushed to the dev deployment** (the server validates map ids against the shared list).
+- **Lead's follow-up:** on arrival at The Scrapyard the tip banner covered the magnet, the very thing it explains. A level may now ask for a low caption (`LevelData.captionLow`), and The Scrapyard does; checked at 844×390 and 1280×800 (magnet and rings clear), portrait is unchanged, and the next garden resets it.
+- Known: in phone landscape the Fire button covers the top of Skate Park's tall half-pipe wall while aiming (the camera keeps it clear in flight). Moving the ramp would mean re-deriving the garden.
+- **Verified here after the merge:** headless Chromium at 844×390, a save with chapters 1–4 cleared: Frozen Pond's title card reads "Chapter 5 · Nowhere to Hide · Garden 13"; each garden shows its tip on arrival and its reference shot gives "DIRECT HIT +100" and "Bullseye!". **Live online against the dev deployment:** a two-browser match on the three gardens, 18 shots with misses and hits, every result and Jonh line identical on both screens, "It's a tie!" 800–800 on both, no console errors.
+
+### 10. Daily Bonk friends board — done (branch `t3/daily-bonk-friends-board`, merged)
+- A private board by a 5-character code or `?board=CODE` link (SPEC §6.2, [PROPOSED]; numbers in `FRIENDS_BOARD` [TUNE]). "Friends board" on the Daily screen and the Daily result card; a hub with your boards, Create, Join by code; "Join this board?" from a link. No listing, search or global ranking: a non-member with a code sees only that the board exists and its size.
+- Results belong to the player and show on every board they are in; the first post of a day wins, so replays change nothing. Posts happen after the counted run, on opening a board and at start (today's and yesterday's unposted runs), in the background with backoff; never blocking the Daily.
+- Ranking: stars, fewer shots, a trick hit, then who posted first; members who have not played are listed after. Pattern ⬜🎩💥🎱, Trick badge, streak from 2 days, a Yesterday tab, live updates.
+- Server (`convex/boards.ts`): stars must match the pattern; day within the server's UTC date −2…+1; streak 1–10,000; 20 members per board, 10 boards per browser; a per-browser rate limit like emotes; a cron every 6 h drops results older than 14 days and boards idle for 60 days. Self-reported, stated in SPEC. One browser is one member (a token in its own key, never in save codes).
+- The worktree's own review found and fixed five client issues with regression tests. Its notes list known limits: the board's "today" is fixed when opened; the rate limit doesn't stop token rotation; another device joins as a separate member; clearing site data forgets your boards; board codes can be guessed like room codes (revealing only that a board exists and its size).
+- **Pushed to the dev deployment** (four tables and their indexes, the functions and the cron; `.env.local` unchanged) and **verified live** with two browsers: Ana played the Daily (2 stars), opened Friends board from the result card and created board C39ZN; Bo opened the `?board=` link at 390×844, joined, played (3 stars) and saw himself first; Ana's open board re-ranked live without a reload. No console errors.
+
+### Independent review fixes (round 3, first pass)
+A fresh reviewer read `f973f4f..37fd6f4` (everything except the Chapter 5 gardens). It found nothing that corrupts saved progress, merges a save without asking, or lets one player read or write another's board data. It confirmed the QR encoder module for module against `qrcode@1.5.4` in 320 cases (every version and level) and decoded it with jsQR. Fixed in `99f38a3`, each with a test or a browser check:
+1. **A live friends board could draw over whatever replaced it** (a save-link prompt opened in the same tab, then a game or the online lobby): its subscription kept re-rendering. The board now stops when another view has replaced it, and a save link closes it first (`FriendsBoardController.close`, two tests).
+2. **Leaving the save-link prompt mid-load could undo part of the import:** the stored merge was not picked up by the game, whose older progress would be saved back over it. A stored import now always refreshes the game, and **Not now** is disabled while loading.
+3. **Online lines could still drift** after a pick only one client made (a shot fired at the deadline and refused, a re-shown arrival). The recent-lines memory is now rebuilt for every pick from shot and "Jonh moved" moments in moment order, so a refused shot is overwritten by the real one and arrival lines are never remembered (test: an extra refused shot and arrival leave all 27 later lines identical). A line is also no longer shown when this screen's outcome differs from the official one.
+4. **Board codes could be found by trying codes** (5 characters, then any finder could join). Boards now use 8 characters from the room alphabet (`FRIENDS_BOARD.codeLength`, about 8.5 × 10¹¹ codes); the server ignores codes of any other shape; SPEC §6.2's wording is corrected (whoever has the code or link can join; nobody can remove a member). Pushed to dev and re-checked live with two browsers (board `DAK3JNCK`).
+5. A save link opened mid-game was dropped silently; it now waits and asks the next time Home shows (browser-checked).
+6. A double tap on Show QR code showed two codes; now one (browser-checked).
+- Also: the idle-board cleanup deletes 4 boards per transaction instead of 20, far inside Convex's per-transaction write limit.
+- After the fixes: `Test Files 95 passed (95)`, `Tests 971 passed | 12 skipped (983)`; lint clean.
+
+### Independent review fixes (round 3, garden merges)
+A fresh reviewer read `76e5522..9b6dd1a` (the three garden merges and Chapter 5). It found nothing serious:
+- **The adapter merge kept every branch's logic:** every line each branch added is present or deliberately combined (box bounces in `reflect()`), and none it deleted came back.
+- **The twelve earlier gardens are bit for bit unchanged:** 26,208 grid shots at every target position, each with a SHA-256 of every step, give the same combined digest at `f973f4f` and after the merges (`89ae63fc…`).
+- **The three new gardens play exactly as on their own branches** (identical digests), with no timeouts and their difficulty bands intact.
+
+Fixed:
+1. **The ramp rumble, magnet hum, ice scrape and flight whoosh kept looping through the pause menu** (they are driven every frame, and no frame runs while paused). Pausing now stops them; the first frame after Resume drives them again. `AudioManager.destroy` also stops the scrape.
+2. **Adding gardens re-picked the Daily Bonk** (the pick hashes the date over every map's target positions), so on deploy day production players would get a different Daily from the one they had, and friends on different builds could be ranked on different gardens. A map now joins the Daily pool from its `dailyFrom` day: the seven gardens added since the first release join on 2026-11-26, so every day up to and including deploy day keeps the first-release pick (tested).
+3. A magnet test could pass its 5 s default timeout on a busy machine; it now has 30 s, like the other heavy physics tests.
+- Also: the listening page stops a continuous sound when its case ends; stale comments (the magnet's SPEC section, the magnet "drops off", the hut's canvas door, the campaign order) corrected.
+- After the fixes: `Test Files 101 passed (101)`, `Tests 1091 passed | 15 skipped (1106)`; typecheck and lint clean.

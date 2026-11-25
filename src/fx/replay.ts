@@ -5,6 +5,13 @@
 
 export interface ReplaySample { t: number; x: number; y: number; vx: number; vy: number }
 
+/**
+ * Two samples further apart than this many times the distance their speed covers (plus a few px)
+ * are a teleport (a portal), not motion: the replay holds the ball rather than sliding it across.
+ */
+const TELEPORT_FACTOR = 4;
+const TELEPORT_SLACK_PX = 16;
+
 /** Ring of recent ball samples keyed by simulated time. */
 export class ReplayBuffer {
   private samples: ReplaySample[] = [];
@@ -23,7 +30,7 @@ export class ReplayBuffer {
   get startTime(): number | null { return this.samples[0]?.t ?? null; }
   get endTime(): number | null { return this.samples[this.samples.length - 1]?.t ?? null; }
 
-  /** Linearly interpolated sample at simulated time t (clamped to the recorded range). */
+  /** Linearly interpolated sample at simulated time t (clamped to the recorded range; held across a teleport). */
   sampleAt(t: number): ReplaySample | null {
     const s = this.samples;
     if (s.length === 0) return null;
@@ -37,6 +44,8 @@ export class ReplayBuffer {
     }
     const a = s[lo]!;
     const b = s[hi]!;
+    const reach = Math.max(Math.hypot(a.vx, a.vy), Math.hypot(b.vx, b.vy)) * (b.t - a.t) * TELEPORT_FACTOR + TELEPORT_SLACK_PX;
+    if (Math.hypot(b.x - a.x, b.y - a.y) > reach) return { ...a, t };
     const k = (t - a.t) / (b.t - a.t);
     return { t, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, vx: a.vx + (b.vx - a.vx) * k, vy: a.vy + (b.vy - a.vy) * k };
   }

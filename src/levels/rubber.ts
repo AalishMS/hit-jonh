@@ -7,6 +7,7 @@ import type { LevelData } from './types';
  */
 export const RUBBER_LEVEL: LevelData = {
   id: 'rubber',
+  mechanic: 'rubber',
   name: 'Rubber Yard',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

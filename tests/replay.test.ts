@@ -11,6 +11,16 @@ describe('Replay buffer', () => {
     expect(buffer.sampleAt(9)).toMatchObject({ x: 10 });
   });
 
+  it('holds the ball across a teleport (portal) instead of sliding it between the hoops', () => {
+    const buffer = new ReplayBuffer(3);
+    buffer.push({ t: 0, x: 400, y: 200, vx: 600, vy: 0 });
+    buffer.push({ t: 1 / 120, x: 1180, y: 400, vx: -300, vy: -650 });
+    expect(buffer.sampleAt(1 / 240)).toMatchObject({ x: 400, y: 200 });
+    // Ordinary motion still interpolates.
+    buffer.push({ t: 2 / 120, x: 1177.5, y: 394.6, vx: -300, vy: -646 });
+    expect(buffer.sampleAt(3 / 240)!.x).toBeCloseTo(1178.75, 6);
+  });
+
   it('keeps only the most recent seconds and ignores out-of-order samples', () => {
     const buffer = new ReplayBuffer(1);
     for (let i = 0; i <= 600; i++) buffer.push({ t: i / 120, x: i, y: 0, vx: 0, vy: 0 });

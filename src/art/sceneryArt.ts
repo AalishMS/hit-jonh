@@ -1,5 +1,9 @@
 import type { LevelData, ObstacleData } from '../levels/types';
+import { magnetObstacleBody } from './magnetArt';
+import { mechanicArt, mechanicObstacleBody } from './mechanicArt';
+import { pondObstacleBody } from './pondArt';
 import { PAL } from './palette';
+import { rampArt, rampObstacleBody } from './rampArt';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
 
 /** Per-map light: sky gradient, haze and far-layer tones (docs/art-direction.md). */
@@ -13,7 +17,7 @@ export interface Theme {
   midDark: string;
   sunY: number;
   sun: string;
-  skyline: 'village' | 'town' | 'park' | 'mesas' | 'craters';
+  skyline: 'village' | 'town' | 'park' | 'mesas' | 'craters' | 'yard';
   /** Ground surface and soil; grass on earth when omitted. */
   groundTop?: string;
   groundDark?: string;
@@ -22,6 +26,8 @@ export interface Theme {
   space?: boolean;
   /** No garden fence along the back (open country). */
   noFence?: boolean;
+  /** Winter: no flowers or grass tufts on the snow, and a gentle snowfall. */
+  winter?: boolean;
 }
 
 export const THEMES: Record<string, Theme> = {
@@ -38,6 +44,26 @@ export const THEMES: Record<string, Theme> = {
   valley: {
     id: 'valley', skyTop: '#62B6E8', skyLow: '#FFD9A0', far: '#E0A87A', farDetail: '#C98C62', mid: '#D19A6A', midDark: '#A8714A', sunY: 110, sun: PAL.sun,
     skyline: 'mesas', groundTop: '#C9A06A', groundDark: '#A37A48', groundEarth: '#B98A55', noFence: true,
+  },
+  /** A bright spring morning in the allotment. */
+  greenhouse: { id: 'greenhouse', skyTop: '#58C4F0', skyLow: '#FFF2C6', far: '#ACDBBE', farDetail: '#90C8A6', mid: '#84C86E', midDark: '#5AA44E', sunY: 86, sun: PAL.sun, skyline: 'village' },
+  /** A garden party at dusk. */
+  /** Late afternoon, long shadows: Jonh's daily stroll. */
+  stroll: { id: 'stroll', skyTop: '#62B4E6', skyLow: '#FFD7A0', far: '#B0D8B6', farDetail: '#94C59E', mid: '#8ACB70', midDark: '#5FA352', sunY: 150, sun: '#FFC54A', skyline: 'village' },
+  magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
+  /** A hot afternoon at the skate park: bright town sky, warm haze. */
+  skatepark: { id: 'skatepark', skyTop: '#55B9EC', skyLow: '#FFDCA0', far: '#B8C6DE', farDetail: '#9DADC9', mid: '#93C27A', midDark: '#6A9E58', sunY: 120, sun: '#FFCF4A', skyline: 'town' },
+  /** A still, bright winter morning: snow on the ground, frost-blue hills, low pink sun. */
+  pond: {
+    id: 'pond', skyTop: '#86B6E4', skyLow: '#FBE3E6', far: '#D3E2EE', farDetail: '#B9CDDF', mid: '#E6EFF6', midDark: '#AFC5D8', sunY: 150, sun: '#FFE6B0',
+    skyline: 'village', groundTop: PAL.snow, groundDark: PAL.snowShade, groundEarth: '#DCE7F0', winter: true,
+  },
+  /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
+  washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },
+  /** A dusty scrapyard in the late afternoon: hazy sky, heaps and a distant crane, a gravel yard. */
+  magnet: {
+    id: 'magnet', skyTop: '#7FA3D6', skyLow: '#FFC88E', far: '#B9AAC2', farDetail: '#9D8DAA', mid: '#A9A383', midDark: '#857F60', sunY: 175, sun: '#FFB54A',
+    skyline: 'yard', groundTop: '#B9A88F', groundDark: '#94836B', groundEarth: '#A88766',
   },
 };
 
@@ -61,7 +87,7 @@ function hillsPath(w: number, h: number, base: number, bumps: Array<[number, num
   return `${d} L${w} ${h - 3} L0 ${h - 3} Z`;
 }
 
-function themeArt(t: Theme): ArtDef[] {
+export function themeArt(t: Theme): ArtDef[] {
   const farHouses = t.skyline === 'town'
     ? [40, 130, 230, 300, 420, 520, 610, 700, 800].map((x, i) => {
       const hh = 40 + ((i * 37) % 55);
@@ -76,6 +102,12 @@ function themeArt(t: Theme): ArtDef[] {
       : t.skyline === 'mesas'
         ? [[60, 70, 150], [300, 46, 110], [560, 84, 170], [760, 40, 90]].map(([x, h, w]) =>
           `<path d="M${x} 150 L${x! + 14} ${150 - h!} H${x! + w! - 14} L${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
+        : t.skyline === 'yard'
+          ? [[40, 46, 170], [250, 34, 140], [420, 54, 190], [690, 40, 150]].map(([x, h, w]) =>
+            `<path d="M${x} 150 Q${x! + w! * 0.2} ${150 - h! * 0.8} ${x! + w! * 0.38} ${150 - h!} L${x! + w! * 0.55} ${150 - h! * 0.86} Q${x! + w! * 0.8} ${150 - h! * 0.7} ${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('') +
+            // A distant crane: lattice mast, jib and counter-jib, flat background shapes.
+            `<path d="M598 150 V52 H608 V150 Z M520 52 H700 V60 H520 Z M603 52 L560 40 M603 52 L660 40" fill="${t.farDetail}" stroke="${t.farDetail}" stroke-width="3"/>` +
+            `<path d="M524 60 V86" stroke="${t.farDetail}" stroke-width="2"/><rect x="516" y="86" width="16" height="8" fill="${t.farDetail}"/>`
         : t.skyline === 'craters'
           ? [[120, 60], [430, 90], [700, 50]].map(([x, w]) =>
             `<path d="M${x! - w!} 150 Q${x! - w! * 0.6} ${150 - w! * 0.4} ${x! - w! * 0.4} ${150 - w! * 0.18} Q${x} ${150 - w! * 0.05} ${x! + w! * 0.4} ${150 - w! * 0.18} Q${x! + w! * 0.6} ${150 - w! * 0.4} ${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
@@ -83,7 +115,7 @@ function themeArt(t: Theme): ArtDef[] {
         `<path d="M520 150 L560 96 L600 150 Z" fill="${t.farDetail}"/><path d="M640 150 Q700 70 760 150 Z" fill="none" stroke="${t.farDetail}" stroke-width="7"/>`;
   const farHills = hillsPath(900, 190, 150, [[180, 34], [220, 22], [160, 40], [190, 18], [150, 30]]);
   const midHills = hillsPath(900, 160, 110, [[260, 60], [200, 38], [240, 70], [200, 44]]);
-  const trees = t.space || t.skyline === 'mesas' ? '' : [70, 330, 610, 820].map((x, i) => {
+  const trees = t.space || t.skyline === 'mesas' || t.skyline === 'yard' ? '' : [70, 330, 610, 820].map((x, i) => {
     const r = 26 + (i % 2) * 8;
     const y = 72 - (i % 3) * 10;
     return `<path d="M${x - 3} ${y + r - 4} L${x - 4} ${y + r + 34} L${x + 4} ${y + r + 34} L${x + 3} ${y + r - 4} Z" fill="${PAL.woodDark}" stroke="${t.midDark}" stroke-width="2"/>` +
@@ -141,13 +173,13 @@ function starsArt(t: Theme): ArtDef {
   return bg(`stars-${t.id}`, 512, 256, stars, 0, 0);
 }
 
-const clouds: ArtDef[] = [
+export const clouds: ArtDef[] = [
   bg('cloud-a', 150, 60, `<path d="M18 50 Q4 50 6 38 Q8 26 24 28 Q28 10 50 12 Q66 2 82 14 Q102 6 112 24 Q134 22 140 38 Q146 52 126 52 Z" fill="${PAL.paper}"/><path d="M10 46 Q60 56 138 46 Q134 54 124 54 L20 54 Q10 54 10 46 Z" fill="#E4EEF2" opacity="0.8"/>`, 75, 30),
   bg('cloud-b', 110, 46, `<path d="M14 40 Q2 40 4 30 Q8 20 20 22 Q26 6 46 10 Q60 2 72 14 Q92 10 98 26 Q108 30 102 40 Z" fill="${PAL.paper}"/><path d="M6 36 Q50 44 104 36 Q100 42 92 42 L14 42 Q6 42 6 36 Z" fill="#E4EEF2" opacity="0.8"/>`, 55, 23),
   bg('cloud-c', 80, 34, `<path d="M10 30 Q2 30 4 22 Q8 14 18 16 Q24 4 40 8 Q54 4 62 16 Q76 16 76 26 Q76 31 68 31 Z" fill="${PAL.paper}"/>`, 40, 17),
 ];
 
-const props: ArtDef[] = [
+export const props: ArtDef[] = [
   {
     key: 'sun-rays', w: 300, h: 300, ax: 150, ay: 150, scale: 1,
     svg: svgDoc(300, 300, Array.from({ length: 12 }, (_, i) => {
@@ -176,6 +208,8 @@ const props: ArtDef[] = [
     <g ${ink(1.4)}><circle cx="8" cy="6" r="3.2" fill="${PAL.paper}"/><circle cx="3.5" cy="9" r="3.2" fill="${PAL.paper}"/><circle cx="12.5" cy="9" r="3.2" fill="${PAL.paper}"/><circle cx="5" cy="13" r="3.2" fill="${PAL.paper}"/><circle cx="11" cy="13" r="3.2" fill="${PAL.paper}"/><circle cx="8" cy="10" r="2.6" fill="${PAL.zap}"/></g>`, 8, 29, 2),
   bg('flower-b', 16, 30, `<path d="M8 29 Q9 20 8 12" stroke="${PAL.grassDark}" stroke-width="2.4" fill="none"/>
     <path d="M3 4 L8 9 L13 4 L13 11 Q8 16 3 11 Z" fill="${PAL.rubber}" ${ink(1.4)}/>`, 8, 29, 2),
+  // Frozen Pond: a soft snowflake for the background snowfall (background: no ink).
+  bg('snowflake', 8, 8, `<circle cx="4" cy="4" r="3" fill="${PAL.snow}"/>`, 4, 4, 2),
   bg('bird', 22, 10, `<path d="M1 8 Q6 1 11 7 Q16 1 21 8" fill="none" stroke="${PAL.ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`, 11, 5, 2),
   {
     key: 'tea-table', w: 60, h: 52, ax: 30, ay: 51, scale: 2,
@@ -362,6 +396,8 @@ function hedge(w: number, h: number): string {
 }
 
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
+  const mechanic = mechanicObstacleBody(obs, w, h) ?? rampObstacleBody(obs, w, h) ?? magnetObstacleBody(obs, w, h) ?? pondObstacleBody(obs, w, h);
+  if (mechanic !== null) return mechanic;
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.id.includes('trunk')) return trunk(w, h);
   if (obs.id.includes('planter')) return planter(w, h);
@@ -400,5 +436,5 @@ export function obstacleArt(levels: readonly LevelData[], ppm: number): ArtDef[]
 
 export function sceneryArt(levels: readonly LevelData[], ppm: number): ArtDef[] {
   const themes = [...new Set(levels.map(l => themeFor(l.id)))];
-  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm)];
+  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm), ...mechanicArt(levels, ppm, obstacleKey), ...rampArt(levels, ppm)];
 }

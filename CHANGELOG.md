@@ -1,5 +1,112 @@
 # Changelog
 
+## Next 10, round 3 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the next proposed 10. The three new gardens and the friends board were built in parallel worktrees and merged.
+- **Chapter 5: Nowhere to Hide.** Three new gardens, each with a new mechanic and its own tip:
+  - **Frozen Pond:** land short on the ice and skid under Jonh's frozen hut door.
+  - **Skate Park:** Jonh's shelter is only open at the back, so land the ball in the half-pipe and it comes back out at him.
+  - **The Scrapyard:** a crane magnet lifts soft lobs over the car stack or pulls high ones down onto Jonh, and a ball that touches it sticks.
+- **Daily Bonk friends board.** Make a private board, send the code or link, and see today's (and yesterday's) results ranked as your friends play.
+- **Same line on every screen.** Online, everyone now reads the same Jonh line for the same shot.
+- **Save link and QR code.** Settings → Your progress can copy a link or show a QR code to scan with another phone. Opening it asks before loading.
+- **Online clips.** Save clip now works on the online match result too, even while the rematch countdown runs.
+- **Gusts you can see.** On Windy Washday the windsock and streaks swell with the gusts you hear (the ball's wind never changes).
+- **No wait for the next garden.** Its art is prepared while you aim.
+- **Phone check, landscape.** 60 fps on a real phone in landscape. Edge smoothing stays on: turning it off made no measurable difference.
+- **Listening page** (`listen.html`, dev only): play every sound and mix, adjust by ear, copy the result.
+- **Shipping.** Vercel previews now build the site only; production still deploys the backend with the site.
+
+## Next 10, round 2 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the next proposed 10. Chapters, sound and the winning-shot clip were built in parallel worktrees and merged.
+- **Online, live.** The new gardens and emotes work against the Convex dev deployment (a full two-browser match was played). Production still needs `npx convex deploy`.
+- **Earned cosmetics stay earned.** Adding gardens can no longer take away a hat, cannon or outfit, and Crown holders from the first release keep it.
+- **First-meeting tips.** The first time you meet wind, glass, a hoop, bounce, low gravity, a long shot or a walking Jonh, the aiming caption explains it in one line.
+- **Phone performance.** Measured on a real Android phone: boot under a second, 60 fps. Trail dots are now sprites and two re-simulation hitches are gone, so a hit costs 38% less main-thread time.
+- **Sound.** A wind bed with gusts on Windy Washday, gravel footsteps for walking Jonh, distinct emote pops, and every cue balanced by measurement (not yet by ear).
+- **Save codes.** Settings → Your progress: copy a code on one device and load it on another. Loading keeps the best of both.
+- **Shareable clips.** Save clip (Record and Share on phones) records a few seconds of your winning shot, with a caption, as a video to post.
+- **Chapters.** The twelve gardens form four chapters of three, with a chapter line on the title card and a "Chapter complete!" moment.
+- **Colour-blind player colours.** A Settings switch for brick, sky, gold and navy, which stay distinct under every common colour-vision type.
+- **Hoop trick shots.** A hit through a magic hoop now counts as a trick shot (125 points), by the owner's decision.
+
+## Next 10 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the proposed next 10. Four of them were built in parallel worktrees and merged (entries below).
+- **Share the Daily Bonk.** The result card and the Daily screen offer Share: "Hit Jonh Daily · 25 Nov · ★★☆", one symbol per shot, the streak and a `?daily` link that opens the day's challenge. Phones get the share sheet, other devices copy the text.
+- **First-garden coach.** New players start Garden 1 from Play in one tap. A ghost glove shows the drag on the cannon, and until the first hit every miss names one fix ("Short. Add power.").
+- **Practice.** Unlimited shots on cleared gardens, which never change stars, bests or progress. It opens from a Challenge/Practice switch or Practice (P) on the result card.
+- **Feats.** A screen of 22 long-term goals with progress bars and the cosmetics they earn, including six for bragging rights (Moonstruck, Hat trick, Grand tour, …). Ribbons on the result card mark new ones.
+- **Sudden death (hot-seat).** A match still level after the tie-break goes to a one-shot shoot-out on the last garden. The best outcome wins, and after 3 rounds the win is shared.
+- **Accessibility.**
+  - Remappable keys (Settings → Keys).
+  - Screen-reader announcements for chapter cards, handovers and results.
+  - 44 px touch targets on phones.
+  - A colour-vision check: colour never stands alone.
+- **Physics fix.** The shipped game ran different contact-solver constants (Phaser's) from the tests, and spawned the ball with a differently-rounded formula. Lunar Picnic's reference shot missed in the game. The game now reproduces the tested physics bit for bit.
+
+## Online emotes (branch `t3/online-room-emotes`, 25 November 2026)
+
+- **Emotes in online rooms.** Six canned reactions (Beat that!, Unlucky!, Nice shot!, Oof., Poor Jonh., Rematch?) that everyone in the room sees, in the lobby, during a match and on the result screen. An Emote button (or `E`, then `1`–`6`) opens them; the bubble shows in the sender's player-panel row with a soft sound, and your own appears at once. Rate-limited per seat (a burst of 3, then one every 2 s). Needs a Convex redeploy before it works online (`convex/README.md`).
+
+## Wind garden (branch `t3/constant-wind-garden`, 25 November 2026)
+
+- **Wind.** A level can declare a constant horizontal wind on the ball (SPEC §8.7). It is applied in the fixed physics step like gravity, so it is deterministic, frame-rate independent, seen by the swept guard, and never a contact or a push on Jonh and the props. A ball resting on a surface is left alone so it still settles. Maps without wind are bit-for-bit unchanged.
+- **Readable.** The launch preview dots bend with the wind. A windsock, a "Wind ← 3" caption and drifting streaks show it before the first shot (still under reduced motion), and the map picker thumbnail shows a windsock.
+- **Windy Washday.** An eleventh garden: a 3 m/s² headwind, a 6 m garden wall and a planter. Shots that ignore the wind miss. In the campaign after The Greenhouse and in the Trick shots preset, with its own lines from Jonh.
+
+## Walking-Jonh garden (branch `t3/walking-jonh-garden`, 25 November 2026)
+
+- **The Afternoon Stroll** (owner-approved 2026-11-25): Jonh walks a fixed, learnable route up the garden path from the moment you fire, so the shot is a timing puzzle. His colliders move with him every fixed step (Matter and the swept guard agree); every other map is byte-for-byte unchanged. Walk cycle, painted route, replays in step. Eleven maps in every mode; Online rooms need a Convex redeploy to offer it. Details in `docs/progress.md` and SPEC §8.7.
+
+## Mobile performance and install (branch `t3/mobile-performance-pwa`, 25 November 2026)
+
+- **Faster start.** The game used to draw all 228 of its illustrations before showing the title. It now draws only what the title needs and the rest the first time a garden, hat, outfit, cannon or player colour is used, packed into a few texture pages. In headless Chromium the title is interactive in about 4.4 s instead of 10.1 s (8.1 s instead of 13.0 s with the CPU slowed 4×), and the start-up art takes 13 MB of texture memory instead of 44 MB. Pictures and shots are unchanged. Measured on a desktop browser only; the phone was locked, so the real-phone numbers are still to come.
+- **Install and play offline.** The production build is an installable app with an icon, and solo, hot-seat and Daily Bonk work with no connection after the first visit. Online rooms still need one. A new version takes over on the next load with a small "Updated" note. Never active in `npm run dev`.
+
+## Real game pass (branch `real-game-pass`, 24 November 2026)
+
+The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").
+
+### One more try
+- **Snappy misses.** A miss used to take about 7 s before you could aim again; 4.5 s of that was watching the ball roll.
+  - Once a missed ball has landed and is only rolling, the game fast-forwards it 4×. **Skip** (Space, Enter or the pill) finishes it at once.
+  - Both run the same fixed physics steps, so the outcome is identical (tested on every map at 30/60/144 Hz).
+  - A ball that rolls off the end of the ground now ends the shot instead of falling for 15 s.
+  - The miss result is 1.0 s and is skipped by touching the aim. R retries from the result screen.
+- **A campaign.** The gardens are in order, each with 3 stars and a trick-shot badge.
+  - Clearing a garden unlocks the next. A win offers **Next garden** (N). The title offers **Continue**. There is a campaign star total.
+  - Hot-seat, online and Daily Bonk keep every map.
+
+### Game feel and character
+- **Jonh has things to say.** About 120 new lines fit the moment:
+  - miss streaks ("Take your time. Apparently you need it."), first-shot hits, third hits in a row;
+  - his hat ("Not the fez!"), the bit of his property you hit ("That shed took me three weekends.");
+  - each garden ("You followed me to the moon?").
+  - He heckles slow aimers and mutters when he speaks.
+- **Launches scale with power.** A feeble pop at low power; a big flash, smoke, sparks, wheel dust, recoil, camera kick and a rumbling boom at full.
+- **A title screen with a star.** Jonh is on stage in one of your gardens. Every so often the cannon fires a real reference shot at him (with the full impact), and poking the garden fires it now.
+
+### Party
+- **Stakes.** Every handover says what the shot means ("Trailing Bo by 75", "Only a trick shot wins it! A hit ties."). Banners mark the final round and last shots, and the deciding shot gets a drumroll.
+- **Taunts.** Whoever just scored taunts the next player on the handover card.
+- **Winning-shot replay.** The winner's best hit plays again, in its own garden and with their cannon, before the scores.
+
+### Variety
+- **Two new gardens and two new mechanics.**
+  - **The Greenhouse:** smash through glass. Soft shots bounce off it; hard ones break through and slow down.
+  - **The Magic Act:** a magician's hoop teleports the ball into a sealed tent.
+  - Both are SI level data with tested reference shots. The 8 existing maps play bit for bit as before.
+- **Cosmetics.** Jonh's wardrobe gains 7 outfits and 6 cannon skins, earned with campaign stars and feats.
+
+### Presentation
+- **Chapter cards** between gardens ("Garden 3 · Rooftop Lunch", "Final round").
+- **Phone landscape fixed.** The canvas was cropped until a 500 ms poll and the sliders squeezed it. It now refits at once, and the sliders fold into a toggle (the garden is 87% bigger at 844×390).
+- **Readable on phones.** Jonh's bubble and the landing label grow on small screens.
+- **Desktop.** With a mouse, FIRE sits under the garden instead of over it.
+- **The hat locker is now Jonh's wardrobe.**
+
 ## Online multiplayer (branch `online-multiplayer`, 8 October 2026)
 
 Play with 2–4 friends over the internet. One player creates a room and shares a 5-character code or a `?room=CODE` link; the others join. Turns are live: everyone sees each shot as it is fired, and the shooter's result decides the score.

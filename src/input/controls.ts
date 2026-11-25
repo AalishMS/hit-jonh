@@ -9,6 +9,8 @@
  * - Native menu button activation is preserved; game shortcuts do not fire behind overlays.
  */
 
+import { DEFAULT_KEYS, type KeyBindings } from './keyBindings';
+
 export interface InputCallbacks {
   onFire: () => void;
   onReset: () => void;
@@ -16,6 +18,8 @@ export interface InputCallbacks {
   onToggleMute?: () => void;
   onAimChange: (deltaAngle: number, deltaPower: number) => void;
   onEscape?: () => void;
+  /** A fresh Space press while firing isn't allowed: skip what's on screen (rolling ball, result). */
+  onSkip?: () => void;
 }
 
 /**
@@ -42,9 +46,21 @@ export class InputCoordinator {
   private spaceReleasedSinceAiming = true;
   private isPaused = false;
   private isOverlayVisible = false;
+  /** Remappable gameplay keys (input/keyBindings.ts); "Space" below means the fire key. */
+  private keys: KeyBindings = DEFAULT_KEYS;
 
   constructor(private readonly callbacks: InputCallbacks) {}
 
+  /** Uses new key bindings; a held fire key must still be released before it can fire. */
+  setKeys(keys: KeyBindings): void {
+    if (keys.fire !== this.keys.fire) {
+      this.isSpaceDown = false;
+      this.spaceReleasedSinceAiming = true;
+    }
+    this.keys = keys;
+  }
+
+  /** The fire key is physically held down. */
   get isPhysicalSpaceDown(): boolean {
     return this.isSpaceDown;
   }
@@ -73,8 +89,9 @@ export class InputCoordinator {
    * requests preventDefault(), false otherwise.
    */
   handleKeyDown(code: string, repeat: boolean, isTextInputFocused: boolean, isActionButtonFocused = false): boolean {
+    const keys = this.keys;
     // Physical state is ALWAYS tracked, even during text focus, pause, or overlays.
-    if (code === 'Space') {
+    if (code === keys.fire) {
       this.isSpaceDown = true;
     }
 
@@ -98,16 +115,19 @@ export class InputCoordinator {
     if (isActionButtonFocused && (code === 'Enter' || code === 'Space')) return false;
 
     // Active gameplay controls
-    if (code === 'Space') {
+    if (code === keys.fire) {
       if (!repeat && this.canFire && this.spaceReleasedSinceAiming) {
         this.spaceReleasedSinceAiming = false;
         this.callbacks.onFire();
+      } else if (!repeat && !this.canFire) {
+        // Skipping never fires: aiming then waits for this Space to be released (setCanFire).
+        this.callbacks.onSkip?.();
       }
       // Consumed in gameplay so native button focus doesn't bypass coordinator
       return true;
     }
 
-    if (code === 'Enter') {
+    if (code === keys.next) {
       if (!repeat) {
         if (this.callbacks.onContinue) {
           this.callbacks.onContinue();
@@ -118,7 +138,7 @@ export class InputCoordinator {
       return true;
     }
 
-    if (code === 'KeyM') {
+    if (code === keys.mute) {
       if (!repeat) this.callbacks.onToggleMute?.();
       return true;
     }
@@ -126,19 +146,19 @@ export class InputCoordinator {
     if (!this.canFire) return false;
 
     switch (code) {
-      case 'ArrowLeft':
+      case keys.angleDown:
         this.callbacks.onAimChange(-1, 0);
         return true;
-      case 'ArrowRight':
+      case keys.angleUp:
         this.callbacks.onAimChange(1, 0);
         return true;
-      case 'ArrowDown':
+      case keys.powerDown:
         this.callbacks.onAimChange(0, -1);
         return true;
-      case 'ArrowUp':
+      case keys.powerUp:
         this.callbacks.onAimChange(0, 1);
         return true;
-      case 'KeyR':
+      case keys.retry:
         if (!repeat) this.callbacks.onReset();
         return true;
     }
@@ -147,7 +167,7 @@ export class InputCoordinator {
   }
 
   handleKeyUp(code: string): void {
-    if (code === 'Space') {
+    if (code === this.keys.fire) {
       this.isSpaceDown = false;
       this.spaceReleasedSinceAiming = true;
     }

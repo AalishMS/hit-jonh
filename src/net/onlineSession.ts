@@ -1,7 +1,7 @@
 import type { ConvexClient } from 'convex/browser';
 import { api } from '../../convex/_generated/api';
 import { ONLINE } from '../config/tuning';
-import type { PresenceEntry, RoomSnapshot } from '../rules/onlineTypes';
+import type { EmoteEntry, PresenceEntry, RoomSnapshot } from '../rules/onlineTypes';
 import { normalizeRoomCode } from '../rules/roomCode';
 import type { ClassifiedOutcome } from '../sim/classification';
 import type { OnlineProfile } from '../storage/storage';
@@ -10,6 +10,8 @@ import { isRetryable, withRetry } from './retry';
 export interface RoomListener {
   onRoom(snapshot: RoomSnapshot | null): void;
   onPresence(entries: PresenceEntry[]): void;
+  /** Each seat's latest emote (spec §6.1). Optional so older callers and tests need not care. */
+  onEmotes?(entries: EmoteEntry[]): void;
 }
 
 /** Typed codes are normalized here because the server does an exact lookup. */
@@ -64,6 +66,7 @@ export class OnlineSession {
     this.currentCode = code;
     this.unsubscribers.push(this.client.onUpdate(api.rooms.getRoom, { code, token: this.token }, s => listener.onRoom(s), swallowSubscriptionError));
     this.unsubscribers.push(this.client.onUpdate(api.rooms.getPresence, { code }, e => listener.onPresence(e), swallowSubscriptionError));
+    this.unsubscribers.push(this.client.onUpdate(api.emotes.getEmotes, { code, token: this.token }, e => listener.onEmotes?.(e), swallowSubscriptionError));
     void this.beat();
     this.heartbeatId = setInterval(() => void this.beat(), ONLINE.heartbeatSeconds * 1000);
     document.addEventListener('visibilitychange', this.onVisibility);
@@ -116,6 +119,15 @@ export class OnlineSession {
   reportWitness(args: { matchNumber: number; seq: number; outcome: ClassifiedOutcome }): void {
     const code = this.currentCode;
     if (code) void this.client.mutation(api.rooms.reportWitness, { code, token: this.token, ...args }).catch(() => undefined);
+  }
+
+  /**
+   * One emote for my seat. Not retried: an emote that arrives late is stale, and the server rate-limits anyway.
+   * Rejections (`INVALID_EMOTE`, `RATE_LIMITED`, `NOT_MEMBER`) reject the promise so the caller can take its
+   * optimistic bubble back.
+   */
+  sendEmote(emote: string): Promise<null> {
+    return this.client.mutation(api.emotes.sendEmote, { code: this.requireCode(), token: this.token, emote });
   }
 
   /** An extra check-in outside the regular interval (e.g. when the turn countdown reaches 0). */

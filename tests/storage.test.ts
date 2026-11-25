@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { defaultPlayerSetups, loadSaveData, recordSoloResult, sanitizePlayerName, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../src/storage/storage';
+import { defaultPlayerSetups, loadSaveData, recordSoloResult, sanitizePlayerName, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../src/storage/storage';
+import { freshProgress } from '../src/rules/progression';
 
 
 const localStorageMock = (function () {
@@ -211,6 +212,19 @@ describe('Storage', () => {
 });
 
 describe('Progress persistence (polish pass)', () => {
+  it('keeps a selected cannon skin or outfit only while the campaign stars still unlock it', async () => {
+    const { freshProgress } = await import('../src/rules/progression');
+    const { saveProgress, loadProgress } = await import('../src/storage/storage');
+    // Mocked MAPS here has two gardens, so at most 6 stars are reachable.
+    const pick = { ...freshProgress(), selectedCannon: 'admiral' as const, selectedOutfit: 'argyle' as const, bestStreak: 5 };
+    saveProgress(pick);
+    expect(loadProgress()).toMatchObject({ selectedCannon: 'classic', selectedOutfit: 'argyle' });
+    recordSoloResult('backyard', 1, false, 40, 50);
+    recordSoloResult('fence', 1, false, 40, 50);
+    saveProgress(pick);
+    expect(loadProgress()).toMatchObject({ selectedCannon: 'admiral', selectedOutfit: 'argyle' });
+  });
+
   it('round-trips progress and ignores corrupt progress safely', async () => {
     const { loadProgress, saveProgress } = await import('../src/storage/storage');
     const { freshProgress, recordShot } = await import('../src/rules/progression');
@@ -220,5 +234,14 @@ describe('Progress persistence (polish pass)', () => {
     expect(loadProgress()).toMatchObject({ totalHits: 1, currentStreak: 1 });
     localStorage.setItem('hitJonh.v1', JSON.stringify({ version: 'hitJonh.v1', progress: [1, 2] }));
     expect(loadProgress()).toEqual(freshProgress());
+  });
+
+  it('writes star-gated cosmetics as earned when a solo result brings the stars', () => {
+    saveProgress(freshProgress());
+    recordSoloResult('backyard', 1, false, 45, 50);
+    recordSoloResult('fence', 1, false, 45, 50);
+    // Six stars unlock the Admiral cannon; it is in the stored save itself, not only derived on load.
+    const stored = JSON.parse(localStorage.getItem('hitJonh.v1') ?? '{}') as { progress?: { earnedCannons?: string[] } };
+    expect(stored.progress?.earnedCannons).toContain('admiral');
   });
 });

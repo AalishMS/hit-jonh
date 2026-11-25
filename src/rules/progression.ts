@@ -3,6 +3,14 @@
  * persisted by storage.ts. Nothing here affects physics or scoring.
  */
 
+import { hashKey } from './seededRandom';
+import { sanitizeDailyShots } from './dailyShare';
+import { isMechanicId } from './mechanicTips';
+import {
+  DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, isCannonSkinId, isOutfitId, sanitizeCannonSkin, sanitizeOutfit,
+  unlockedCannonSkins, unlockedOutfits, type CannonSkinId, type CosmeticContext, type OutfitId,
+} from './cosmetics';
+
 export const HAT_ORDER = ['boater', 'bowler', 'fez', 'party', 'propeller', 'chef', 'viking', 'crown'] as const;
 export type HatName = typeof HAT_ORDER[number];
 
@@ -12,29 +20,55 @@ export interface Progress {
   trickHits: number;
   currentStreak: number;
   bestStreak: number;
+  /** Trick (ricochet) hits in a row, solo and daily only, like the hit streak; and the best run. */
+  trickStreak: number;
+  bestTrickStreak: number;
+  /** Maps where Jonh has been hit (any local mode except practice), for the garden feats. */
+  hitMaps: string[];
   /** Map ids with a three-star solo result. */
   threeStarMaps: string[];
   /** Daily results by local date key (YYYY-MM-DD): stars (0 = attempted, failed). */
   daily: Record<string, number>;
+  /** The counted daily run's shots by date key, for sharing (rules/dailyShare.ts; e.g. "mb"). */
+  dailyShots: Record<string, string>;
   selectedHat: HatName;
+  /** Cannon skin worn in solo and on the title screen (rules/cosmetics.ts). */
+  selectedCannon: CannonSkinId;
+  /** Jonh's outfit (rules/cosmetics.ts). */
+  selectedOutfit: OutfitId;
+  /**
+   * Everything ever unlocked. An earned item stays earned even when a rule later asks for more
+   * (new gardens raise "every star" and "three stars on every garden"). [DECIDED by owner 2026-11-25]
+   */
+  earnedHats: HatName[];
+  earnedCannons: CannonSkinId[];
+  earnedOutfits: OutfitId[];
+  /** Garden mechanics whose first-meeting tip has been shown (rules/mechanicTips.ts). */
+  seenTips: string[];
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, selectedHat: 'boater' };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT, earnedHats: [], earnedCannons: [], earnedOutfits: [], seenTips: [] };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
 
-/** Every resolved shot. `streak` counts only in solo/daily (multiplayer turns are shared). */
-export function recordShot(p: Progress, outcome: ShotOutcome, countsForStreak: boolean): Progress {
+/**
+ * Every resolved shot. Streaks count only in solo/daily (multiplayer turns are shared). `mapId`
+ * (the garden it was fired in) records where Jonh has been hit, for the garden feats.
+ */
+export function recordShot(p: Progress, outcome: ShotOutcome, countsForStreak: boolean, mapId?: string): Progress {
   const body = outcome === 'body' || outcome === 'ricochet_body';
   const next = { ...p, threeStarMaps: [...p.threeStarMaps], daily: { ...p.daily } };
   if (body) next.totalHits++;
   if (outcome === 'ricochet_body') next.trickHits++;
   if (outcome === 'hat_only') next.hatHits++;
+  if (body && mapId !== undefined && !p.hitMaps.includes(mapId)) next.hitMaps = [...p.hitMaps, mapId];
   if (countsForStreak) {
     next.currentStreak = body ? p.currentStreak + 1 : 0;
     next.bestStreak = Math.max(p.bestStreak, next.currentStreak);
+    next.trickStreak = outcome === 'ricochet_body' ? p.trickStreak + 1 : 0;
+    next.bestTrickStreak = Math.max(p.bestTrickStreak, next.trickStreak);
   }
   return next;
 }
@@ -44,10 +78,18 @@ export function recordSoloFinish(p: Progress, mapId: string, stars: number): Pro
   return { ...p, threeStarMaps: [...p.threeStarMaps, mapId] };
 }
 
-/** Only the first daily attempt of a date is recorded; replays never overwrite it. */
-export function recordDaily(p: Progress, dateKey: string, stars: number): Progress {
+/**
+ * Only the first daily attempt of a date is recorded; replays never overwrite it. `shots` is that
+ * run's pattern (rules/dailyShare.ts), kept so the result can be shared later in the day.
+ */
+export function recordDaily(p: Progress, dateKey: string, stars: number, shots = ''): Progress {
   if (dateKey in p.daily) return p;
-  return { ...p, daily: { ...p.daily, [dateKey]: Math.max(0, Math.min(3, Math.round(stars))) } };
+  const pattern = sanitizeDailyShots(shots);
+  return {
+    ...p,
+    daily: { ...p.daily, [dateKey]: Math.max(0, Math.min(3, Math.round(stars))) },
+    dailyShots: pattern ? { ...p.dailyShots, [dateKey]: pattern } : p.dailyShots,
+  };
 }
 
 export interface HatRule { name: string; hint: string; unlocked: (p: Progress, mapIds: readonly string[]) => boolean }
@@ -56,15 +98,43 @@ export const HAT_RULES: Record<HatName, HatRule> = {
   boater: { name: 'Straw boater', hint: 'His usual.', unlocked: () => true },
   bowler: { name: 'Bowler', hint: 'Hit Jonh once.', unlocked: p => p.totalHits >= 1 },
   fez: { name: 'Fez', hint: 'Knock his hat off without touching him.', unlocked: p => p.hatHits >= 1 },
-  party: { name: 'Party hat', hint: 'Land a trick shot (ricochet hit).', unlocked: p => p.trickHits >= 1 },
+  party: { name: 'Party hat', hint: 'Land a trick shot (a bank shot or a hoop shot).', unlocked: p => p.trickHits >= 1 },
   propeller: { name: 'Propeller cap', hint: 'Three stars on any garden.', unlocked: p => p.threeStarMaps.length >= 1 },
   chef: { name: "Chef's toque", hint: 'Hit Jonh in a Daily Bonk.', unlocked: p => Object.values(p.daily).some(stars => stars > 0) },
   viking: { name: 'Viking helmet', hint: '25 hits in total.', unlocked: p => p.totalHits >= 25 },
   crown: { name: 'Crown', hint: 'Three stars on every garden.', unlocked: (p, maps) => maps.length > 0 && maps.every(m => p.threeStarMaps.includes(m)) },
 };
 
+/** A hat is worn-able once earned, even if its rule now asks for more (see `Progress.earnedHats`). */
+export function hatUnlocked(p: Progress, id: HatName, mapIds: readonly string[]): boolean {
+  return p.earnedHats.includes(id) || HAT_RULES[id].unlocked(p, mapIds);
+}
+
 export function unlockedHats(p: Progress, mapIds: readonly string[]): HatName[] {
-  return HAT_ORDER.filter(id => HAT_RULES[id].unlocked(p, mapIds));
+  return HAT_ORDER.filter(id => hatUnlocked(p, id, mapIds));
+}
+
+/**
+ * The eight gardens of the first release (`main` before the campaign). Its Crown asked for three
+ * stars on each of them; a save from then that has them keeps the Crown (see `sanitizeProgress`).
+ */
+export const FIRST_RELEASE_MAPS: readonly string[] = ['backyard', 'fence', 'rooftop', 'rubber', 'bankshot', 'trampoline', 'moon', 'valley'];
+
+/**
+ * Records every hat, cannon skin and outfit unlocked right now as earned, so it stays unlocked
+ * when a rule later asks for more. Returns `p` itself when nothing new was earned.
+ */
+export function recordEarned(p: Progress, mapIds: readonly string[], ctx: CosmeticContext): Progress {
+  const hats = unlockedHats(p, mapIds).filter(id => !p.earnedHats.includes(id));
+  const cannons = unlockedCannonSkins(p, ctx).filter(id => !p.earnedCannons.includes(id));
+  const outfits = unlockedOutfits(p, ctx).filter(id => !p.earnedOutfits.includes(id));
+  if (hats.length + cannons.length + outfits.length === 0) return p;
+  return {
+    ...p,
+    earnedHats: HAT_ORDER.filter(id => p.earnedHats.includes(id) || hats.includes(id)),
+    earnedCannons: [...p.earnedCannons, ...cannons],
+    earnedOutfits: [...p.earnedOutfits, ...outfits],
+  };
 }
 
 export function newlyUnlocked(before: Progress, after: Progress, mapIds: readonly string[]): HatName[] {
@@ -78,25 +148,34 @@ export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
 export interface DailyPick { mapId: string; positionId: string }
 
 /**
  * Today's challenge: a map and one of its authored, physics-validated multiplayer target
  * positions, chosen deterministically from the date (same for every player that day).
  */
-export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; multiplayerPositions?: ReadonlyArray<{ id: string }> }>): DailyPick | null {
-  const options = maps.flatMap(m => (m.multiplayerPositions ?? []).map(p => ({ mapId: m.id, positionId: p.id })));
+export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; multiplayerPositions?: ReadonlyArray<{ id: string }>; dailyFrom?: string }>): DailyPick | null {
+  // Maps join the pool on their `dailyFrom` day (date keys compare as strings), so adding one never changes a day already set.
+  const options = maps.filter(m => m.dailyFrom === undefined || m.dailyFrom <= key)
+    .flatMap(m => (m.multiplayerPositions ?? []).map(p => ({ mapId: m.id, positionId: p.id })));
   if (options.length === 0) return null;
-  return options[hashString(`hit-jonh:${key}`) % options.length]!;
+  return options[hashKey(`hit-jonh:${key}`) % options.length]!;
+}
+
+/** The longest run of consecutive days with a recorded daily attempt (ever). */
+export function bestDailyStreak(p: Progress): number {
+  const days = Object.keys(p.daily).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  let best = 0;
+  let run = 0;
+  let previous: number | null = null;
+  for (const key of days) {
+    const [y, m, d] = key.split('-').map(Number) as [number, number, number];
+    const day = Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+    run = previous !== null && day === previous + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    previous = day;
+  }
+  return best;
 }
 
 /** Consecutive days (ending today or yesterday) with a recorded daily attempt. */
@@ -111,8 +190,14 @@ export function dailyStreak(p: Progress, today: Date): number {
   return count;
 }
 
-/** Validates untrusted saved data, falling back field by field. */
-export function sanitizeProgress(raw: unknown, mapIds: readonly string[]): Progress {
+/**
+ * Validates untrusted saved data, falling back field by field. `ctx` (campaign stars and gardens
+ * cleared, from the saved solo bests) is needed to tell whether a selected cannon skin or outfit
+ * is really unlocked; without it only feat-gated and already-earned items can be kept. Whatever is
+ * unlocked is recorded as earned. A save from before earned items were recorded keeps the
+ * first release's Crown (three stars on its eight gardens).
+ */
+export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: CosmeticContext = NO_COSMETIC_CONTEXT): Progress {
   const p = freshProgress();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return p;
   const r = raw as Record<string, unknown>;
@@ -122,15 +207,32 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[]): Progr
   p.trickHits = count(r.trickHits);
   p.currentStreak = count(r.currentStreak);
   p.bestStreak = Math.max(count(r.bestStreak), p.currentStreak);
+  p.trickStreak = count(r.trickStreak);
+  p.bestTrickStreak = Math.max(count(r.bestTrickStreak), p.trickStreak);
+  if (Array.isArray(r.hitMaps)) p.hitMaps = [...new Set(r.hitMaps.filter((m): m is string => typeof m === 'string' && mapIds.includes(m)))];
   if (Array.isArray(r.threeStarMaps)) p.threeStarMaps = [...new Set(r.threeStarMaps.filter((m): m is string => typeof m === 'string' && mapIds.includes(m)))];
   if (r.daily && typeof r.daily === 'object' && !Array.isArray(r.daily)) {
     for (const [k, v] of Object.entries(r.daily as Record<string, unknown>)) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === 'number' && Number.isFinite(v)) p.daily[k] = Math.max(0, Math.min(3, Math.round(v)));
     }
   }
-  if (typeof r.selectedHat === 'string' && (HAT_ORDER as readonly string[]).includes(r.selectedHat)) {
-    const hat = r.selectedHat as HatName;
-    p.selectedHat = HAT_RULES[hat].unlocked(p, mapIds) ? hat : 'boater';
+  if (r.dailyShots && typeof r.dailyShots === 'object' && !Array.isArray(r.dailyShots)) {
+    for (const [k, v] of Object.entries(r.dailyShots as Record<string, unknown>)) {
+      const pattern = sanitizeDailyShots(v);
+      if (k in p.daily && pattern) p.dailyShots[k] = pattern;
+    }
   }
-  return p;
+  const isHat = (v: unknown): v is HatName => typeof v === 'string' && (HAT_ORDER as readonly string[]).includes(v);
+  const ids = <T extends string>(v: unknown, is: (x: unknown) => x is T): T[] => (Array.isArray(v) ? [...new Set(v.filter(is))] : []);
+  p.earnedHats = HAT_ORDER.filter(id => ids(r.earnedHats, isHat).includes(id));
+  p.earnedCannons = ids(r.earnedCannons, isCannonSkinId);
+  p.earnedOutfits = ids(r.earnedOutfits, isOutfitId);
+  p.seenTips = ids(r.seenTips, isMechanicId);
+  if (!Array.isArray(r.earnedHats) && FIRST_RELEASE_MAPS.every(m => p.threeStarMaps.includes(m)) && !p.earnedHats.includes('crown')) {
+    p.earnedHats = [...p.earnedHats, 'crown'];
+  }
+  if (isHat(r.selectedHat)) p.selectedHat = hatUnlocked(p, r.selectedHat, mapIds) ? r.selectedHat : 'boater';
+  p.selectedCannon = sanitizeCannonSkin(r.selectedCannon, p, ctx);
+  p.selectedOutfit = sanitizeOutfit(r.selectedOutfit, p, ctx);
+  return recordEarned(p, mapIds, ctx);
 }

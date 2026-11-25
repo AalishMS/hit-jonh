@@ -1,12 +1,15 @@
 import type Phaser from 'phaser';
-import { barrelKey } from '../art/cannonArt';
+import { barrelKey, cannonSkinKeys } from '../art/cannonArt';
+import { DEFAULT_CANNON_SKIN, type CannonSkinId } from '../rules/cosmetics';
 import { PAL, hex } from '../art/palette';
-import { AIM, PROJECTILE } from '../config/tuning';
+import { AIM, PHYSICS, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
-import { metresToPixels, simYToWorldY } from '../sim/units';
+import { previewDotsPx, type PreviewPull } from '../sim/ballistics';
+import { magnetAcceleration, magnetProfile } from '../sim/magnet';
+import { metresToPixels, muzzleSpawnPx, pixelsToMetres, simYToWorldY, worldYToSimY } from '../sim/units';
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
-import { artImage, artScale } from './artTextures';
+import { artImage, artScale, requestArtKey } from './artTextures';
 
 const METER = { width: 170, height: 16, offsetY: 30 } as const;
 
@@ -23,6 +26,7 @@ export class CannonRenderer {
   private showAimAids = true;
   private pivotXPx: number;
   private pivotYPx: number;
+  private readonly spawn: Point2D;
   private readonly carriage: Phaser.GameObjects.Image;
   private readonly barrel: Phaser.GameObjects.Image;
   private readonly wheel: Phaser.GameObjects.Image;
@@ -41,7 +45,9 @@ export class CannonRenderer {
     private readonly ppm: number,
     private readonly worldHeightPx: number,
     private readonly physics: LevelPhysics = levelPhysics({}),
+    private skin: CannonSkinId = DEFAULT_CANNON_SKIN,
   ) {
+    this.spawn = { x: cannonSpawn.x, y: cannonSpawn.y };
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
     this.shadow = scene.add.image(this.pivotXPx, this.pivotYPx + 32, 'fx-shadow').setScale(0.75, 0.5).setDepth(9);
@@ -56,6 +62,13 @@ export class CannonRenderer {
     }).setOrigin(0.5, 0).setResolution(2).setDepth(8);
   }
 
+  /**
+   * Changes the cannon's skin at runtime (all skin textures are rasterized at boot). A skin shows
+   * only on the unpainted solo cannon (`draw` with no colour); a multiplayer cannon keeps the
+   * classic parts so the player's colour band and pattern read exactly as before.
+   */
+  setSkin(skin: CannonSkinId): void { this.skin = skin; }
+
   get pivot(): { x: number; y: number } { return { x: this.pivotXPx, y: this.pivotYPx }; }
 
   /** On zoomed-out maps (1 / resting zoom) the power meter keeps its on-screen size. */
@@ -69,15 +82,10 @@ export class CannonRenderer {
     this.pivotYPx = simYToWorldY(cannonSpawn.y, this.worldHeightPx, this.ppm);
   }
 
+  /** Where the ball spawns: just ahead of the barrel (the same formula the tests and replays use). */
   getMuzzlePosition(angleDeg: number, ballRadiusMetres: number): { x: number; y: number } {
-    const rad = (angleDeg * Math.PI) / 180;
-    // Spawn tip offset: slightly ahead of barrel so ball cannot intersect barrel
     const offsetMetres = AIM.barrelLengthMetres + ballRadiusMetres + AIM.muzzleGapMetres;
-    const offsetPx = metresToPixels(offsetMetres, this.ppm);
-    return {
-      x: this.pivotXPx + offsetPx * Math.cos(rad),
-      y: this.pivotYPx - offsetPx * Math.sin(rad),
-    };
+    return muzzleSpawnPx(this.spawn, angleDeg, offsetMetres, this.ppm, this.worldHeightPx);
   }
 
   setRecoil(pixels: number, _angleDeg?: number): void { this.recoilPx = pixels; }
@@ -94,8 +102,14 @@ export class CannonRenderer {
   draw(angleDeg: number, color: number | null = null, pattern: string = 'solid'): void {
     this.angleDeg = angleDeg;
     const rad = (angleDeg * Math.PI) / 180;
-    const key = barrelKey(color, color === null ? null : pattern);
-    if (this.barrel.texture.key !== key && this.barrel.scene.textures.exists(key)) this.barrel.setTexture(key);
+    const keys = cannonSkinKeys(color === null ? this.skin : DEFAULT_CANNON_SKIN);
+    const key = color === null ? keys.barrel : barrelKey(color, pattern);
+    const textures = this.barrel.scene.textures;
+    // Skins and painted barrels are rasterized on first use: ask for what is missing, draw it once it arrives.
+    for (const wanted of [key, keys.carriage, keys.wheel]) if (!textures.exists(wanted)) requestArtKey(this.barrel.scene, wanted);
+    if (this.barrel.texture.key !== key && textures.exists(key)) this.barrel.setTexture(key);
+    if (this.carriage.texture.key !== keys.carriage && textures.exists(keys.carriage)) this.carriage.setTexture(keys.carriage);
+    if (this.wheel.texture.key !== keys.wheel && textures.exists(keys.wheel)) this.wheel.setTexture(keys.wheel);
     const base = artScale('cannon-barrel');
     const w = this.windup;
     const ax = Math.cos(rad);
@@ -118,23 +132,21 @@ export class CannonRenderer {
       this.fuse.setPosition(fx, fy).setScale(artScale('fx-spark-fuse') * (0.8 + 0.6 * Math.abs(Math.sin(this.time * 60))))
         .setRotation(this.time * 20);
     }
-    this.drawGuide(rad);
+    this.drawGuide();
     this.drawMeter();
   }
 
-  /** The first ~0.3 s of the analytic arc: direction and power at a glance, never the landing. */
-  private drawGuide(rad: number): void {
+  /** The first ~0.3 s of the analytic arc (bent by the level's wind): direction and power at a glance, never the landing. */
+  private drawGuide(): void {
     const g = this.guide;
     g.clear();
     if (!this.showAimAids) return;
     const muzzle = this.getMuzzlePosition(this.angleDeg, PROJECTILE.radiusMetres);
-    const speedPx = this.physics.launchSpeed(this.powerPercent) * this.ppm;
-    const gPx = this.physics.gravity * this.ppm;
-    const count = 9;
+    const dots = previewDotsPx(muzzle, this.angleDeg, this.physics.launchSpeed(this.powerPercent), this.physics.gravity,
+      this.physics.windMs2, this.ppm, AIM.previewSeconds, 9, this.magnetPull(muzzle));
+    const count = dots.length;
     for (let i = 1; i <= count; i++) {
-      const t = (AIM.previewSeconds * i) / count;
-      const x = muzzle.x + Math.cos(rad) * speedPx * t;
-      const y = muzzle.y - (Math.sin(rad) * speedPx * t - 0.5 * gPx * t * t);
+      const { x, y } = dots[i - 1]!;
       const r = 4.2 - (i / count) * 2.2;
       const a = 1 - (i / count) * 0.65;
       g.fillStyle(hex(PAL.ink), a);
@@ -142,6 +154,16 @@ export class CannonRenderer {
       g.fillStyle(hex(PAL.paper), a);
       g.fillCircle(x, y, r);
     }
+  }
+
+  /** The level magnet's pull for the preview, measured from the muzzle (none on other maps). */
+  private magnetPull(muzzlePx: { x: number; y: number }): PreviewPull | undefined {
+    const field = this.physics.magnet;
+    if (!field) return undefined;
+    const mx = pixelsToMetres(muzzlePx.x, this.ppm);
+    const my = worldYToSimY(muzzlePx.y, this.worldHeightPx, this.ppm);
+    const profile = magnetProfile(field.radius);
+    return { accel: (dx, dy) => magnetAcceleration(field, mx + dx, my + dy, profile), dtSeconds: PHYSICS.fixedStepSeconds };
   }
 
   private drawMeter(): void {

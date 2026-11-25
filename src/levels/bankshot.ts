@@ -8,6 +8,7 @@ import type { LevelData } from './types';
  */
 export const BANKSHOT_LEVEL: LevelData = {
   id: 'bankshot',
+  mechanic: 'bank',
   name: 'Billboard Bank Shot',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

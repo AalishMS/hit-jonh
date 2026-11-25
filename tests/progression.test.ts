@@ -69,3 +69,15 @@ describe('Progression and unlocks', () => {
     expect(sanitizeProgress({ hatHits: 1, selectedHat: 'fez' }, MAP_IDS).selectedHat).toBe('fez');
   });
 });
+
+describe('Daily pool: maps join on their dailyFrom day', () => {
+  it('keeps every day before the join date exactly as the first-release pool had it, and uses every map after', async () => {
+    const { MAPS } = await import('../src/levels');
+    const { dailyChallenge } = await import('../src/rules/progression');
+    const firstRelease = MAPS.filter(m => m.dailyFrom === undefined);
+    expect(firstRelease.map(m => m.id)).toEqual(['backyard', 'fence', 'rooftop', 'rubber', 'bankshot', 'trampoline', 'moon', 'valley']);
+    for (const key of ['2026-10-10', '2026-11-24', '2026-11-25']) expect(dailyChallenge(key, MAPS)).toEqual(dailyChallenge(key, firstRelease));
+    const later = Array.from({ length: 60 }, (_, i) => dailyChallenge(`2026-12-${String((i % 28) + 1).padStart(2, '0')}`, MAPS)!.mapId);
+    expect(later.some(id => MAPS.find(m => m.id === id)!.dailyFrom !== undefined)).toBe(true);
+  });
+});

@@ -126,6 +126,9 @@
 .setting-row input[type='checkbox']:checked { background: var(--leaf); }
 .setting-row input[type='checkbox']:checked::after { transform: translateX(22px); background: var(--paper); }
 .setting-row.volume { flex-direction: column; align-items: stretch; cursor: default; }
+/* Player colours: the four cannon colours of the chosen palette, beside its switch. */
+.palette-preview { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+.palette-dot { width: 16px; height: 16px; border: 2px solid var(--ink); border-radius: 50%; }
 .setting-row.volume div { display: flex; justify-content: space-between; }
 
 /* ---------- Locker (hats) ---------- */
@@ -152,12 +155,19 @@
   .result-stars span:nth-child(2) { font-size: 58px; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
-  .view-home { display: grid; grid-template-columns: 1fr 1fr; align-items: center; column-gap: 18px; row-gap: 6px; width: min(760px, 100%); padding: 18px 22px; }
-  .view-home > .logo { grid-row: 1 / span 4; }
-  .view-home > :not(.logo) { grid-column: 2; }
-  .logo .hit, .logo .jonh { font-size: 64px; }
+  .view-home { width: min(400px, 52vw); padding: 14px 18px; }
+  .logo .hit, .logo .jonh { font-size: 52px; }
+  .view-home .logo .bonk { display: none; }
+  .view-home .home-note { display: none; }
+  .menu-content .btn-play { font-size: 24px; padding: 12px 26px 9px; min-width: 0; }
+  .home-row { gap: 6px; margin-top: 10px; }
+  .home-row .btn { min-height: 44px; padding: 8px 12px; font-size: 13px; }
   .tagline { margin: 6px 0 10px !important; }
   .map-btn small { display: none; }
+  /* 44 px buttons and the Feats entry need the room: the tagline and tip give it up on short screens. */
+  .view-home .tagline, .view-home .home-tip { display: none; }
+  .view-home .logo { margin-bottom: 6px; }
+  .view-home .btn-modes { margin-top: 8px; }
 }
 .view-daily, .view-locker { width: min(680px, 100%); }
 
@@ -186,7 +196,7 @@
 .online-picker { border: 0; padding: 0; margin: 0; min-width: 0; }
 .online-picker legend { padding: 0; margin-bottom: 8px; }
 .online-picker-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.picker-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 14px; cursor: pointer;
+.picker-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 14px; cursor: pointer;
   border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); box-shadow: 0 3px 0 var(--ink); font: 900 14px var(--ui); text-transform: capitalize;
   transition: transform 100ms; }
 .picker-chip:hover { transform: translateY(-2px); }
@@ -229,3 +239,199 @@
 .online-banner { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; gap: 10px; align-items: center; max-width: calc(100vw - 32px);
   padding: 6px 14px; font: 900 14px var(--ui); color: var(--ink); background: var(--paper); border: 3px solid var(--ink); border-radius: 12px; box-shadow: var(--shadow); }
 .online-banner .btn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+
+/* ---------- Campaign (real game pass) ---------- */
+.campaign-tally { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 16px; margin: -4px auto 6px; max-width: 620px; font: 900 13px var(--ui); color: var(--muted); }
+.campaign-tally .tally-stars { font: 400 22px/1 var(--display); color: var(--ink); }
+.tally-bar { flex-basis: 100%; height: 12px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper-2); overflow: hidden; }
+.tally-bar::before { content: ''; display: block; height: 100%; width: var(--fill, 0%); background: linear-gradient(90deg, var(--hat), var(--zap)); border-right: 3px solid var(--ink); }
+.map-btn { position: relative; }
+.map-number { position: absolute; top: 8px; left: 8px; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; padding: 0 !important; border: 3px solid var(--ink); border-radius: 50%; background: var(--paper); font: 400 16px/1 var(--display); box-shadow: 0 2px 0 var(--ink); }
+.map-btn.locked { cursor: not-allowed; background: #EFE4CF; }
+.map-btn.locked:hover { transform: none; }
+.map-btn.locked .map-preview { filter: grayscale(1) brightness(.75) contrast(.9); }
+.map-btn.locked .map-name { color: var(--muted); }
+.map-btn .lock-note { color: var(--ink); }
+.lock-badge { position: absolute; top: 14%; left: 50%; width: 46px; height: 46px; padding: 0 !important; transform: translateX(-50%) rotate(-6deg); border: 3px solid var(--ink); border-radius: 12px; background: var(--hat); box-shadow: 0 3px 0 var(--ink); }
+.lock-badge::before { content: ''; position: absolute; left: 50%; top: -14px; width: 20px; height: 20px; transform: translateX(-50%); border: 4px solid var(--ink); border-bottom: 0; border-radius: 12px 12px 0 0; }
+.lock-badge::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 12px; transform: translate(-50%, -40%); border-radius: 4px; background: var(--ink); }
+.trick-badge { display: inline-block; margin-left: 8px; padding: 2px 8px 1px; vertical-align: 2px; border: 2px dashed var(--muted); border-radius: 999px; font: 400 12px/1.2 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.trick-badge.earned { border: 2px solid var(--ink); background: var(--pow); color: var(--paper); }
+.result-tally { font: 400 20px/1 var(--display) !important; color: var(--ink) !important; letter-spacing: .5px; margin: 8px 0 0 !important; }
+.map-unlock .unlock-key { flex: 0 0 auto; position: relative; width: 52px; height: 52px; border: 3px solid var(--ink); border-radius: 12px; background: var(--sky); box-shadow: 0 3px 0 var(--ink); }
+.map-unlock .unlock-key::before { content: '›'; position: absolute; inset: 0; display: grid; place-items: center; font: 400 36px/1 var(--display); color: var(--paper); -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+.btn-next { font-size: 17px; }
+.btn-retry-quiet { background: var(--paper); }
+/* Home: Continue the campaign in one tap. */
+.menu-content .btn-continue { display: inline-grid; justify-items: center; gap: 4px; }
+.btn-continue .continue-word { font: inherit; }
+.btn-continue small { font: 900 14px/1.1 var(--ui); letter-spacing: 0; text-transform: none; text-shadow: none; opacity: .95; }
+.btn-modes { display: inline-flex; align-items: center; gap: 10px; margin-top: 12px; }
+.home-stars { padding: 3px 8px; border: 2px solid var(--ink); border-radius: 999px; background: var(--zap); font: 900 12px var(--ui); }
+.unlock-images { display: flex; flex: 0 0 auto; }
+.unlock-many .unlock-images img { width: 44px; margin-right: -10px; }
+/* Short screens: the result buttons stay in reach while the celebration scrolls. */
+.view-solo_result .result-actions { position: sticky; bottom: -28px; z-index: 1; margin: 16px -32px -28px; padding: 12px 16px 16px; background: linear-gradient(#FFF7E600, var(--paper) 24%); }
+
+/* ---------- Title stage (real game pass): the card stands aside so Jonh is on stage ---------- */
+/* Taps on the garden reach the canvas (poke to bonk); only the card takes clicks. The card sits
+   between the cannon (left) and Jonh (right) so the demo shot and its victim are both visible. */
+.menu-overlay.view-is-home { pointer-events: none; background: radial-gradient(ellipse at 40% 50%, #2A1B2E2E, #2A1B2E00 60%); }
+.menu-overlay.view-is-home .menu-content { pointer-events: auto; }
+.view-home { width: min(470px, 36vw); margin-right: 18vw; }
+.home-tip { margin: 10px 0 0; font: 900 12px var(--ui); color: var(--pow); letter-spacing: .3px; }
+@media (max-height: 520px) and (orientation: landscape) {
+  .view-home { width: min(380px, 44vw); }
+}
+@media (orientation: portrait) {
+  .menu-overlay.view-is-home { align-items: flex-end; }
+  .view-home { width: min(560px, 100%); margin-right: 0; }
+}
+
+/* ---------- Party callouts (real game pass) ---------- */
+.stakes-banner { display: inline-block; margin: -6px 0 8px; padding: 6px 16px 3px; font: 400 clamp(18px, 3vw, 26px)/1 var(--display); text-transform: uppercase; letter-spacing: 1px;
+  color: var(--ink); background: var(--zap); border: 3px solid var(--ink); border-radius: 10px; box-shadow: 0 4px 0 var(--ink); transform: rotate(2deg); animation: star-in 420ms cubic-bezier(.2,1.8,.4,1) backwards; }
+.stakes-banner.decisive { background: var(--pow); color: var(--paper); animation: star-in 420ms cubic-bezier(.2,1.8,.4,1) backwards, banner-throb 700ms 420ms ease-in-out infinite; }
+@keyframes banner-throb { 50% { scale: 1.07; } }
+.stakes-line { font: 900 17px/1.3 var(--ui) !important; color: var(--ink) !important; margin: 0 0 6px !important; }
+.stakes-line.decisive { color: var(--pow) !important; font-size: 20px !important; }
+.taunt { display: inline-flex; flex-direction: column; gap: 2px; max-width: 360px; margin: 4px auto 6px; padding: 8px 14px; text-align: left;
+  background: #fff; border: 3px solid var(--ink); border-left: 10px solid var(--player-color, var(--pow)); border-radius: 14px; box-shadow: 0 3px 0 var(--ink); transform: rotate(-1.5deg); }
+.taunt strong { font: 900 12px var(--ui); text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.taunt span { font: 800 16px/1.3 var(--ui); font-style: italic; }
+
+/* ---------- Title card between gardens (real game pass) ---------- */
+.title-card { position: fixed; inset: 0; z-index: 41; pointer-events: none; overflow: hidden; }
+.title-card-iris { position: absolute; left: 50%; top: 50%; width: 0; height: 0; border-radius: 50%; transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 160vmax var(--ink); animation: iris-open 560ms 640ms cubic-bezier(.6, 0, .3, 1) forwards; }
+.title-card-text { position: absolute; inset: 0; display: grid; place-content: center; gap: 6px; text-align: center; padding: 0 20px;
+  animation: title-pop 380ms cubic-bezier(.2, 1.6, .4, 1) backwards, title-out 200ms 600ms ease-in forwards; }
+.title-card-text small { font: 900 clamp(13px, 1.8vw, 20px)/1 var(--ui); letter-spacing: 3px; text-transform: uppercase; color: var(--paper); opacity: .85; }
+.title-card-text .title-chapter { justify-self: center; margin: 0 0 6px; padding: 6px 16px 4px; font: 400 clamp(16px, 2.6vw, 28px)/1 var(--display); font-style: normal; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--ink); background: var(--zap); border: 3px solid #000; border-radius: 10px; box-shadow: 0 4px 0 #000; transform: rotate(1.5deg); }
+.title-card-text strong { font: 400 clamp(34px, 7vw, 86px)/1 var(--display); text-transform: uppercase; color: var(--zap);
+  -webkit-text-stroke: 3px #000; paint-order: stroke fill; text-shadow: 0 6px 0 #000; transform: rotate(-2deg); }
+@keyframes title-pop { from { transform: scale(.4) rotate(-8deg); opacity: 0; } }
+@keyframes title-out { to { transform: scale(1.15); opacity: 0; } }
+
+/* ---------- Wardrobe tabs (real game pass) ---------- */
+.wardrobe-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 4px 0 6px; }
+.wardrobe-tab { min-height: 46px; padding: 8px 16px 6px; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper);
+  box-shadow: 0 3px 0 var(--ink); font: 400 17px/1 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--ink); }
+.wardrobe-tab.active { background: var(--zap); transform: translateY(-2px); }
+/* Jonh's figure draws its chair and feet a little below its box: leave room under it. */
+.wardrobe-art { display: grid; place-items: center; width: 96px; height: 76px; margin-bottom: 20px; }
+.wardrobe-art svg { width: 100%; height: 100%; overflow: visible; }
+.hat-card.locked .wardrobe-art svg { filter: brightness(0) opacity(.25); }
+.unlock-art { display: inline-grid; place-items: center; width: 64px; height: 56px; }
+.unlock-art svg, .unlock-art img { width: 100%; height: 100%; object-fit: contain; }
+.unlock-many .unlock-art { width: 46px; margin-right: -8px; }
+
+
+/* ---------- Daily Bonk share (next 10) ---------- */
+.share-block { display: grid; justify-items: center; gap: 6px; margin: 10px auto 0; }
+.share-preview, .share-text { margin: 0; padding: 10px 16px; max-width: 100%; text-align: left; white-space: pre-wrap; word-break: break-word;
+  background: #fff; border: 3px dashed var(--ink); border-radius: 12px; transform: rotate(-1deg);
+  font: 800 15px/1.45 var(--ui); color: var(--ink); }
+.share-text { width: min(360px, 100%); resize: none; transform: none; }
+.share-status { min-height: 1.2em; font: 900 13px var(--ui); color: var(--pow); }
+
+/* ---------- Practice (next 10): Challenge / Practice switch on the garden list ---------- */
+.mode-toggle { display: inline-flex; gap: 0; margin: 0 auto 10px; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; box-shadow: 0 3px 0 var(--ink); }
+.menu-content .mode-chip { min-height: 46px; margin: 0; padding: 8px 18px 6px; border: 0; border-radius: 0; box-shadow: none; background: var(--paper);
+  font: 400 17px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.menu-content .mode-chip + .mode-chip { border-left: 3px solid var(--ink); }
+.menu-content .mode-chip.active { background: var(--zap); }
+.menu-content .mode-chip:hover { transform: none; }
+
+/* ---------- Feats (next 10): the long-term goal list ---------- */
+.view-feats { width: min(760px, 100%); }
+.feats-tally { margin-bottom: 10px; }
+.feats-list { display: grid; gap: 14px; text-align: left; }
+.feats-group-title { margin: 6px 0 6px; font: 400 20px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.feats-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.feat { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px;
+  background: #fff; border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 3px 0 var(--ink); }
+.feat.done { background: #FFF3C4; }
+.feat-medal { position: relative; width: 30px; height: 30px; border: 3px solid var(--ink); border-radius: 50%; background: var(--stone, #C3BDD6); }
+.feat.done .feat-medal { background: var(--hat); }
+.feat.done .feat-medal::after { content: '★'; position: absolute; inset: 0; display: grid; place-items: center; font: 400 16px/1 var(--display); color: var(--ink); }
+.feat-text { display: grid; gap: 2px; min-width: 0; }
+.feat-text strong { font: 400 17px/1.1 var(--display); letter-spacing: .3px; text-transform: uppercase; color: var(--ink); }
+.feat-hint { font: 800 13px/1.3 var(--ui); color: var(--muted); }
+.feat-progress { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.feat-meter { flex: 1; height: 10px; max-width: 260px; overflow: hidden; border: 2px solid var(--ink); border-radius: 999px; background: var(--paper); }
+.feat-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--hat), var(--zap)); }
+.feat-count { font: 900 12px var(--ui); color: var(--ink); white-space: nowrap; }
+.feat-rewards { display: flex; gap: 6px; justify-content: flex-end; }
+.feat-reward { display: grid; justify-items: center; gap: 1px; width: 64px; text-align: center; }
+.feat-reward-art { display: grid; place-items: center; width: 52px; height: 42px; }
+.feat-reward-art svg, .feat-reward-art img { width: 100%; height: 100%; object-fit: contain; overflow: visible; }
+.feat-reward:not(.earned) .feat-reward-art { filter: grayscale(.85) opacity(.6); }
+.feat-reward small { font: 900 10px/1.1 var(--ui); color: var(--muted); }
+.feat-badge { padding: 3px 8px 2px; border: 2px dashed var(--muted); border-radius: 999px; font: 900 11px var(--ui); color: var(--muted); white-space: nowrap; }
+.feat.done .feat-badge { border: 2px solid var(--ink); background: var(--pow); color: var(--paper); }
+.feat-ribbons { margin: 6px 0 0; }
+.ribbon.feat-ribbon { background: var(--hat); color: var(--ink); }
+@media (max-width: 560px) {
+  .feat { grid-template-columns: 30px 1fr; }
+  .feat-rewards { grid-column: 2; justify-content: flex-start; }
+}
+/* Jonh's outfit figure draws his chair and feet below its box (as in the wardrobe). */
+.feat-reward-outfit .feat-reward-art { margin-bottom: 14px; }
+/* Very short landscape phones (≤ 380 px tall): a smaller logo and Play so the home card needs no scrolling. */
+@media (max-height: 380px) and (orientation: landscape) {
+  .view-home { padding: 10px 16px; }
+  .view-home .logo .hit, .view-home .logo .jonh { font-size: 38px; }
+  .menu-content.view-home .btn-play { font-size: 20px; padding: 9px 20px 7px; }
+  .view-home .btn-modes { margin-top: 6px; }
+}
+
+/* ---------- Settings → Keys (accessibility pass) ---------- */
+.keys-section { max-width: 420px; margin: 4px auto 18px; text-align: left; }
+.keys-title { margin: 0 0 4px; font: 400 20px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.keys-section .home-note { margin: 0 0 8px; font-size: 12px; }
+.keys-list { display: grid; gap: 6px; }
+.key-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 2px dashed #2A1B2E22; }
+.key-action { font: 900 14px var(--ui); color: var(--ink); }
+.key-current { min-width: 44px; padding: 6px 10px 4px; text-align: center; border: 2px solid var(--ink); border-radius: 8px; background: #fff; box-shadow: 0 2px 0 var(--ink); font: 900 14px var(--ui); }
+.menu-content .key-change { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+.menu-content .key-change.capturing { background: var(--zap); }
+.keys-status { min-height: 1.3em; margin: 8px 0 !important; font-size: 13px !important; color: var(--pow) !important; }
+.save-code-input { display: block; width: 100%; min-height: 54px; resize: vertical; font: 600 13px/1.3 ui-monospace, monospace; word-break: break-all; }
+.save-code-status { color: var(--ink) !important; }
+.save-code-status.is-error { color: var(--pow) !important; }
+.save-code-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.save-code-actions .btn { flex: 1 1 140px; }
+.save-code-qr { margin-top: 10px; text-align: center; }
+.save-code-qr[hidden] { display: none; }
+.qr-code { display: block; width: min(280px, 72vw); height: auto; margin: 0 auto 6px; border-radius: 6px; box-shadow: 0 0 0 2px var(--ink); }
+.keys-reset { min-height: 44px; }
+
+/* ---------- Campaign chapters (groups of three gardens) ---------- */
+.chapter-list { display: grid; gap: 14px; margin-top: 14px; }
+.chapter .map-list { margin-top: 8px; }
+.chapter-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0; padding: 0 4px 5px; border-bottom: 3px solid var(--ink); text-align: left; }
+.chapter-no { font: 900 12px/1 var(--ui); letter-spacing: 2px; text-transform: uppercase; color: var(--pow); }
+.chapter-name { font: 400 clamp(20px, 3vw, 26px)/1.1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.chapter-stars, .chapter-state { margin-left: auto; font: 400 18px/1 var(--display); color: var(--ink); }
+.chapter-state { font: 900 12px/1.2 var(--ui); letter-spacing: .5px; text-transform: uppercase; color: var(--muted); }
+.chapter-state.done { margin-left: 0; padding: 3px 9px 1px; border: 2px solid var(--ink); border-radius: 999px; background: var(--hat); color: var(--ink); }
+.chapter-state.done + .chapter-stars { margin-left: auto; }
+.chapter.locked .chapter-head { border-bottom-style: dashed; }
+.chapter.locked .chapter-name, .chapter.locked .chapter-no { color: var(--muted); }
+.chapter.locked .chapter-state { margin-left: auto; color: var(--ink); }
+.chapter-complete { margin: 4px 0 0; }
+.ribbon.chapter-ribbon { background: var(--hat); font-size: 24px; padding: 8px 18px 5px; transform: rotate(-2deg); }
+.chapter-complete p { margin: 4px 0 0; font: 900 14px var(--ui); color: var(--ink); }
+@media (max-height: 520px) and (orientation: landscape) {
+  .chapter-list { gap: 10px; }
+  .chapter-name { font-size: 18px; }
+  .ribbon.chapter-ribbon { font-size: 20px; padding: 5px 14px 3px; margin: 2px 4px; }
+  .chapter-complete p { margin: 0; font-size: 12px; }
+}
+/* ---------- Shareable clip: the Save clip action and its status line ---------- */
+.clip-status { text-align: center; margin: 6px 0 0; }
+.clip-status:empty { margin: 0; }
+/* The card steps aside while a clip of its replay is recorded; the canvas is what the clip shows. */
+body.clip-on .menu-overlay { visibility: hidden; }

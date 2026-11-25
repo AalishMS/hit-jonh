@@ -7,19 +7,34 @@ export interface SoloResult {
   hasStyle: boolean; // True if ricochet body
 }
 
+/**
+ * One solo challenge: three attempts, ending at the first body hit (SPEC §5).
+ *
+ * Practice [PROPOSED 2026-11-25; SPEC §4.2 "unlimited practice, only if cheap, never overwrites
+ * challenge results"]: unlimited shots that never end in a result; hits are only counted.
+ */
 export class SoloChallengeMachine {
   private _state: SoloState = 'aiming';
   private _attempts = 0;
   private _maxAttempts = 3;
   private _result: SoloResult | null = null;
   private _mapId: string;
+  private readonly _practice: boolean;
+  private _hits = 0;
 
-  constructor(mapId: string) {
+  constructor(mapId: string, options: { practice?: boolean } = {}) {
     this._mapId = mapId;
+    this._practice = options.practice ?? false;
   }
 
   get state(): SoloState { return this._state; }
-  get attemptsLeft(): number { return this._maxAttempts - this._attempts; }
+  /** Infinite in practice. */
+  get attemptsLeft(): number { return this._practice ? Number.POSITIVE_INFINITY : this._maxAttempts - this._attempts; }
+  get isPractice(): boolean { return this._practice; }
+  /** Shots fired so far (this run, or this practice session). */
+  get shotsTaken(): number { return this._attempts; }
+  /** Practice: body hits so far. */
+  get hits(): number { return this._hits; }
   get result(): SoloResult | null { return this._result; }
   get mapId(): string { return this._mapId; }
 
@@ -38,6 +53,12 @@ export class SoloChallengeMachine {
 
   resolveShot(isBodyHit: boolean, isRicochet: boolean): void {
     if (this._state !== 'simulating') return;
+    if (this._practice) {
+      // Practice never ends: every shot goes back to aiming, hits are just counted.
+      if (isBodyHit) this._hits++;
+      this._state = 'result';
+      return;
+    }
     
     if (isBodyHit) {
       this._state = 'solo_result';
@@ -65,6 +86,7 @@ export class SoloChallengeMachine {
   retry(): void {
     this._state = 'aiming';
     this._attempts = 0;
+    this._hits = 0;
     this._result = null;
   }
 }

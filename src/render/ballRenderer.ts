@@ -32,6 +32,11 @@ export class BallRenderer {
     if (!visible) { this.marker.setVisible(false); this.arrow.setVisible(false); this.squashAge = null; this.recent = []; this.ribbon.clear(); }
   }
 
+  /** Where the ball was last drawn (world px), or null while it is hidden. */
+  get drawnAt(): { x: number; y: number } | null {
+    return this.visible ? { x: this.ball.x, y: this.ball.y } : null;
+  }
+
   /** Starts a contact squash (amount 0..1) against travel direction `angle` (radians). */
   squash(angle: number, amount: number): void {
     this.squashAge = 0;

@@ -3,18 +3,25 @@ import { SCORING } from '../config/tuning';
 /**
  * Pure shot outcome classification and scoring types (SPEC §7.1, §13.2).
  * Outcomes:
- * - ricochet_body: 125 MP points (body hit after contacting ricochet-eligible surface)
+ * - ricochet_body: 125 MP points, the trick shot: a body hit after contacting a ricochet-eligible
+ *   surface or after going through a portal hoop [DECIDED by owner 2026-11-25]
  * - body: 100 MP points (direct body hit)
  * - hat_only: 20 MP points (contacted hat, never body; resolved when shot ends)
  * - miss: 0 MP points
  */
 export type ClassifiedOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
 
+/** What made a trick shot: a bank off a ricochet surface or a pass through a portal hoop. */
+export type TrickKind = 'ricochet' | 'portal';
+
 export interface ClassificationResult {
   outcome: ClassifiedOutcome;
   points: number;
   isHit: boolean; // true for body and ricochet_body
+  /** A trick shot (outcome `ricochet_body`), whichever way it was earned. */
   isRicochet: boolean;
+  /** How the trick was earned; null unless the outcome is `ricochet_body`. */
+  trick: TrickKind | null;
   label: string;
 }
 
@@ -22,6 +29,8 @@ export interface ClassifyShotParams {
   hasBodyHit: boolean;
   hasHatHit: boolean;
   hadRicochetBeforeBody: boolean;
+  /** The ball went through a portal hoop before the body hit. */
+  hadPortalBeforeBody?: boolean;
   shotEnded: boolean;
 }
 
@@ -31,16 +40,18 @@ export interface ClassifyShotParams {
  * Hat-only waits until shotEnded = true; hat then body becomes body.
  */
 export function classifyShot(params: ClassifyShotParams): ClassificationResult {
-  const { hasBodyHit, hasHatHit, hadRicochetBeforeBody, shotEnded } = params;
+  const { hasBodyHit, hasHatHit, hadRicochetBeforeBody, hadPortalBeforeBody = false, shotEnded } = params;
 
   if (hasBodyHit) {
-    if (hadRicochetBeforeBody) {
+    if (hadRicochetBeforeBody || hadPortalBeforeBody) {
+      const trick: TrickKind = hadRicochetBeforeBody ? 'ricochet' : 'portal';
       return {
         outcome: 'ricochet_body',
         points: SCORING.ricochetBodyPoints,
         isHit: true,
         isRicochet: true,
-        label: 'RICOCHET HIT',
+        trick,
+        label: trick === 'ricochet' ? 'RICOCHET HIT' : 'HOOP HIT',
       };
     }
     return {
@@ -48,6 +59,7 @@ export function classifyShot(params: ClassifyShotParams): ClassificationResult {
       points: SCORING.bodyPoints,
       isHit: true,
       isRicochet: false,
+      trick: null,
       label: 'DIRECT HIT',
     };
   }
@@ -58,6 +70,7 @@ export function classifyShot(params: ClassifyShotParams): ClassificationResult {
       points: SCORING.hatOnlyPoints,
       isHit: false,
       isRicochet: false,
+      trick: null,
       label: 'HAT HIT',
     };
   }
@@ -67,12 +80,14 @@ export function classifyShot(params: ClassifyShotParams): ClassificationResult {
     points: SCORING.missPoints,
     isHit: false,
     isRicochet: false,
+    trick: null,
     label: 'MISS',
   };
 }
 
 export interface ContactEvent {
-  role: 'ground' | 'jonhBody' | 'jonhHat' | 'obstacle';
+  /** `portal`: the ball went through a portal hoop (not a surface; it counts toward a trick shot). */
+  role: 'ground' | 'jonhBody' | 'jonhHat' | 'obstacle' | 'portal';
   id?: string;
   ricochet?: boolean;
 }
@@ -84,12 +99,14 @@ export interface ContactEvent {
  * - Hat contact alone does not finalize the shot; waits for shot end.
  * - Hat then body resolves as body (or ricochet body if ricochet surface hit prior).
  * - Obstacle contacts are recorded with IDs and ricochet eligibility.
+ * - A portal pass before the body hit makes it a trick shot, like a ricochet [DECIDED by owner 2026-11-25].
  */
 export class ShotClassifier {
   private _finalized = false;
   private _bodyHit = false;
   private _hatHit = false;
   private _hadRicochetBeforeBody = false;
+  private _hadPortalBeforeBody = false;
   private _obstacleContacts: Array<{ id: string; ricochet: boolean }> = [];
   private _passedOverhead = false;
 
@@ -113,6 +130,11 @@ export class ShotClassifier {
       if (isRicochet && !this._bodyHit) {
         this._hadRicochetBeforeBody = true;
       }
+      return;
+    }
+
+    if (contact.role === 'portal') {
+      if (!this._bodyHit) this._hadPortalBeforeBody = true;
       return;
     }
 
@@ -150,6 +172,10 @@ export class ShotClassifier {
     return this._hadRicochetBeforeBody;
   }
 
+  get hadPortalBeforeBody(): boolean {
+    return this._hadPortalBeforeBody;
+  }
+
   get hasPassedOverhead(): boolean {
     return this._passedOverhead;
   }
@@ -163,6 +189,7 @@ export class ShotClassifier {
       hasBodyHit: this._bodyHit,
       hasHatHit: this._hatHit,
       hadRicochetBeforeBody: this._hadRicochetBeforeBody,
+      hadPortalBeforeBody: this._hadPortalBeforeBody,
       shotEnded,
     });
   }
@@ -172,6 +199,7 @@ export class ShotClassifier {
     this._bodyHit = false;
     this._hatHit = false;
     this._hadRicochetBeforeBody = false;
+    this._hadPortalBeforeBody = false;
     this._obstacleContacts = [];
     this._passedOverhead = false;
   }
