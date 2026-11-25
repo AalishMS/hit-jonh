@@ -294,6 +294,24 @@ export interface MaterialProps {
    * share of the normal load (gravity's pressing part plus v²/ρ); RAMP.rollingResistance when omitted.
    */
   rollingResistance?: number;
+  /**
+   * Slide surfaces (ice) only [PROPOSED 2026-11-25][TUNE]: a ball resting on this top glides instead of
+   * rolling, and its horizontal speed falls by this much per second (kinetic friction, m/s², the same
+   * at every speed), so a slide is long, slows evenly and ends. The swept guard leaves a gliding ball
+   * to Matter's resting contact (physics/matterAdapter.ts), so it keeps the ground it covers.
+   */
+  slideFrictionMs2?: number;
+  /**
+   * Share of the ball's speed along the surface that a real impact (faster than
+   * PHYSICS.bounceMinNormalSpeedMs) keeps; 1 when omitted [PROPOSED 2026-11-25][TUNE]. Soft snow
+   * swallows a landing instead of letting the ball skip on.
+   */
+  tangentKept?: number;
+  /**
+   * A ball resting on this top slower than this (m/s) stops dead [PROPOSED 2026-11-25][TUNE]: soft snow,
+   * so a ball that rolls up against the pond's kerb settles instead of jittering on Matter's contacts.
+   */
+  stopBelowMs?: number;
 }
 
 /**
@@ -344,6 +362,15 @@ export const MATERIALS = {
   /** Scrapyard [PROPOSED 2026-11-25][TUNE]: crushed-car stacks thud; the electromagnet's face is dead (the ball clunks and drops off). */
   scrap: { restitution: 0.3, friction: 0.7, rollingDamping: 0.9 },
   magnet: { restitution: 0.1, friction: 0.9 },
+  /**
+   * Frozen Pond [PROPOSED 2026-11-25][TUNE]. Ice: no Matter friction (so the ball skids without spinning
+   * up), no rolling damping, a low bounce, and a gentle constant slide friction: a ball that lands on
+   * it keeps nearly all its horizontal speed and slides for metres. Snow round the pond stops it dead.
+   */
+  ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.5 },
+  snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2, stopBelowMs: 0.3 },
+  /** The shelter's front flap: soft canvas that swallows a ball. */
+  canvas: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
@@ -432,6 +459,17 @@ export const MECHANIC_FX = {
   exitScale: 0.8,
   exitSquash: 0.45,
 };
+
+/**
+ * Ice skids, presentation only [PROPOSED 2026-11-25][TUNE] (the physics lives in MATERIALS.ice): the skid
+ * speed that counts as full strength for the spray and the scrape, and the ice spray kicked up behind a
+ * gliding ball (one puff every few fixed steps, above a minimum speed). Reduced motion drops the spray.
+ */
+export const ICE_FX = {
+  fullSpeedMs: 10,
+  sprayEverySteps: 3,
+  sprayFromSpeedMs: 0.6,
+} as const;
 
 /**
  * Constant per-level wind [PROPOSED 2026-11-25][TUNE]. The physics value lives in level data
@@ -659,6 +697,11 @@ export const AUDIO = {
     /** Pitch spread between steps. */
     pitchSpread: 0.12,
   },
+  /**
+   * Ice skid [PROPOSED 2026-11-25][TUNE]: the scrape of a ball gliding on ice, on the surface cue's bus
+   * (scenery tier): its gain at full strength (ICE_FX.fullSpeedMs).
+   */
+  skid: { gain: 0.14 },
   /** Rate limits (seconds between sounds, and a cap per window) so bursts never stack into noise. */
   limits: {
     emoteIn: { minGapSeconds: 0.3, windowSeconds: 3, maxInWindow: 3 },

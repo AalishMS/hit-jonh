@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { FootstepTracker } from '../audio/footsteps';
-import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, RAMP, SHOT, WORLD } from '../config/tuning';
+import { AIM, CLIP, COACH, FLOW, FX, ICE_FX, LOOK, MATERIALS, MULTIPLAYER, PHYSICS, PROJECTILE, RAMP, SHOT, WORLD, type MaterialProps } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { setPlayerPalette } from '../art/palette';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
@@ -24,7 +24,7 @@ import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
 import { campaignOrder } from '../rules/campaign';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
-import { distanceToBox, fastForwardTarget, SettleClock } from '../fx/settleClock';
+import { distanceToBox, fastForwardTarget, SettleClock, slideReachMetres } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
@@ -102,7 +102,7 @@ type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | 
 const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDown, k.powerUp];
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', plywood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', plywood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground', ice: 'ice', canvas: 'ground' };
 
 /** Runs `fn` when the main thread is idle (Safari has no requestIdleCallback: a short timer stands in). */
 function whenIdle(fn: () => void): void {
@@ -130,6 +130,8 @@ export class PrototypeScene extends Phaser.Scene {
   /** Muzzle position waiting for the cannon wind-up to finish. */
   private pendingLaunch: { x: number; y: number; angleRad: number } | null = null;
   private prevVelocity: { vx: number; vy: number } | null = null;
+  /** Fixed steps the ball has spent skidding on ice (paces the spray). */
+  private skidSteps = 0;
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
@@ -1136,6 +1138,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager.setRampRumble(rolling
       ? clamp01((this.lastProjectileState!.speedMs - RAMP.rumbleFromMs) / (RAMP.rumbleFullMs - RAMP.rumbleFromMs)) : null);
     this.audioManager.setMagnetHum(flying && this.sceneryRenderer.magnet.active ? this.sceneryRenderer.magnet.proximity : null);
+    this.audioManager.setSkid(flying && this.lastProjectileState!.slidingOn ? this.lastProjectileState!.speedMs / ICE_FX.fullSpeedMs : null);
     this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
@@ -1178,6 +1181,10 @@ export class PrototypeScene extends Phaser.Scene {
     // Rolling along a ramp's curve turns the velocity every step; that is not a bounce either.
     if (quiet || mechanicsEvent || state.rampRolling !== null) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     else this.detectBounce(state, reduced);
+    // Ice: chips kicked up behind a skidding ball, a puff every few steps.
+    if (!quiet && state.slidingOn && state.speedMs > ICE_FX.sprayFromSpeedMs && ++this.skidSteps % ICE_FX.sprayEverySteps === 0) {
+      this.effects.skid(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(state.speedMs / ICE_FX.fullSpeedMs), state.vxSim, reduced);
+    }
     this.lastProjectileState = state;
     const ppmNow = WORLD.pixelsPerMetre;
     this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
@@ -1243,12 +1250,16 @@ export class PrototypeScene extends Phaser.Scene {
   private fastForwardTarget(): number {
     const p = this.lastProjectileState;
     if (!p || this.attemptMachine.state !== 'simulating' || this.pendingLaunch) return 1;
+    const jonh = this.physicsAdapter.jonhBodyBox(this.currentLevel);
     return fastForwardTarget({
       landed: p.firstGroundContact !== null || p.obstacleContacts.length > 0,
       speedMs: p.speedMs,
-      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.physicsAdapter.jonhBodyBox(this.currentLevel)),
+      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, jonh),
       impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
       onRamp: p.rampRolling !== null,
+      slideReachMetres: p.slidingOn
+        ? slideReachMetres(p.vxSim, (jonh.minX + jonh.maxX) / 2 > p.xSim, (MATERIALS as Record<string, MaterialProps>)[p.slidingOn]?.slideFrictionMs2)
+        : 0,
     });
   }
 
@@ -1836,8 +1847,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (dv < 1.2) return;
     const surface = this.surfaceAt(state.xSim, state.ySim);
     this.audioManager.playSurface(surface, dv / 14);
+    const snowy = this.currentLevel.ground.material === 'snow';
     this.effects.dust(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(dv / 10) + 0.3, reduced,
-      surface === 'wood' ? 'fx-chip' : surface === 'ground' ? 'fx-leaf' : 'fx-dust');
+      surface === 'wood' ? 'fx-chip' : surface === 'ice' ? 'fx-ice' : surface === 'ground' ? (snowy ? 'fx-snow' : 'fx-leaf') : 'fx-dust');
     if (surface !== 'ground' && dv > 4) this.cameraRig.impact(4 * clamp01(dv / 12), 0.18, FX.shakeHz, -prev.vx, prev.vy, 0, 0);
   }
 
@@ -1882,7 +1894,7 @@ export class PrototypeScene extends Phaser.Scene {
       if (power >= FX.launchDustFrom) {
         // The surface under the wheels (the Valley cannon stands on a cliff).
         const pivot = this.cannonRenderer.pivot;
-        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false);
+        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false, this.currentLevel.ground.material === 'snow' ? 'fx-snow' : 'fx-dust');
       }
     }
   }
@@ -1914,6 +1926,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.audioManager?.setFlightWhoosh(null);
     this.audioManager?.setRampRumble(null);
     this.audioManager?.setMagnetHum(null);
+    this.audioManager?.setSkid(null);
     this.impactTimeline.reset();
     this.settleClock.reset();
     this.replay = null;

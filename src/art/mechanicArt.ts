@@ -1,5 +1,6 @@
 import type { Box2D, LevelData, ObstacleData } from '../levels/types';
 import { PAL } from './palette';
+import { hutBackdrop } from './pondArt';
 import { INK, ink, starPath, svgDoc, type ArtDef } from './svgKit';
 
 /**
@@ -131,6 +132,10 @@ export function backdropBox(level: LevelData): Box2D | null {
     const [l, r, f, c] = [box('tent-front'), box('tent-back'), box('stage'), box('tent-roof')];
     return l && r && f && c ? { minX: l.maxX, maxX: r.minX, minY: f.maxY, maxY: c.minY } : null;
   }
+  if (level.id === 'pond') {
+    const [l, r, f, c] = [box('hut-door'), box('hut-back'), box('pond-ice'), box('hut-roof')];
+    return l && r && f && c ? { minX: l.maxX, maxX: r.minX, minY: f.maxY, maxY: c.minY } : null;
+  }
   return null;
 }
 
@@ -215,7 +220,7 @@ export function mechanicArt(levels: readonly LevelData[], ppm: number, obstacleK
     const h = Math.round((box.maxY - box.minY) * ppm);
     const bars = level.obstacles.filter(o => o.id.startsWith('frame-') && o.box.minX > box.minX && o.box.maxX < box.maxX)
       .map(o => ((o.box.minX + o.box.maxX) / 2 - box.minX) * ppm);
-    const body = level.id === 'greenhouse' ? greenhouseBackdrop(w, h, bars) : tentBackdrop(w, h);
+    const body = level.id === 'greenhouse' ? greenhouseBackdrop(w, h, bars) : level.id === 'pond' ? hutBackdrop(w, h) : tentBackdrop(w, h);
     defs.push({ key: backdropKey(level.id), w, h, ax: 0, ay: 0, scale: 1, svg: svgDoc(w, h, body) });
   }
   return defs;

@@ -87,6 +87,7 @@ export const OBSTACLE_LINES: ReadonlyArray<{ match: { id?: string; material?: st
   { match: { id: 'shelter' }, lines: ['Mind my shelter.', 'Can you not read the sign?'] },
   { match: { material: 'magnet' }, lines: ["It's stuck to the magnet. Marvellous.", 'The magnet thanks you for the cannonball.', 'Leave it up there. It suits it.'] },
   { match: { material: 'scrap' }, lines: ['Mind the scrap. Some of that is vintage.', "That stack was perfectly stable. Was."] },
+  { match: { id: 'hut-' }, lines: ['Mind the hut! The fish are asleep.', "That hut is the only warm place for miles."] },
   { match: { material: 'glass' }, lines: ['Mind the glass!', 'That glass was imported.'] },
   { match: { material: 'velvet' }, lines: ['That velvet was hired.', 'Mind the curtains.'] },
   { match: { material: 'trampoline' }, lines: ['That trampoline is for the grandchildren.', 'Boing. Very mature.'] },
@@ -163,6 +164,11 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     arrival: ['Nothing gets in here. I read the sign.', 'Walls on three sides. Perfectly safe.', 'Skateboarders. Every single afternoon.'],
     miss: ['The sign is very clear.', 'Do you know how loud that ramp is?', "Can't reach me in here."],
     hit: ['From behind? Off the ramp?', 'It came back! It actually came back!', 'NO. BALL. GAMES.'],
+  },
+  pond: {
+    arrival: ['Shh. The fish can hear you.', "Nobody gets into my hut. The door's frozen.", 'Not a nibble all morning.'],
+    miss: ['Stopped short. Like the fish.', "Slippery, isn't it? Not slippery enough.", "Shh! You'll scare the fish."],
+    hit: ['Right under the door?!', 'Skidded all the way in. Rude.', 'There goes my catch.'],
   },
   valley: {
     arrival: ["They'll never reach me out here.", 'Is that a cannon? From over there?'],

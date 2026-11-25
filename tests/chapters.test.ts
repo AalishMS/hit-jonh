@@ -6,14 +6,15 @@ import {
 } from '../src/rules/chapters';
 
 const best = (bestShots: number | null, hasStyle = false): MapRecord => ({ bestShots, hasStyle });
-/** The gardens the four chapters group: the start of the campaign. Newer gardens join after them. */
+/** The gardens the chapters group: the start of the campaign. Newer gardens join after them. */
 const CHAPTERED = CHAPTERS.flatMap(c => c.mapIds);
 const solo = (...cleared: Array<[string, number]>): Record<string, MapRecord> =>
   Object.fromEntries(cleared.map(([id, shots]) => [id, best(shots)]));
 
 describe('chapters', () => {
-  it('are four chapters of three that cover the start of the campaign order, in order', () => {
-    expect(CHAPTERS).toHaveLength(4);
+  it('are five chapters of three that cover the start of the campaign order, in order', () => {
+    expect(CHAPTERS).toHaveLength(5);
+    expect(CHAPTERS[4]).toMatchObject({ name: 'Nowhere to Hide', mapIds: ['pond', 'skatepark', 'magnet'] });
     for (const chapter of CHAPTERS) expect(chapter.mapIds).toHaveLength(3);
     expect(CHAPTERED).toEqual(CAMPAIGN_ORDER.slice(0, CHAPTERED.length));
     for (const chapter of CHAPTERS) expect(chapter.name.trim().length).toBeGreaterThan(0);
@@ -23,15 +24,16 @@ describe('chapters', () => {
   it('group every real map; gardens newer than the chapters join the trailing "More gardens" group', () => {
     const chapters = chapterStatuses(campaignStatus(MAP_IDS, {}));
     const newer = CAMPAIGN_ORDER.slice(CHAPTERED.length);
-    expect(chapters.map(c => c.number)).toEqual(newer.length > 0 ? [1, 2, 3, 4, null] : [1, 2, 3, 4]);
+    const numbers = CHAPTERS.map((_, i) => i + 1);
+    expect(chapters.map(c => c.number)).toEqual(newer.length > 0 ? [...numbers, null] : numbers);
     expect(chapters.flatMap(c => c.entries.map(e => e.mapId))).toEqual(campaignStatus(MAP_IDS, {}).map(e => e.mapId));
     if (newer.length > 0) expect(chapters.at(-1)!.entries.map(e => e.mapId)).toEqual(newer);
   });
 
   it('a fresh save: only chapter 1 is open, nothing complete, stars 0 of 9', () => {
     const chapters = chapterStatuses(campaignStatus(CHAPTERED, {}));
-    expect(chapters.map(c => c.unlocked)).toEqual([true, false, false, false]);
-    expect(chapters.map(c => c.complete)).toEqual([false, false, false, false]);
+    expect(chapters.map(c => c.unlocked)).toEqual([true, false, false, false, false]);
+    expect(chapters.map(c => c.complete)).toEqual([false, false, false, false, false]);
     expect(chapters[0]).toMatchObject({ stars: 0, maxStars: 9, cleared: 0, count: 3, lockedBy: null });
     expect(chapters[1]!.lockedBy).toBe('rooftop');
   });
@@ -100,7 +102,7 @@ describe('chapters', () => {
 
     it('fires for the final chapter on the last garden, and each chapter on its own', () => {
       const all = CAMPAIGN_ORDER.map(id => [id, 2] as [string, number]);
-      for (let c = 0; c < 4; c++) {
+      for (let c = 0; c < CHAPTERS.length; c++) {
         const doneBefore = campaignStatus(CAMPAIGN_ORDER, solo(...all.slice(0, c * 3 + 2)));
         const doneAfter = campaignStatus(CAMPAIGN_ORDER, solo(...all.slice(0, c * 3 + 3)));
         const last = CAMPAIGN_ORDER[c * 3 + 2]!;
@@ -115,7 +117,7 @@ describe('chapters', () => {
     it('form a trailing unnumbered group with no title card and no celebration', () => {
       const entries = campaignStatus(ids, {});
       const chapters = chapterStatuses(entries);
-      expect(chapters).toHaveLength(5);
+      expect(chapters).toHaveLength(CHAPTERS.length + 1);
       const extras = chapters.at(-1)!;
       expect(extras).toMatchObject({ number: null, name: EXTRAS_CHAPTER_NAME, count: 2, complete: false });
       expect(chapterLabel(extras)).toBe(EXTRAS_CHAPTER_NAME);
@@ -128,7 +130,7 @@ describe('chapters', () => {
     it('a game missing some chapter maps drops empty chapters and keeps the numbers of the rest', () => {
       const without = CHAPTERED.filter(id => id !== 'greenhouse' && id !== 'washday' && id !== 'rubber');
       const chapters = chapterStatuses(campaignStatus(without, {}));
-      expect(chapters.map(c => c.number)).toEqual([1, 3, 4]);
+      expect(chapters.map(c => c.number)).toEqual([1, 3, 4, 5]);
     });
   });
 });

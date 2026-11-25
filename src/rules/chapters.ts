@@ -1,6 +1,6 @@
 /**
  * Campaign chapters [PROPOSED 2026-11-25, owner-approved idea: "groups of 3 with a chapter-complete
- * moment and a title card per chapter"]. The 12 gardens of `CAMPAIGN_ORDER` are grouped into four
+ * moment and a title card per chapter"]. The 15 gardens of `CAMPAIGN_ORDER` are grouped into five
  * chapters of three. Chapters are only a way of grouping and celebrating: unlock rules and star rules
  * stay exactly as in rules/campaign.ts. Pure: derived from `CampaignEntry` lists, no Phaser, no storage.
  *
@@ -22,12 +22,17 @@ export interface ChapterDef {
   mapIds: readonly string[];
 }
 
-/** The chapters [PROPOSED]: one beat of the campaign each (Jonh at ease, hazards, showing off, going too far). */
+/**
+ * The chapters [PROPOSED]: one beat of the campaign each (Jonh at ease, hazards, showing off, going too far, and
+ * Chapter 5 [PROPOSED 2026-11-25]: Jonh hides in a hut, a shelter and a scrapyard, and the ice, the ramp and the
+ * magnet find him anyway).
+ */
 export const CHAPTERS: readonly ChapterDef[] = [
   { id: 'one', name: 'Jonh Is Reading', mapIds: ['backyard', 'fence', 'rooftop'] },
   { id: 'two', name: 'Mild Inconveniences', mapIds: ['greenhouse', 'washday', 'rubber'] },
   { id: 'three', name: 'Showing Off', mapIds: ['bankshot', 'magic', 'stroll'] },
   { id: 'four', name: 'Going Too Far', mapIds: ['moon', 'trampoline', 'valley'] },
+  { id: 'five', name: 'Nowhere to Hide', mapIds: ['pond', 'skatepark', 'magnet'] },
 ];
 
 export const EXTRAS_CHAPTER_ID = 'extras';

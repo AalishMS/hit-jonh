@@ -65,6 +65,12 @@ export const PAL = {
   /** The scrapyard magnet's field rings: electric cyan, used for nothing else. */
   field: '#8FF0FF',
   fieldDark: '#2A9CC4',
+  /** Frozen Pond: pond ice (paler and whiter than glass, so it never reads as breakable), the dark water under it, and snow. */
+  ice: '#D3F0FA',
+  iceDark: '#8CC6DE',
+  iceDeep: '#4F86B0',
+  snow: '#F6FAFD',
+  snowShade: '#C9DAE8',
 } as const;
 
 export type PaletteKey = keyof typeof PAL;

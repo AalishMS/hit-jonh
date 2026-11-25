@@ -60,10 +60,23 @@ export class ShotEffectsRenderer {
   }
 
   /** Small dust puff where the ball lands or strikes scenery. */
-  dust(x: number, y: number, amount: number, reduced: boolean, kind: 'fx-dust' | 'fx-chip' | 'fx-leaf' = 'fx-dust'): void {
+  dust(x: number, y: number, amount: number, reduced: boolean, kind: 'fx-dust' | 'fx-chip' | 'fx-leaf' | 'fx-ice' | 'fx-snow' = 'fx-dust'): void {
     if (reduced || amount <= 0) return;
-    this.burst({ kind: 'fx-dust', count: Math.round(5 * amount), x, y: y - 3, angle: -Math.PI / 2, spread: 2.4, speed: [30, 110], life: [0.3, 0.6], scale: [0.4, 0.8], endScale: 1.8, gravity: -20, drag: 4 });
+    // Snow and ice throw up a white puff rather than a dusty one.
+    const puff = kind === 'fx-ice' || kind === 'fx-snow' ? 'fx-snow' : 'fx-dust';
+    this.burst({ kind: puff, count: Math.round(5 * amount), x, y: y - 3, angle: -Math.PI / 2, spread: 2.4, speed: [30, 110], life: [0.3, 0.6], scale: [0.4, 0.8], endScale: 1.8, gravity: -20, drag: 4 });
     if (kind !== 'fx-dust') this.burst({ kind, count: Math.round(4 * amount), x, y, angle: -Math.PI / 2, spread: 2.2, speed: [80, 200], life: [0.5, 0.9], scale: [0.8, 1.1], gravity: 520, drag: 1, spin: 10 });
+  }
+
+  /**
+   * Ice spray kicked up behind a ball skidding on ice (Frozen Pond): a few chips thrown up and back.
+   * `amount` 0..1 from its speed; `dirX` is the way it is sliding. Nothing under reduced motion.
+   */
+  skid(x: number, y: number, amount: number, dirX: number, reduced: boolean): void {
+    if (reduced || amount <= 0) return;
+    const back = -Math.PI / 2 - (dirX >= 0 ? 0.75 : -0.75); // screen y is down: up and away from the travel
+    this.burst({ kind: 'fx-ice', count: Math.max(1, Math.round(3 * amount)), x, y: y - 2, angle: back, spread: 0.9,
+      speed: [40, 60 + 160 * amount], life: [0.25, 0.5], scale: [0.5, 0.9], endScale: 0.3, gravity: 420, drag: 1.5, spin: 8 });
   }
 
   /**

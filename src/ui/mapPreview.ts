@@ -32,6 +32,12 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   if (obs.id.startsWith('frame-')) return rect(PAL.paper);
   if (obs.id.startsWith('brick-') || obs.id === 'shelter-wall') return rect(PAL.brick);
   if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
+  // Frozen Pond: a snow-capped hut roof and a striped roll-down door frozen just off the ice.
+  if (obs.id === 'hut-roof') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.55)}" fill="${PAL.snow}"/>`;
+  if (obs.id === 'hut-door') {
+    const dw = Math.max(4, w);
+    return `<rect x="${x + w - dw}" y="${y}" width="${dw}" height="${h}" fill="${PAL.pow}" ${INK} stroke-width="1.5"/>`;
+  }
   switch (obs.material) {
     case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
     case 'velvet': return rect(PAL.velvet, ' rx="1.5"');
@@ -53,6 +59,12 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'rug': return rect(PAL.pow);
     case 'scrap': return `${rect(PAL.ironDark, ' rx="1.5"')}${[0.2, 0.45, 0.7].map((f, i) => `<rect x="${x + 1.5}" y="${y + h * f}" width="${Math.max(1, w - 3)}" height="${Math.max(2, h * 0.14)}" rx="1" fill="${[PAL.brick, PAL.hat, PAL.ironLight][i]}"/>`).join('')}`;
     case 'magnet': return `${rect(PAL.iron, ' rx="1.5"')}<rect x="${x}" y="${y + h * 0.3}" width="${w}" height="${Math.max(1.5, h * 0.28)}" fill="${PAL.hat}"/>`;
+    case 'ice': {
+      // A thin slab at thumbnail scale: drawn at least 6 px deep (down into the snow), its top kept true.
+      const hh = Math.max(h, 6);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${PAL.iceDeep}" ${INK} stroke-width="1.5"/>` +
+        `<rect x="${x + 0.75}" y="${y + 0.75}" width="${w - 1.5}" height="${hh * 0.4}" fill="${PAL.ice}" class="map-ice"/>`;
+    }
     default: return rect(PAL.stone);
   }
 }
@@ -61,7 +73,8 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
 function interiorSvg(level: LevelData, f: Frame): string {
   const box = backdropBox(level);
   if (!box) return '';
-  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"` : `fill="${PAL.glass}" opacity="0.55"`;
+  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"`
+    : level.id === 'pond' ? `fill="${PAL.woodDark}" opacity="0.8"` : `fill="${PAL.glass}" opacity="0.55"`;
   return `<rect x="${f.x(box.minX)}" y="${f.y(box.maxY)}" width="${(box.maxX - box.minX) * f.s}" height="${(box.maxY - box.minY) * f.s}" ${fill}/>`;
 }
 
@@ -231,6 +244,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
   skatepark: 'Walled off and roofed over. Land it in the half-pipe and it rolls back out at him.',
   magnet: 'A crane magnet pulls the ball towards it. Aim to one side and let it curve in.',
+  pond: 'Jonh is ice fishing in his hut. Land it short on the ice and let it slide in.',
 };
 
 export function mapDescription(id: string): string {

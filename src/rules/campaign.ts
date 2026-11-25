@@ -12,7 +12,7 @@
  * through glass, read the wind, bank off rubber, bank off a billboard, a magic hoop, low gravity, a trampoline),
  * the long shot, then the newest gardens at the end (the scrapyard magnet) until chapters are regrouped.
  */
-export const CAMPAIGN_ORDER: readonly string[] = ['backyard', 'fence', 'rooftop', 'greenhouse', 'washday', 'rubber', 'bankshot', 'magic', 'stroll', 'moon', 'trampoline', 'valley', 'magnet', 'skatepark'];
+export const CAMPAIGN_ORDER: readonly string[] = ['backyard', 'fence', 'rooftop', 'greenhouse', 'washday', 'rubber', 'bankshot', 'magic', 'stroll', 'moon', 'trampoline', 'valley', 'pond', 'skatepark', 'magnet'];
 
 /** What the campaign needs from a saved solo best (storage `LevelScore`). */
 export interface MapRecord {

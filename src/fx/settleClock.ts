@@ -18,15 +18,32 @@ export interface SettleInput {
   impactActive: boolean;
   /** Rolling along a skate ramp: it is riding the curve, not rolling to a stop (false when omitted). */
   onRamp?: boolean;
+  /**
+   * Ice: how much further the ball will still skid towards Jonh before it stops (metres; 0 or omitted
+   * when it is not skidding towards him). A skid that will end at or near him plays in real time.
+   */
+  slideReachMetres?: number;
 }
 
 /** The time scale this frame wants: 1 (real time) or FX.settleFastForward. */
 export function fastForwardTarget(s: SettleInput): number {
   if (!s.landed || s.impactActive || s.onRamp) return 1;
+  // A skid on ice keeps going for metres: only hurry one that will stop well short of Jonh.
+  const reach = s.slideReachMetres ?? 0;
+  if (reach > 0 && s.distanceToJonhMetres - reach < FX.settleClearMetres) return 1;
   // A crawling ball cannot meaningfully go anywhere; a rolling one only when it is clear of Jonh.
   if (s.speedMs <= FX.settleCrawlSpeedMs) return FX.settleFastForward;
   if (s.speedMs <= FX.settleRollSpeedMs && s.distanceToJonhMetres >= FX.settleClearMetres) return FX.settleFastForward;
   return 1;
+}
+
+/**
+ * How far a ball skidding on ice at `vxMs` (m/s, + is +x) still goes towards Jonh before kinetic friction
+ * `frictionMs2` stops it: v² / 2a, or 0 when it is sliding away from him (or not skidding).
+ */
+export function slideReachMetres(vxMs: number, jonhIsToTheRight: boolean, frictionMs2: number | undefined): number {
+  if (!frictionMs2 || frictionMs2 <= 0 || vxMs === 0 || (vxMs > 0) !== jonhIsToTheRight) return 0;
+  return (vxMs * vxMs) / (2 * frictionMs2);
 }
 
 /** Shortest distance from a point to an axis-aligned box (0 inside it). */
