@@ -345,6 +345,11 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
   - He mutters (a quiet synthesized formant babble) when he speaks.
   - Lines live in `src/rules/jonhLines.ts`.
 - Comic synthesized vocal yelps accompany body hits; a voiced FAAH cue plays once per shot when the ball leaves any visible canvas edge. Leaving the top still allows the ball to return and never changes scoring/end conditions. Mute and master volume apply to all cues. **[DECIDED sound triggers, PROPOSED synthesis]**
+- **Garden sound and levels [PROPOSED 2026-11-25][TUNE, `AUDIO` in `config/tuning.ts`]** (cosmetic only; nothing here touches the simulation):
+  - *Wind bed.* A level with `wind` plays a soft airy bed whose loudness and brightness follow the windsock's lift, with a gust (swell, then fade) every few seconds that is more frequent and bigger in a stronger wind. It sits on the music's bus, so it follows the music toggle and ducking, dips about 9 dB under the cannon and hit cues, and stops on leaving the garden, pause, mute, music off, and when the tab is hidden (the audio context is suspended then, which also quiets the music).
+  - *Footsteps.* Walking Jonh (§8.8) plants a foot on gravel every half stride of the metres he has walked since Fire (the same distance that drives his legs), so the steps follow replays and stop when he stops or is hit.
+  - *Emote pops.* Another player's emote is a bright rising two-pop, your own a single softer, lower pop; both are rate-limited so a burst of emotes cannot stack into noise.
+  - *Levels.* Every cue has its own trim bus and a tier: impacts (cannon, hits) loudest, then voices and big accents, scenery and results, Jonh's yelp, accents, and finally clicks, footsteps and the wind bed quietest. A soft clip after the compressor keeps a stack (drumroll, hit, yelp, sting) under full scale. The targets and trims are measured offline (`audio-levels.html`); none of it has been judged by ear, so treat the numbers as a starting point.
 - Reactions are brief (≤ 1.5 s before Continue is offered) and skippable. Reduced-motion disables camera shake and large screen-space effects.
 
 ### 10.2 Owner-approved launch and impact polish (5 October 2026) [DECIDED]

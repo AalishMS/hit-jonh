@@ -119,6 +119,7 @@ function makeScene() {
     aimingRefreshes: 0,
     presenceRefreshes: 0,
     emoteSounds: 0,
+    ownEmoteSounds: 0,
     leftToMenu: 0,
   };
   const settle = (m: MultiplayerMatchMachine) => {
@@ -149,7 +150,7 @@ function makeScene() {
       settle(m);
     },
     refreshPlayerPresence: () => { scene.presenceRefreshes++; },
-    playEmoteSound: () => { scene.emoteSounds++; },
+    playEmoteSound: own => { if (own) scene.ownEmoteSounds++; else scene.emoteSounds++; },
     refreshMatchResult: () => undefined,
     refreshAimingControls: () => { scene.aimingRefreshes++; },
     leaveToMenu: () => { scene.leftToMenu++; },
@@ -947,11 +948,13 @@ describe('OnlineController: emotes', () => {
     h.state.emotes.pick('unlucky');
     expect(bubbleTexts()).toEqual(['P1: Unlucky! (mine)']);
     expect(session().sendEmote).toHaveBeenCalledWith('unlucky');
+    expect(scene.ownEmoteSounds).toBe(1); // my own soft pop, once, at the moment of sending
     await flush();
     const sounds = scene.emoteSounds;
     listener.onEmotes!([entry(1, { sender: 'me', seat: 0, emote: 'unlucky', mine: true })]);
     expect(bubbleTexts()).toEqual(['P1: Unlucky! (mine)']);
-    expect(scene.emoteSounds).toBe(sounds); // no sound for my own
+    expect(scene.emoteSounds).toBe(sounds); // the echo of my own emote makes no incoming pop
+    expect(scene.ownEmoteSounds).toBe(1); // ...nor a second own pop
   });
 
   it('takes my bubble back when the server rejects the send, and says so when it was the rate limit', async () => {

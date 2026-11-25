@@ -33,8 +33,8 @@ export interface OnlineSceneHooks {
   presentSkippedTurn(seat: number, angle: number, power: number, text: string): void;
   applyOfficialOutcome(outcome: ClassifiedOutcome, mine: boolean): void;
   refreshPlayerPresence?(): void;
-  /** A soft sound for an emote from another player. */
-  playEmoteSound?(): void;
+  /** A soft pop for an emote: another player's, or (`own`) the one I just sent. */
+  playEmoteSound?(own?: boolean): void;
   refreshMatchResult(): void;
   refreshAimingControls(): void;
   leaveToMenu(): void;
@@ -314,6 +314,7 @@ export class OnlineController {
     const ticket = this.emoteTracker.beginOwn();
     const key = `own#${ticket}`;
     this.emoteBoard.add({ key, seat, emote: id, mine: true }, this.emoteClock);
+    this.hooks.playEmoteSound?.(true);
     this.syncEmotes();
     const epoch = this.epoch;
     session.sendEmote(id).catch((e: unknown) => {
