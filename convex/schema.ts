@@ -55,6 +55,48 @@ export default defineSchema({
     tokens: v.number(),
   }).index('by_room', ['roomId']).index('by_player', ['playerId']),
 
+  /**
+   * Daily Bonk friends boards (spec §6.2). Private boards reached only by their code: no listing, no global
+   * ranking. A board player is one browser (its token lives in localStorage, unlike a room seat's per-tab token).
+   */
+  boardPlayers: defineTable({
+    /** Client secret; never returned by a query. */
+    token: v.string(),
+    /** Shown on every board this player belongs to (sanitized like room names). */
+    name: v.string(),
+    /** Write allowance left as of `at` (rate limit, like emotes). */
+    tokens: v.number(),
+    at: v.number(),
+  }).index('by_token', ['token']),
+
+  boards: defineTable({
+    code: v.string(),
+    createdAt: v.number(),
+    /** Last join or post (bumped at most hourly by posts); drives idle-board cleanup. */
+    updatedAt: v.number(),
+  }).index('by_code', ['code']).index('by_updatedAt', ['updatedAt']),
+
+  boardMembers: defineTable({
+    boardId: v.id('boards'),
+    playerId: v.id('boardPlayers'),
+    joinedAt: v.number(),
+  }).index('by_board', ['boardId']).index('by_player', ['playerId']).index('by_board_and_player', ['boardId', 'playerId']),
+
+  /**
+   * One self-reported Daily result per player per day, shared by every board the player is in (so a result is
+   * posted once, and joining a board later shows today's result at once). First post wins: never overwritten.
+   */
+  boardResults: defineTable({
+    playerId: v.id('boardPlayers'),
+    /** Whole days since 1970-01-01 of the player's local date (rules/friendsBoard.ts `dayNumber`). */
+    day: v.number(),
+    stars: v.number(),
+    /** The counted run's pattern, e.g. "mb" (rules/dailyShare.ts codes). */
+    shots: v.string(),
+    streak: v.number(),
+    postedAt: v.number(),
+  }).index('by_player_and_day', ['playerId', 'day']).index('by_day', ['day']),
+
   shots: defineTable({
     roomId: v.id('rooms'),
     matchNumber: v.number(),
