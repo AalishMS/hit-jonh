@@ -126,6 +126,7 @@ describe('ice garden: Frozen Pond', () => {
       for (let angle = AIM.minAngleDeg; angle <= AIM.maxAngleDeg; angle += 5) {
         for (let power = 0; power <= 100; power += 5) {
           const steps = fly(level, angle, power);
+          expect(steps.at(-1)!.reason, `${id} ${angle}/${power} timed out`).not.toBe('timeout');
           const end = steps.at(-1)!.state;
           if (end.hitJonh) {
             hits++;
@@ -217,6 +218,17 @@ describe('ice garden: Frozen Pond', () => {
     expect(end.state.xSim - onSnow.xSim).toBeLessThan(1);
     expect(end.state.ySim).toBeCloseTo(POND_LEVEL.ground.maxY + R, 1);
     expect(steps.length * DT).toBeLessThan(6);
+  });
+
+  it('a ball that rolls across the snow up against the pond kerb settles instead of jittering to the timeout', () => {
+    for (const [pos, angle, power] of [['near', 12, 40], ['far', 9, 80]] as const) {
+      const steps = fly(levelAtMultiplayerPosition(POND_LEVEL, pos), angle, power);
+      const end = steps.at(-1)!;
+      expect(end.reason, `${pos} ${angle}/${power}`).toBe('settled');
+      expect(steps.length * DT).toBeLessThan(5);
+      expect(end.state.ySim).toBeCloseTo(POND_LEVEL.ground.maxY + R, 2);
+    }
+    expect(MATERIALS.snow.stopBelowMs).toBeGreaterThan(SHOT.settledSpeedMs);
   });
 
   it('snow swallows a ball: one that lands short of the pond stops within a metre', () => {

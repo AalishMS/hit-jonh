@@ -297,6 +297,11 @@ export interface MaterialProps {
    * swallows a landing instead of letting the ball skip on.
    */
   tangentKept?: number;
+  /**
+   * A ball resting on this top slower than this (m/s) stops dead [PROPOSED 2026-11-25][TUNE]: soft snow,
+   * so a ball that rolls up against the pond's kerb settles instead of jittering on Matter's contacts.
+   */
+  stopBelowMs?: number;
 }
 
 export const MATERIALS = {
@@ -325,7 +330,7 @@ export const MATERIALS = {
    * it keeps nearly all its horizontal speed and slides for metres. Snow round the pond stops it dead.
    */
   ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.5 },
-  snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2 },
+  snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2, stopBelowMs: 0.3 },
   /** The shelter's front flap: soft canvas that swallows a ball. */
   canvas: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },

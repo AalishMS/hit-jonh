@@ -459,6 +459,12 @@ export class MatterAdapter {
         x: this.projectileBody.velocity.x * (mat?.rollingDamping ?? PHYSICS.groundRollingDamping),
         y: this.projectileBody.velocity.y,
       });
+      // Soft snow [PROPOSED 2026-11-25]: a crawling ball sinks in and stops (only materials that say so).
+      const stop = mat?.stopBelowMs;
+      if (stop !== undefined && matterVelocityToSpeedMs(vectorLength(this.projectileBody.velocity.x, this.projectileBody.velocity.y), this.pixelsPerMetre) < stop) {
+        Matter.Body.setVelocity(this.projectileBody, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(this.projectileBody, 0);
+      }
     }
 
     this.prevPosPx = { ...currPx };
