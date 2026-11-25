@@ -184,6 +184,19 @@ export interface JonhRendererOptions {
   level?: LevelData;
 }
 
+/**
+ * The OS "reduce motion" preference. Asked several times a frame, so the MediaQueryList is made once and read
+ * live (`matches` follows the setting): calling matchMedia every frame cost about 1.5% of the main thread on a phone.
+ */
+let reduceMotionQuery: MediaQueryList | null | undefined;
+function osPrefersReducedMotion(): boolean {
+  if (reduceMotionQuery === undefined) {
+    reduceMotionQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  }
+  return Boolean(reduceMotionQuery?.matches);
+}
+
 export class JonhRenderer {
   private readonly rig: JonhRig;
   private readonly ghost: JonhRig;
@@ -273,8 +286,7 @@ export class JonhRenderer {
   setReducedMotion(enabled: boolean): void { this.reducedMotion = enabled; }
 
   isReducedMotionActive(): boolean {
-    if (this.reducedMotion) return true;
-    return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    return this.reducedMotion || osPrefersReducedMotion();
   }
 
   /** Kept for API compatibility: ball squash now lives in the ball renderer. */
