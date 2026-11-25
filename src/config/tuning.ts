@@ -284,6 +284,19 @@ export interface MaterialProps {
   friction: number;
   /** Ground only: per-step horizontal speed kept while rolling; PHYSICS.groundRollingDamping when omitted. */
   rollingDamping?: number;
+  /**
+   * Slide surfaces (ice) only [PROPOSED 2026-11-25][TUNE]: a ball resting on this top glides instead of
+   * rolling, and its horizontal speed falls by this much per second (kinetic friction, m/s², the same
+   * at every speed), so a slide is long, slows evenly and ends. The swept guard leaves a gliding ball
+   * to Matter's resting contact (physics/matterAdapter.ts), so it keeps the ground it covers.
+   */
+  slideFrictionMs2?: number;
+  /**
+   * Share of the ball's speed along the surface that a real impact (faster than
+   * PHYSICS.bounceMinNormalSpeedMs) keeps; 1 when omitted [PROPOSED 2026-11-25][TUNE]. Soft snow
+   * swallows a landing instead of letting the ball skip on.
+   */
+  tangentKept?: number;
 }
 
 export const MATERIALS = {
@@ -306,6 +319,15 @@ export const MATERIALS = {
   /** Mechanic maps [PROPOSED][TUNE]: unbroken glass is hard and slick; velvet drapes swallow a ball. */
   glass: { restitution: 0.35, friction: 0.2 },
   velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
+  /**
+   * Frozen Pond [PROPOSED 2026-11-25][TUNE]. Ice: no Matter friction (so the ball skids without spinning
+   * up), no rolling damping, a low bounce, and a gentle constant slide friction: a ball that lands on
+   * it keeps nearly all its horizontal speed and slides for metres. Snow round the pond stops it dead.
+   */
+  ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.2 },
+  snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2 },
+  /** The shelter's front flap: soft canvas that swallows a ball. */
+  canvas: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;

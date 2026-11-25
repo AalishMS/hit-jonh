@@ -23,6 +23,12 @@ export interface ObstacleData {
   /** Bouncing off it counts as a ricochet. Smashing through a breakable never does. */
   ricochet: boolean;
   breakable?: BreakableData;
+  /**
+   * Part of Jonh's own spot [PROPOSED 2026-11-25] (Frozen Pond: his fishing hut and the ice it stands on):
+   * at a multiplayer target position it moves with him by the position's offsetX, like his tea table, so
+   * every position keeps the same hut and landing strip. Fixed when omitted (every other map).
+   */
+  followsJonh?: boolean;
 }
 
 /**

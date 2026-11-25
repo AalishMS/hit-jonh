@@ -16,6 +16,7 @@ declare module '@matter-js' {
   export const Body: {
     setPosition(body: MatterJS.BodyType, position: { x: number; y: number }): void;
     setVelocity(body: MatterJS.BodyType, velocity: { x: number; y: number }): void;
+    setAngularVelocity(body: MatterJS.BodyType, velocity: number): void;
     update(body: MatterJS.BodyType, deltaTime: number): void;
   };
   export const World: {

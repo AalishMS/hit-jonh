@@ -1,7 +1,7 @@
 import Matter, { type Body, type World } from '@matter-js';
 import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
 import { routePoseAtStep, shiftJonh, type RoutePose } from '../levels/jonhRoute';
-import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, PortalData } from '../levels/types';
+import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, ObstacleData, PortalData } from '../levels/types';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
 import './matterSolver';
@@ -15,6 +15,13 @@ import {
   vectorLength,
   worldYToSimY,
 } from '../sim/units';
+
+/**
+ * How far a ball's lowest point may sit above (a tiny hop) or below (Matter's resting overlap) a slide
+ * surface's top and still count as resting on it (metres) [TUNE].
+ */
+const SLIDE_REST_ABOVE_METRES = 0.005;
+const SLIDE_REST_BELOW_METRES = 0.02;
 
 export interface ProjectileState {
   xSim: number;
@@ -38,6 +45,11 @@ export interface ProjectileState {
   portalsUsed: string[];
   /** Breaks and teleports during this step only, for effects and sound. */
   events: MechanicEvent[];
+  /**
+   * The slide surface (material, e.g. `ice`) the ball is gliding along after this step, or null (in the
+   * air, resting, or on anything else). Presentation only: skid spray, sound and the settle clock.
+   */
+  slidingOn?: string | null;
 }
 
 /** Something a level mechanic did to the ball during one fixed step (world pixels). */
@@ -235,6 +247,9 @@ export class MatterAdapter {
           label: 'obstacle',
         },
       );
+      // Matter makes every static body grippy (friction 1, whatever the options say). A slide surface
+      // (ice) must stay frictionless in Matter too, or its contact would spin the ball up and brake it.
+      if ((MATERIALS as Record<string, MaterialProps>)[obs.material]?.slideFrictionMs2 !== undefined) obsBody.friction = mat.friction;
       Matter.World.add(this.matterWorld, obsBody);
       this.obstacleBodies.push(obsBody);
       if (obs.breakable) this.breakables.set(obs.id, { body: obsBody, mask: obsBody.collisionFilter.mask });
@@ -323,7 +338,14 @@ export class MatterAdapter {
 
     // Solid colliders for sweeping (a prop smashed earlier this shot is gone).
     const boxes = this.solidBoxes(level);
-    const earliestHit = earliestSolidHit(prevSim, currSim, radiusMetres, boxes, this.jonhRoute !== null);
+    // Ice [PROPOSED 2026-11-25]: a ball gliding along a slide surface is held up by Matter's resting
+    // contact alone; the guard skips that surface for the step. Otherwise it would put the ball back at
+    // its contact point every step and the ball would lose the ground it covered (harmless on grass,
+    // which stops a ball anyway, but it would stall a slide). The ball is not moving into the surface,
+    // so it cannot tunnel through it; every other solid (Jonh, walls) is still swept.
+    const glideOn = this.slideSurfaceAt(level, prevSim, radiusMetres, this.previousVelocity.y)?.id;
+    const sweepBoxes = glideOn !== undefined ? boxes.filter(b => b.label !== 'obstacle' || b.id !== glideOn) : boxes;
+    const earliestHit = earliestSolidHit(prevSim, currSim, radiusMetres, sweepBoxes, this.jonhRoute !== null);
 
     // Portals: touching an unused entry before any solid sends the ball through (no bounce, no contact).
     if (level.portals && level.portals.length > 0) {
@@ -392,8 +414,16 @@ export class MatterAdapter {
         const projMat = MATERIALS.cannonball;
         const restitution = Math.max(mat.restitution, projMat.restitution);
 
-        const vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
-        const vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
+        let vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
+        let vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
+        // Soft snow [PROPOSED 2026-11-25]: a real landing keeps only a share of its speed along the
+        // surface, so the ball plops in and stops instead of skipping on. Every other material keeps it all.
+        const kept = (MATERIALS as Record<string, MaterialProps>)[earliestHit.material]?.tangentKept;
+        if (kept !== undefined && -dot > minBounce) {
+          const along = -vNewMatterX * matterNormalY + vNewMatterY * matterNormalX;
+          vNewMatterX += (1 - kept) * along * matterNormalY;
+          vNewMatterY -= (1 - kept) * along * matterNormalX;
+        }
 
         // Reposition exactly at time of impact, plus tiny epsilon to avoid sticky re-collision
         const newSimX = earliestHit.hit.point.x + earliestHit.hit.normal.x * 1e-4;
@@ -414,9 +444,11 @@ export class MatterAdapter {
       }
     }
 
+    // Ice [PROPOSED 2026-11-25]: a ball resting on a slide surface rides it (see glide).
+    const slidingOn = this.glide(level, currSim, currPx, radiusMetres);
     // Rolling resistance on whatever top surface the ball rests on (ground, roofs, decks), so a
     // ball that lands on a flat top slows to a stop instead of sliding on indefinitely.
-    const support = this.supportMaterial(level, currSim, radiusMetres);
+    const support = slidingOn === undefined ? this.supportMaterial(level, currSim, radiusMetres) : undefined;
     if (support !== undefined) {
       const mat = (MATERIALS as Record<string, MaterialProps>)[support];
       Matter.Body.setVelocity(this.projectileBody, {
@@ -428,7 +460,43 @@ export class MatterAdapter {
     this.prevPosPx = { ...currPx };
     this.previousVelocity = { ...this.projectileBody.velocity };
     this.advanceJonh();
-    return this.snapshot(currSim, currPx);
+    return this.snapshot(currSim, currPx, slidingOn === undefined ? null : slidingOn.moving ? slidingOn.material : null);
+  }
+
+  /**
+   * The intact slide-surface obstacle (ice) whose top the ball is resting on at `at` with vertical
+   * velocity `vyMatter` (no faster than a bounce either way), if any. More tolerant than
+   * supportMaterial: Matter rests a ball a couple of millimetres into a surface. Never on maps without ice.
+   */
+  private slideSurfaceAt(level: LevelData, at: Point2D, radiusMetres: number, vyMatter: number): ObstacleData | undefined {
+    if (Math.abs(vyMatter) > speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre)) return undefined;
+    return level.obstacles.find(o => (MATERIALS as Record<string, MaterialProps>)[o.material]?.slideFrictionMs2 !== undefined &&
+      at.x >= o.box.minX && at.x <= o.box.maxX && !this.brokenIds.includes(o.id) &&
+      at.y - radiusMetres - o.box.maxY <= SLIDE_REST_ABOVE_METRES && at.y - radiusMetres - o.box.maxY >= -SLIDE_REST_BELOW_METRES);
+  }
+
+  /**
+   * A ball resting on ice glides along it: it rides the surface exactly (no bob, so it can settle), its
+   * horizontal speed falls by the material's slideFrictionMs2 every step (kinetic friction, the same at
+   * every speed), and any spin it picked up in a bounce is dropped (a skidding ball does not roll;
+   * nothing on frictionless ice would ever stop it, and Matter's many-sided circle bobs on its facets
+   * while it turns). Returns the surface and whether the ball is still moving, or undefined.
+   */
+  private glide(level: LevelData, currSim: Point2D, currPx: Point2D, radiusMetres: number): { material: string; moving: boolean } | undefined {
+    const body = this.projectileBody!;
+    const surface = this.slideSurfaceAt(level, currSim, radiusMetres, body.velocity.y);
+    if (!surface) return undefined;
+    const friction = (MATERIALS as Record<string, MaterialProps>)[surface.material]!.slideFrictionMs2!;
+    const dv = speedMsToMatterVelocity(friction * PHYSICS.fixedStepSeconds, this.pixelsPerMetre);
+    const vx = body.velocity.x > 0 ? Math.max(0, body.velocity.x - dv) : Math.min(0, body.velocity.x + dv);
+    currSim.y = surface.box.maxY + radiusMetres;
+    currPx.y = simYToWorldY(currSim.y, this.worldHeightPx, this.pixelsPerMetre);
+    Matter.Body.setPosition(body, { x: currPx.x, y: currPx.y });
+    Matter.Body.setVelocity(body, { x: vx, y: 0 });
+    Matter.Body.setAngularVelocity(body, 0);
+    body.positionImpulse.x = 0;
+    body.positionImpulse.y = 0;
+    return { material: surface.material, moving: vx !== 0 };
   }
 
   /** Jonh's colliders as they are this step: his spawn moved along the route (the spawn itself otherwise). */
@@ -626,7 +694,7 @@ export class MatterAdapter {
     return this.snapshot({ x: portal.exit.x, y: portal.exit.y }, exitPx);
   }
 
-  private snapshot(currSim: Point2D, currPx: Point2D): ProjectileState {
+  private snapshot(currSim: Point2D, currPx: Point2D, slidingOn: string | null = null): ProjectileState {
     const body = this.projectileBody!;
     // Matter velocity is in px per (1000/60)ms -> speed in m/s = (px/baseStep * 60) / ppm
     const vxMs = matterVelocityToSpeedMs(body.velocity.x, this.pixelsPerMetre);
@@ -653,6 +721,7 @@ export class MatterAdapter {
       brokenObstacleIds: [...this.brokenIds],
       portalsUsed: [...this.portalsUsed],
       events: this.stepEvents,
+      slidingOn,
     };
   }
 
