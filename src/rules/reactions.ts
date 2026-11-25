@@ -1,4 +1,4 @@
-import { JONH_TALK, SCORING } from '../config/tuning';
+import { JONH_TALK, MATERIALS, SCORING, type MaterialProps } from '../config/tuning';
 import {
   FIRST_SHOT_LINES, HAT_LINES, HECKLE_AFTER_MISSES, HECKLE_LINES, HIT_STREAK_LINES, MAP_LINES, MISS_STREAK_LINES,
   OBSTACLE_LINES, PORTAL_TRICK_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES, WINNING_SHOT_LINES,
@@ -189,7 +189,7 @@ export interface ShotOutcomeExtra {
   /** How a trick (`ricochet_body`) was earned; a bank shot when omitted. */
   trick?: 'ricochet' | 'portal' | null;
   passedOverhead?: boolean;
-  obstacleContacts?: ReadonlyArray<{ id: string; ricochet: boolean }>;
+  obstacleContacts?: ReadonlyArray<{ id: string; ricochet: boolean; material?: string }>;
 }
 
 export interface ClassifiedShotFeedback {
@@ -246,8 +246,11 @@ export function classifyShotOutcome(
     };
   }
 
-  if (extra?.obstacleContacts && extra.obstacleContacts.length > 0) {
-    const isFence = extra.obstacleContacts.some((o) =>
+  // Landing on a slide surface (Frozen Pond's ice) is where the ball is meant to land, not an obstacle hit.
+  const struck = (extra?.obstacleContacts ?? []).filter(o =>
+    o.material === undefined || (MATERIALS as Record<string, MaterialProps>)[o.material]?.slideFrictionMs2 === undefined);
+  if (struck.length > 0) {
+    const isFence = struck.some((o) =>
       o.id.toLowerCase().includes('fence'),
     );
     if (isFence) {

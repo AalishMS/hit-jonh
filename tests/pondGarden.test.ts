@@ -13,6 +13,7 @@ import { MatterAdapter, type ProjectileState } from '../src/physics/matterAdapte
 import { recordShot } from '../src/physics/shotRecorder';
 import { CAMPAIGN_ORDER } from '../src/rules/campaign';
 import { MAP_LINES } from '../src/rules/jonhLines';
+import { classifyShotOutcome } from '../src/rules/reactions';
 import { MECHANIC_TIPS } from '../src/rules/mechanicTips';
 import { ShotAttemptMachine } from '../src/rules/shotAttempt';
 import { FixedStepper } from '../src/sim/fixedStep';
@@ -192,6 +193,14 @@ describe('ice garden: Frozen Pond', () => {
     expect(slideReachMetres(-2, true, SLIDE_FRICTION)).toBe(0);
     expect(slideReachMetres(2, false, SLIDE_FRICTION)).toBe(0);
     expect(slideReachMetres(2, true, undefined)).toBe(0);
+  });
+
+  it('a skid that stops short reads as SHORT, not as an obstacle hit; the door still counts as one', () => {
+    const jonh = POND_LEVEL.jonhSpawn.bodyBox;
+    const ice = { id: 'pond-ice', ricochet: false, material: 'ice' };
+    const door = { id: 'hut-door', ricochet: false, material: 'canvas' };
+    expect(classifyShotOutcome(false, jonh.minX - 2, jonh.minX, jonh.maxX, { classifiedOutcome: 'miss', obstacleContacts: [ice] }).label).toBe('SHORT');
+    expect(classifyShotOutcome(false, jonh.minX - 4, jonh.minX, jonh.maxX, { classifiedOutcome: 'miss', obstacleContacts: [ice, door] }).label).toBe('OBSTACLE HIT');
   });
 
   it('a ball that skids off the end of the ice drops onto the snow and stops dead', () => {
