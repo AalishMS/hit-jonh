@@ -1629,3 +1629,70 @@ A fresh reviewer read `d4c5f39..0b8e85e`. It found nothing that breaks the game,
 9. **Chapter 5: three new gardens**, each with one new mechanic and its tip.
 10. **Daily Bonk friends board**: compare today's result with friends through a room-style code (Convex).
 
+
+## Next 10, round 3 (2026-11-25)
+
+The owner asked to continue with the round-2 proposal and answered four questions first:
+- **Ship:** a PR to `main` (opened as #2), and the lead merges it at the end of the round once checks pass and the review is fixed, then smoke-tests the live site.
+- **Phone:** the owner unlocked the OnePlus Nord and laid it in landscape with auto-rotate on.
+- **Chapter 5 mechanics:** a big magnet, an ice pond and a skate ramp.
+- **Dev backend:** push to the Convex dev deployment with the saved dev deploy key.
+
+The owner also asked for every subagent to run on Opus. The three Chapter 5 gardens and the friends board were built in parallel worktrees and merged after review; the rest were built here.
+
+### 1. Ship it — in progress
+- PR #2 (`real-game-pass` → `main`) is open. Vercel builds `main` to production at hit-jonh.vercel.app, and its build command runs `npx convex deploy`, so a merge ships the backend and the site together.
+- **Preview builds failed** on the first push. No preview had ever run the Convex step (vercel.json arrived after the last preview), so the likely cause is `npx convex deploy` refusing or lacking a key in the Preview environment; a fresh clone builds cleanly with `npm ci && npm run build`. The Vercel log could not be read (the CLI here has no valid login). **Change:** previews now run `npm run build` only and never touch a Convex deployment; production still runs `npx convex deploy` (`vercel.json`, README).
+
+### 2. A listening pass — tool ready, ear still needed
+- `listen.html` (dev only): every cue with its variants and a ±12 dB slider on its trim bus, the in-game mixes (shot with drumroll and sting, cannon and whoosh over wind and music, the Stroll's steps and mutter, an emote burst), a session-only music switch, and **Copy trims**, which gives an `AUDIO.cueTrimDb` block plus a line per change. Sliders are remembered in that browser. The cue table is shared with `audio-levels.html` (`src/dev/audioCases.ts`), whose report still passes every tier.
+- Verified in headless Chromium at 390×844: cues play, the wind bed stays up for the length of its case, the snippet reflects slider moves, the music switch does not change the game's saved setting, sliders survive a reload. **Nobody has listened yet.**
+
+### 3. The same Jonh line on every screen — done
+- Online, every client simulates every shot, so a line's context was already identical; only the random draw differed. `rules/sharedLines.ts` seeds the draw by the match (room code, room seed, match number) and the moment (`shot:<seq>`, `moved:<n>`, `arrival:<n>`, `winning:<n>`), and keeps a recent-lines memory of this match's online lines only.
+- The miss streak used for streak lines comes from the shared shot list (`missStreakBefore`: misses and hat-only hits back to the last body hit, skipped turns ignored), and hat-specific lines are off online (each screen dresses Jonh in its own hat). Heckles stay local (only the aiming player sees them).
+- Known limit [PROPOSED]: a client that reloads mid-match starts with an empty memory, so for up to eight lines it can pick differently where the others avoid a recent line.
+- Verified: `tests/sharedLines.test.ts` (6). Live, two browsers against the dev deployment, one garden, six shots with misses, hits and trick hits: every shot's line and both "Jonh moved" lines matched on both screens (twice).
+
+### 4. Landscape and low-end phone check — done
+**Setup:** OnePlus Nord in real landscape (viewport 813×287 CSS px; the canvas renders at 1280×560 with 4× MSAA, shown at 612×268 CSS px). Production builds on `vite preview` through `adb reverse`, measured over DevTools. A = the build as is, B = the same with `render.antialiasGL: false`. "4×" is DevTools CPU throttling as a stand-in for a low-end phone. Fresh save, garden 1, reference shot; three runs each, medians.
+
+| Build | Title fps | Aiming fps | Hit fps | Aiming script ms / 6 s | Hit long tasks (max) |
+| --- | --- | --- | --- | --- | --- |
+| A (MSAA on), 1× | 60.3 | 60.5 | 59.9 | 2,606 | 0 |
+| B (MSAA off), 1× | 60.5 | 59.2 | 59.4 | 3,024 | 1 (55 ms) |
+| A, 4× CPU | 52.5 | 35.5 | 50.8 | 4,203 | 9 (122 ms) |
+| B, 4× CPU | 53.5 | 37.8 | 51.2 | 4,296 | 8 (126 ms) |
+
+- **Landscape is fine on the Nord:** 60 fps on the title, while aiming and through a hit; no long tasks at 1×.
+- **MSAA decision, with numbers:** turning it off changes nothing measurable in frame rate or main-thread time at 1× or 4× (the differences are within run-to-run noise). It would save about 22 MB of GPU memory (the canvas size is the same in either orientation). **Recommendation: keep MSAA on**; revisit only if a real low-memory phone struggles.
+- **Low-end stand-in:** at 4× CPU, hits hold about 51 fps but plain aiming drops to 33–40 fps (returning players too, about 39 fps). A named CPU profile of aiming (dev build on the phone, 1×) puts about 38% of the time in Phaser's render, nearly half of it in `GraphicsWebGLRenderer`: Phaser re-tessellates every visible `Graphics` every frame, and while aiming those are the aim guide (234 commands, redrawn every frame), the power meter (217) and Jonh's speech bubble (200), plus the coach's glove and ring for a first-time player.
+  - Tried: the aim guide as pooled sprites (as the trail's dots were last round). Fewer commands, same look, but no difference measurable on the phone within the noise (a 4× A/B of three runs each), so it was not kept.
+  - Kept: Jonh's reduce-motion check called `matchMedia` several times a frame (about 1.5% of the main thread); it now reads one `MediaQueryList`.
+- **Not done:** a real low-end Android, iOS/Safari, and a per-page texture figure.
+
+### 5. Gust visuals on Windy Washday — done
+- The windsock lifts a little higher (`WIND.gustSockLift` 0.18) and flutters harder, and the streaks drift faster and show clearer, at the peak of each gust of the wind bed [PROPOSED][TUNE]. They follow exactly what is heard: `gustLevelAt` (pure, `audio/windSound.ts`) gives the gust envelope on the audio's own layout, and `AudioManager.windGust()` reads it at the audio clock. With no wind bed playing (muted, music off) the same schedule runs on the renderer's clock. Presentation only: the ball's wind never changes. Reduced motion holds everything still, as before.
+- Verified: tests that the envelope is 0 between gusts, reaches each gust's lift at its peak and stays within 0–1. Headless Chromium on Washday: streak opacity 0.38 between gusts and up to 0.54 at a peak, in step with `windGust()`; screenshots at a peak and between gusts show the higher sock.
+
+### 6. Warm the next garden — done
+- About 2.5 s after a garden is built (`FLOW.warmNextGardenSeconds`, after its title card), the next garden's art is rasterized in idle time: the next one in campaign order (locked or not) in solo and practice, the next round's map in hot-seat and online, none in the Daily.
+- Verified in headless Chromium: in solo, Fence's art was not ready 1 s into Backyard and was ready at 4.7 s (Rooftop still not); in hot-seat, the same for round 2's map. On the phone at 4× CPU the warm shows up as one 60–80 ms task while aiming; at 1× it is under 50 ms.
+
+### 7. Save code by link or QR — done
+- Settings → Your progress: **Copy link** gives `…/#save=HJ1-…`. The code rides in the fragment, which browsers never send to the server. **Show QR code** draws that link as a QR code to scan with another phone's camera. A pasted link works in the Load box too.
+- Opening a save link clears the fragment and, at Home only (never mid-game), asks first: "Progress from another device", with what the link holds and what this device has. **Load progress** merges as before; **Not now** changes nothing; a broken link says so. A link opened in a tab that is already open (`hashchange`) asks the same way.
+- `share/qrCode.ts` is a small byte-mode QR encoder (no dependency), modelled on Project Nayuki's reference encoder: smallest version that fits, level raised when free, Reed–Solomon per block, interleaving, mask chosen by penalty. A mid-campaign link is version 13 (69 modules).
+- Verified: tests check the byte capacity of every version at all four levels against the published table, the standard Reed–Solomon worked example, format and version bits, alignment positions, structure and the read-back format copy; save-link tests (fragment, paste, round trip, broken code). **Every code decoded on the real phone's `BarcodeDetector`**: 27 codes from version 1 to 39 at L, M, Q and H, including UTF-8 text. Two browsers: A copied the link (376 characters); B (390×844) opened it, saw "The link holds 9 / 36 stars and 23 hits. This device has 0 / 36…", loaded it and Home showed ★ 9 / 36; a third browser got the broken-link message, then the `hashchange` prompt, and **Not now** left its save empty.
+
+### 8. Online winning-shot clip — done
+- Save clip is now on the online match result too. The card is refreshed every second during the rematch countdown; it now updates only its ready list, countdown and Rematch button in place (`updateMPMatchOnline`), so a recording carries on (and focus and scroll stay put).
+- Verified live against the dev deployment: after a full match on two browsers, the host recorded the winning shot while the guest's Rematch press drove the countdown (29 s → 22 s during the recording): "Saved hit-jonh-jonh-s-backyard.mp4", 6.3 s, VP9 1280×560 with Opus audio (`ffprobe`).
+
+### 10. Daily Bonk friends board — done (branch `t3/daily-bonk-friends-board`, merged)
+- A private board by a 5-character code or `?board=CODE` link (SPEC §6.2, [PROPOSED]; numbers in `FRIENDS_BOARD` [TUNE]). "Friends board" on the Daily screen and the Daily result card; a hub with your boards, Create, Join by code; "Join this board?" from a link. No listing, search or global ranking: a non-member with a code sees only that the board exists and its size.
+- Results belong to the player and show on every board they are in; the first post of a day wins, so replays change nothing. Posts happen after the counted run, on opening a board and at start (today's and yesterday's unposted runs), in the background with backoff; never blocking the Daily.
+- Ranking: stars, fewer shots, a trick hit, then who posted first; members who have not played are listed after. Pattern ⬜🎩💥🎱, Trick badge, streak from 2 days, a Yesterday tab, live updates.
+- Server (`convex/boards.ts`): stars must match the pattern; day within the server's UTC date −2…+1; streak 1–10,000; 20 members per board, 10 boards per browser; a per-browser rate limit like emotes; a cron every 6 h drops results older than 14 days and boards idle for 60 days. Self-reported, stated in SPEC. One browser is one member (a token in its own key, never in save codes).
+- The worktree's own review found and fixed five client issues with regression tests. Its notes list known limits: the board's "today" is fixed when opened; the rate limit doesn't stop token rotation; another device joins as a separate member; clearing site data forgets your boards; board codes can be guessed like room codes (revealing only that a board exists and its size).
+- **Pushed to the dev deployment** (four tables and their indexes, the functions and the cron; `.env.local` unchanged) and **verified live** with two browsers: Ana played the Daily (2 stars), opened Friends board from the result card and created board C39ZN; Bo opened the `?board=` link at 390×844, joined, played (3 stars) and saw himself first; Ana's open board re-ranked live without a reload. No console errors.
