@@ -1,6 +1,6 @@
 /**
  * Screen-reader announcements (accessibility pass): one visually hidden, polite live region for
- * moments that otherwise only show on screen — a chapter card, a handover's stakes, a result.
+ * moments that otherwise only show on screen — a title card, a handover's stakes, a result.
  * Menus move focus to their main button, which a screen reader reads; this adds the context.
  */
 let region: HTMLElement | null = null;
