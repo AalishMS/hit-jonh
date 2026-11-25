@@ -39,7 +39,7 @@ export async function preloadSamples(baseUrl = './audio/'): Promise<void> {
   }));
 }
 
-export type SurfaceSound = 'ground' | 'wood' | 'concrete' | 'rubber' | 'glass' | 'body';
+export type SurfaceSound = 'ground' | 'wood' | 'concrete' | 'rubber' | 'glass' | 'ice' | 'body';
 
 /** The garden wind bed's nodes while it plays (see `setWindBed`). */
 interface WindBed {
@@ -90,6 +90,8 @@ export class AudioManager {
   private musicNextIndex = 0;
   private readonly notes = loopNotes();
   private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
+  /** Ice: the scrape of a skidding ball (Frozen Pond), on the surface bus. */
+  private skid: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   private analyser: AnalyserNode | null = null;
   private clipTap: MediaStreamAudioDestinationNode | null = null;
   private nextChirp = 0;
@@ -414,6 +416,12 @@ export class AudioManager {
         this.tinkle(now + 0.012, 4300 * v, 0.14 * s, 0.12);
         this.kick(now, 240 * v, 120, 0.06, 0.25 * s);
         break;
+      case 'ice':
+        // Iron on ice: a hard, bright knock with a glassy ring and a short crackle.
+        this.kick(now, 380 * v, 150, 0.07, 0.42 * s);
+        this.tinkle(now, 3100 * v, 0.13 * s, 0.16);
+        this.noise(now, 0.07, 'highpass', 3600 * v, 0.8, 0.22 * s);
+        break;
       case 'rubber': {
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
@@ -667,6 +675,40 @@ export class AudioManager {
     const k = Math.max(0, Math.min(1, speed01));
     this.whoosh.filter.frequency.setTargetAtTime(500 + 1600 * k, ctx.currentTime, 0.05);
     this.whoosh.gain.gain.setTargetAtTime(0.09 * k * k, ctx.currentTime, 0.05);
+  }
+
+  /**
+   * Ice [PROPOSED 2026-11-25][TUNE]: a continuous scrape while the ball skids, brighter and louder the
+   * faster it goes (`speed01` 0..1); null fades it out. Driven every frame, like the flight whoosh.
+   */
+  setSkid(speed01: number | null): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxBus || !this.noiseBuffer) return;
+    if (speed01 === null || speed01 <= 0 || this._isMuted || this.hiddenTab) {
+      if (this.skid) {
+        const s = this.skid;
+        s.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.06);
+        s.src.stop(ctx.currentTime + 0.4);
+        this.skid = null;
+      }
+      return;
+    }
+    if (!this.skid) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.Q.value = 0.9;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(filter).connect(gain).connect(this.cueBuses.get('surface')!);
+      src.start(0, this.rng());
+      this.skid = { src, filter, gain };
+    }
+    const k = Math.max(0, Math.min(1, speed01));
+    this.skid.filter.frequency.setTargetAtTime(1800 + 2600 * k, ctx.currentTime, 0.04);
+    this.skid.gain.gain.setTargetAtTime(AUDIO.skid.gain * Math.sqrt(k), ctx.currentTime, 0.04);
   }
 
   /** Dev/test aid: peak absolute sample level at the master output right now (0..1+). */

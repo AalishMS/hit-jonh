@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { FootstepTracker } from '../audio/footsteps';
-import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, CLIP, COACH, FLOW, FX, ICE_FX, LOOK, MATERIALS, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD, type MaterialProps } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { setPlayerPalette } from '../art/palette';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
@@ -24,7 +24,7 @@ import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
 import { campaignOrder } from '../rules/campaign';
 import { hitQuality, impactProfile, type HitQuality } from '../fx/impactProfile';
-import { distanceToBox, fastForwardTarget, SettleClock } from '../fx/settleClock';
+import { distanceToBox, fastForwardTarget, SettleClock, slideReachMetres } from '../fx/settleClock';
 import type { SurfaceSound } from '../audio/audioManager';
 import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
@@ -97,7 +97,7 @@ type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | 
 const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDown, k.powerUp];
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground', ice: 'ice', canvas: 'ground' };
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
@@ -119,6 +119,8 @@ export class PrototypeScene extends Phaser.Scene {
   /** Muzzle position waiting for the cannon wind-up to finish. */
   private pendingLaunch: { x: number; y: number; angleRad: number } | null = null;
   private prevVelocity: { vx: number; vy: number } | null = null;
+  /** Fixed steps the ball has spent skidding on ice (paces the spray). */
+  private skidSteps = 0;
   /** Horizontal travel direction of the ball before it touched Jonh. */
   private flightDir = 1;
   private impactQuality: HitQuality | null = null;
@@ -1061,6 +1063,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
+    this.audioManager.setSkid(flying && this.lastProjectileState!.slidingOn ? this.lastProjectileState!.speedMs / ICE_FX.fullSpeedMs : null);
     this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
@@ -1102,6 +1105,10 @@ export class PrototypeScene extends Phaser.Scene {
     const mechanicsEvent = this.sceneryRenderer.mechanics.onStep(state, reduced, this.audioManager);
     if (quiet || mechanicsEvent) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     else this.detectBounce(state, reduced);
+    // Ice: chips kicked up behind a skidding ball, a puff every few steps.
+    if (!quiet && state.slidingOn && state.speedMs > ICE_FX.sprayFromSpeedMs && ++this.skidSteps % ICE_FX.sprayEverySteps === 0) {
+      this.effects.skid(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(state.speedMs / ICE_FX.fullSpeedMs), state.vxSim, reduced);
+    }
     this.lastProjectileState = state;
     const ppmNow = WORLD.pixelsPerMetre;
     this.replayBuffer.push({ t: this.attemptMachine.simulatedTime + PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx, vx: state.vxSim * ppmNow, vy: -state.vySim * ppmNow });
@@ -1154,11 +1161,15 @@ export class PrototypeScene extends Phaser.Scene {
   private fastForwardTarget(): number {
     const p = this.lastProjectileState;
     if (!p || this.attemptMachine.state !== 'simulating' || this.pendingLaunch) return 1;
+    const jonh = this.physicsAdapter.jonhBodyBox(this.currentLevel);
     return fastForwardTarget({
       landed: p.firstGroundContact !== null || p.obstacleContacts.length > 0,
       speedMs: p.speedMs,
-      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.physicsAdapter.jonhBodyBox(this.currentLevel)),
+      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, jonh),
       impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
+      slideReachMetres: p.slidingOn
+        ? slideReachMetres(p.vxSim, (jonh.minX + jonh.maxX) / 2 > p.xSim, (MATERIALS as Record<string, MaterialProps>)[p.slidingOn]?.slideFrictionMs2)
+        : 0,
     });
   }
 
@@ -1787,6 +1798,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   private resetEffects(): void {
     this.audioManager?.setFlightWhoosh(null);
+    this.audioManager?.setSkid(null);
     this.impactTimeline.reset();
     this.settleClock.reset();
     this.replay = null;

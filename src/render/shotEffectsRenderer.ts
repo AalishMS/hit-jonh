@@ -67,6 +67,17 @@ export class ShotEffectsRenderer {
   }
 
   /**
+   * Ice spray kicked up behind a ball skidding on ice (Frozen Pond): a few chips thrown up and back.
+   * `amount` 0..1 from its speed; `dirX` is the way it is sliding. Nothing under reduced motion.
+   */
+  skid(x: number, y: number, amount: number, dirX: number, reduced: boolean): void {
+    if (reduced || amount <= 0) return;
+    const back = -Math.PI / 2 - (dirX >= 0 ? 0.75 : -0.75); // screen y is down: up and away from the travel
+    this.burst({ kind: 'fx-ice', count: Math.max(1, Math.round(3 * amount)), x, y: y - 2, angle: back, spread: 0.9,
+      speed: [40, 60 + 160 * amount], life: [0.25, 0.5], scale: [0.5, 0.9], endScale: 0.3, gravity: 420, drag: 1.5, spin: 8 });
+  }
+
+  /**
    * Every layer fires on the same frame: flash, contact star, shockwave ring, radial burst
    * and the comic word. Intensity comes from the impact profile (hit quality).
    */
