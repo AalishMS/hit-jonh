@@ -60,6 +60,10 @@ npm run preview   # serve the production build locally
 
 `dist/` is a static site (relative asset paths) and can be hosted anywhere.
 
+## Install on a phone, play offline
+
+The production build is an installable web app (it is never one in `npm run dev`). Open the site once over HTTPS (or `localhost`), then use the browser's **Install app** / **Add to Home screen** option: Hit Jonh gets its own icon and opens full screen. After that first visit, solo, hot-seat and Daily Bonk work with no connection; online rooms still need one. A small service worker (`build/sw.template.js`, written to `dist/sw.js`) keeps the built files under a cache named for the build; a new deploy takes over on the next load and shows a short "Updated" note. It never touches requests to the Convex backend. The icons in `public/icons/` come from `node scripts/make-icons.mjs` (set `CHROME` to a Chromium; only needed when the art changes).
+
 ## Checks
 
 ```bash

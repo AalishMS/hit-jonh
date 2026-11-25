@@ -8,7 +8,7 @@ import type { Point2D } from '../levels/types';
 import { previewDotsPx } from '../sim/ballistics';
 import { metresToPixels, muzzleSpawnPx, simYToWorldY } from '../sim/units';
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
-import { artImage, artScale } from './artTextures';
+import { artImage, artScale, requestArtKey } from './artTextures';
 
 const METER = { width: 170, height: 16, offsetY: 30 } as const;
 
@@ -104,6 +104,8 @@ export class CannonRenderer {
     const keys = cannonSkinKeys(color === null ? this.skin : DEFAULT_CANNON_SKIN);
     const key = color === null ? keys.barrel : barrelKey(color, pattern);
     const textures = this.barrel.scene.textures;
+    // Skins and painted barrels are rasterized on first use: ask for what is missing, draw it once it arrives.
+    for (const wanted of [key, keys.carriage, keys.wheel]) if (!textures.exists(wanted)) requestArtKey(this.barrel.scene, wanted);
     if (this.barrel.texture.key !== key && textures.exists(key)) this.barrel.setTexture(key);
     if (this.carriage.texture.key !== keys.carriage && textures.exists(keys.carriage)) this.carriage.setTexture(keys.carriage);
     if (this.wheel.texture.key !== keys.wheel && textures.exists(keys.wheel)) this.wheel.setTexture(keys.wheel);
