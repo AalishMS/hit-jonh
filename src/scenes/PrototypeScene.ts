@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { FootstepTracker } from '../audio/footsteps';
-import { AIM, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
@@ -68,6 +68,10 @@ import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, sav
 import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
 import { shareBlock } from '../ui/share';
+import { ClipDirector } from '../share/clipDirector';
+import { ClipRecorder, clipFormat } from '../share/clipRecorder';
+import { clipCaption, gameAddress, planClip } from '../share/clipPlan';
+import type { ClipOffer } from '../share/clipTypes';
 import { DEFAULT_KEYS, keyLabel, type KeyBindings } from '../input/keyBindings';
 import { coachActive, missHint, showGhostHand } from '../rules/coach';
 import { mechanicTip } from '../rules/mechanicTips';
@@ -185,6 +189,8 @@ export class PrototypeScene extends Phaser.Scene {
   private titleCardPending = false;
   /** The winning-shot replay before the match result: not started, playing, or done for this match. */
   private showcaseState: 'none' | 'playing' | 'done' = 'none';
+  /** The shareable clip being recorded from a result card, if any (share/clipDirector.ts). */
+  private clipDirector: ClipDirector | null = null;
 
   private get activeCoordinator() {
     return this.activeMode === 'multi' ? this.multiCoordinator : this.soloCoordinator;
@@ -723,7 +729,7 @@ export class PrototypeScene extends Phaser.Scene {
       onShowResult: (res) => {
         this.inputCoordinator.setOverlayVisible(true);
         this.htmlControls.setControlsInert(true);
-        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle, this.soloResultExtras);
+        this.menuOverlay.showSoloResult(res.success, res.shotsUsed, res.stars, res.hasStyle, { ...this.soloResultExtras, clip: res.success ? this.soloClipOffer(res.hasStyle) : undefined });
         this.audioManager.playSting(res.success);
         this.htmlControls.setCanFire(false);
         this.htmlControls.setFeedback('', 'info');
@@ -1773,6 +1779,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.clipDirector?.cancel();
     this.online?.destroy();
     this.autoAdvance.cancel();
     this.resetEffects();
@@ -2009,7 +2016,8 @@ export class PrototypeScene extends Phaser.Scene {
       if (this.showcaseState === 'none') this.showcaseState = this.startWinningShowcase() ? 'playing' : 'done';
       if (this.showcaseState === 'playing') return;
       this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined,
-        shootOut ? (match.getWinners().length > 1 ? `Still level after ${shootOut.round} sudden-death rounds. A shared win!` : 'Won in sudden death!') : undefined);
+        shootOut ? (match.getWinners().length > 1 ? `Still level after ${shootOut.round} sudden-death rounds. A shared win!` : 'Won in sudden death!') : undefined,
+        this.online?.inMatch ? undefined : this.matchClipOffer());
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -2092,17 +2100,9 @@ export class PrototypeScene extends Phaser.Scene {
    */
   private startWinningShowcase(): boolean {
     if (loadSaveData().settings.reducedMotion || this.jonhRenderer?.isReducedMotionActive()) return false;
-    const winners = new Set(this.multiMachine.getWinners().map(w => w.id));
-    const hits = this.matchHighlights.filter(h => winners.has(h.player));
-    // A shoot-out winner's latest hit is the one that decided it; otherwise their best (a trick shot first).
-    const decidedBySuddenDeath = this.multiMachine.suddenDeath?.winners?.length === 1;
-    const best = decidedBySuddenDeath ? hits[hits.length - 1] : [...hits].reverse().find(h => h.outcome === 'ricochet_body') ?? hits[hits.length - 1];
-    const base = best ? MAPS.find(m => m.id === best.mapId) : undefined;
-    if (!best || !base) return false;
-    const level = levelAtMultiplayerPosition(base, best.positionId);
-    const shot = this.recordedShot(level, best.angle, best.power);
-    if (shot.contactIndex === null) return false; // a cross-browser difference: nothing honest to show
-    const player = this.multiMachine.players[best.player]!;
+    const win = this.winningShot();
+    if (!win) return false;
+    const { best, level, shot, player } = win;
     document.body.classList.add('showcase-on');
     this.scene.launch('ShowcaseScene', {
       level, shot, angleDeg: best.angle, powerPercent: best.power,
@@ -2121,10 +2121,112 @@ export class PrototypeScene extends Phaser.Scene {
     return true;
   }
 
+  /** The hit the winning-shot replay (and the shareable clip) shows, with its recorded flight; null when there is nothing honest to show. */
+  private winningShot() {
+    const winners = new Set(this.multiMachine.getWinners().map(w => w.id));
+    const hits = this.matchHighlights.filter(h => winners.has(h.player));
+    // A shoot-out winner's latest hit is the one that decided it; otherwise their best (a trick shot first).
+    const decidedBySuddenDeath = this.multiMachine.suddenDeath?.winners?.length === 1;
+    const best = decidedBySuddenDeath ? hits[hits.length - 1] : [...hits].reverse().find(h => h.outcome === 'ricochet_body') ?? hits[hits.length - 1];
+    const base = best ? MAPS.find(m => m.id === best.mapId) : undefined;
+    if (!best || !base) return null;
+    const level = levelAtMultiplayerPosition(base, best.positionId);
+    const shot = this.recordedShot(level, best.angle, best.power);
+    if (shot.contactIndex === null) return null; // a cross-browser difference: nothing honest to show
+    return { best, level, shot, player: this.multiMachine.players[best.player]! };
+  }
+
+  /** Hot-seat match result: "Save clip" for the winning shot (none online, or where the browser cannot record). */
+  private matchClipOffer(): ClipOffer | undefined {
+    if (this.activeMode !== 'multi' || this.online?.inMatch) return undefined;
+    const win = this.winningShot();
+    if (!win) return undefined;
+    const { best, level, shot, player } = win;
+    const headline = `${player.name}'s ${best.outcome === 'ricochet_body' ? 'trick shot!' : 'winning shot'}`;
+    return this.clipOffer({ level, shot, angleDeg: best.angle, powerPercent: best.power, headline, paint: { name: player.name, color: player.color, pattern: player.pattern } });
+  }
+
+  /** Solo result card after a body hit: "Save clip" for the shot that did it. */
+  private soloClipOffer(trick: boolean): ClipOffer | undefined {
+    if (this.activeMode !== 'solo' || !this.currentLevel) return undefined;
+    const level = this.currentLevel;
+    const shot = this.recordedShot(level, this.currentAngleDeg, this.currentPowerPercent);
+    if (shot.contactIndex === null) return undefined; // the replay would not reproduce the hit: offer nothing
+    const headline = [this.daily ? 'Daily Bonk' : '', trick ? 'Trick shot!' : 'Bullseye!'].filter(Boolean).join(' · ');
+    return this.clipOffer({ level, shot, angleDeg: this.currentAngleDeg, powerPercent: this.currentPowerPercent, headline, skin: this.progress.selectedCannon });
+  }
+
+  /**
+   * A shareable clip of `shot`: the replay plays again over the game (the card steps aside) and the
+   * canvas is recorded with a caption (share/). Recording changes nothing in the simulation, the scores or the saved
+   * data. Reduced motion still allows the clip (the player asked for it) but plays it with the softened effects.
+   */
+  private clipOffer(spec: { level: LevelData; shot: RecordedShot; angleDeg: number; powerPercent: number; headline: string;
+    paint?: { name: string; color: number; pattern: string }; skin?: CannonSkinId }): ClipOffer | undefined {
+    if (!clipFormat(false)) return undefined;
+    const { level, shot } = spec;
+    const plan = planClip({
+      leadSeconds: FLOW.showcaseLeadSeconds, introSeconds: FX.demoAimSeconds + FX.windupSeconds, flightSeconds: shot.points[shot.contactIndex ?? shot.points.length - 1]!.t,
+      afterSeconds: CLIP.afterImpactSeconds, minSeconds: CLIP.minSeconds, maxSeconds: CLIP.maxSeconds,
+    });
+    const caption = clipCaption({ garden: level.name, headline: spec.headline, address: gameAddress(window.location.origin, window.location.pathname) });
+    const director = new ClipDirector({
+      createRecorder: () => {
+        const audio = this.audioManager.captureStream();
+        const format = clipFormat(audio !== null);
+        if (!format) { this.audioManager.releaseCaptureStream(); return null; }
+        try {
+          return new ClipRecorder({
+            source: this.game.canvas, caption, garden: level.name, audio, format,
+            releaseAudio: () => this.audioManager.releaseCaptureStream(),
+            subscribeFrames: callback => {
+              this.game.events.on(Phaser.Core.Events.POST_RENDER, callback);
+              return () => { this.game.events.off(Phaser.Core.Events.POST_RENDER, callback); };
+            },
+          });
+        } catch (error) {
+          this.audioManager.releaseCaptureStream();
+          throw error;
+        }
+      },
+      startReplay: hooks => {
+        if (this.scene.isActive('ShowcaseScene') || this.showcaseState === 'playing') return null;
+        document.body.classList.add('showcase-on', 'clip-on');
+        this.scene.launch('ShowcaseScene', {
+          level, shot, angleDeg: spec.angleDeg, powerPercent: spec.powerPercent,
+          playerName: spec.paint?.name ?? '', color: spec.paint?.color ?? null, pattern: spec.paint?.pattern ?? 'solid',
+          ...(spec.skin ? { skin: spec.skin } : {}),
+          hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit,
+          reducedMotion: loadSaveData().settings.reducedMotion || Boolean(this.jonhRenderer?.isReducedMotionActive()),
+          line: this.reactionSelector.selectWinningShot(),
+          textBoost: this.textBoost,
+          audio: this.audioManager,
+          clip: { startAt: plan.startAt, endAt: plan.endAt, onRecordStart: hooks.onRecordStart, onEnd: hooks.onEnd },
+          onDone: () => document.body.classList.remove('showcase-on', 'clip-on'),
+        });
+        return {
+          stop: () => {
+            document.body.classList.remove('showcase-on', 'clip-on');
+            if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
+          },
+        };
+      },
+      tabHidden: () => document.hidden,
+      onTabHidden: callback => {
+        const onChange = (): void => { if (document.hidden) callback(); };
+        document.addEventListener('visibilitychange', onChange);
+        return () => document.removeEventListener('visibilitychange', onChange);
+      },
+    });
+    this.clipDirector = director;
+    return { record: () => director.record(), cancel: () => director.cancel() };
+  }
+
   /** Stops a winning-shot replay without showing the result (rematch, Home, a rebuilt online match). */
   private stopShowcase(): void {
+    this.clipDirector?.cancel(); // a clip being recorded is discarded
     this.showcaseState = 'none';
-    document.body.classList.remove('showcase-on');
+    document.body.classList.remove('showcase-on', 'clip-on');
     if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
   }
 

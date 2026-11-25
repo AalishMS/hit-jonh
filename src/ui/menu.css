@@ -419,3 +419,8 @@
   .ribbon.chapter-ribbon { font-size: 20px; padding: 5px 14px 3px; margin: 2px 4px; }
   .chapter-complete p { margin: 0; font-size: 12px; }
 }
+/* ---------- Shareable clip: the Save clip action and its status line ---------- */
+.clip-status { text-align: center; margin: 6px 0 0; }
+.clip-status:empty { margin: 0; }
+/* The card steps aside while a clip of its replay is recorded; the canvas is what the clip shows. */
+body.clip-on .menu-overlay { visibility: hidden; }

@@ -91,6 +91,7 @@ export class AudioManager {
   private readonly notes = loopNotes();
   private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   private analyser: AnalyserNode | null = null;
+  private clipTap: MediaStreamAudioDestinationNode | null = null;
   private nextChirp = 0;
 
   constructor(private readonly rng: () => number = Math.random) {
@@ -1040,6 +1041,27 @@ export class AudioManager {
     }
   }
 
+  /**
+   * Shareable clip: a stream of exactly what the master output plays (so Mute and volume apply), or
+   * null before the first gesture or without MediaStream support. Call `releaseCaptureStream` when done.
+   */
+  captureStream(): MediaStream | null {
+    // The offline level report renders into an OfflineAudioContext, which has no streams.
+    const ctx = this.offline ? null : this.ctx as AudioContext | null;
+    if (!ctx || !this.masterGain || typeof ctx.createMediaStreamDestination !== 'function') return null;
+    if (!this.clipTap) {
+      this.clipTap = ctx.createMediaStreamDestination();
+      this.masterGain.connect(this.clipTap);
+    }
+    return this.clipTap.stream;
+  }
+
+  releaseCaptureStream(): void {
+    if (!this.clipTap) return;
+    try { this.masterGain?.disconnect(this.clipTap); } catch { /* already gone */ }
+    this.clipTap = null;
+  }
+
   destroy(): void {
     this.setFlightWhoosh(null);
     this.stopWind(true);
@@ -1050,6 +1072,7 @@ export class AudioManager {
       if (!this.offline) void (this.ctx as AudioContext).close();
       this.ctx = null;
       this.masterGain = null;
+      this.clipTap = null;
       this.sfxBus = null;
       this.musicBus = null;
       this.ambienceBus = null;

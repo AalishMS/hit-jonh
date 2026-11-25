@@ -345,6 +345,8 @@ export const FX = {
   replayAfterSeconds: 1.1,
   /** Cannon anticipation: physics waits this long after Fire while the cannon winds up. */
   windupSeconds: 0.12,
+  /** Seconds a replayed or demo cannon takes to swing round to its aim before winding up (the clip plan counts it). */
+  demoAimSeconds: 0.45,
   recoilPx: 18,
   /** Launch feel by power [TUNE]: effects at 0 % power are this fraction of full (recoil, smoke). */
   launchMinStrength: 0.4,
@@ -542,4 +544,28 @@ export const AUDIO = {
     emoteOut: { minGapSeconds: 0.18, windowSeconds: 3, maxInWindow: 3 },
     footstep: { minGapSeconds: 0.12, windowSeconds: 1, maxInWindow: 6 },
   },
+} as const;
+
+/**
+ * [PROPOSED 2026-11-25] Shareable winning-shot clip (share/clipPlan.ts): a few seconds of the replay
+ * recorded with MediaRecorder. All values are [TUNE].
+ */
+export const CLIP = {
+  /** The clip is never shorter than this (a quick hit lingers on Jonh) nor longer (a long lob keeps its last seconds). */
+  minSeconds: 3,
+  maxSeconds: 6,
+  /** Seconds kept after the impact. */
+  afterImpactSeconds: 2.0,
+  /** Capture rate: 30 fps keeps a clip small enough to post. */
+  fps: 30,
+  videoBitsPerSecond: 2_500_000,
+  audioBitsPerSecond: 96_000,
+  /** MediaRecorder is asked for data this often so a clip never sits in one huge buffer. */
+  timesliceMs: 500,
+  /** Stopping gives up waiting for the recorder's last chunk after this long. */
+  finishTimeoutSeconds: 4,
+  /** In-canvas caption: title plate top-left, address bottom-right (logical px of the 1280-wide canvas). */
+  titleFontPx: 30,
+  addressFontPx: 22,
+  captionMarginPx: 20,
 } as const;
