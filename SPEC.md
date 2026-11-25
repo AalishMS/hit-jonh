@@ -60,7 +60,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
   - Fire is accepted only in the `aiming` state.
   - Fire requires a fresh press: ignore `KeyboardEvent.repeat`, and ignore Space until it has been released at least once after entering `aiming`.
   - Gameplay shortcuts are ignored while a text input/select has focus.
-- Aiming aids **[DECIDED]**: barrel shows true angle; short initial-direction guide at the muzzle; last trail + landing marker. **No full trajectory preview** in normal play.
+- Aiming aids **[DECIDED]**: barrel shows true angle; short initial-direction guide at the muzzle; last trail + landing marker. **No full trajectory preview** in normal play (the short launch preview of §10.3 is bent by the level's constant wind, §8.7).
 
 ## 4. First-release scope
 
@@ -70,6 +70,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 - Three maps: Jonh's Backyard (flat), The Fence Dispute (obstacle), Rooftop Lunch (elevated target).
 - **[DECIDED by owner 2026-10-10]** Eight maps, the same in every mode (solo, Daily Bonk, hot-seat, online): the original three plus Rubber Yard, retuned to be clearly harder, and four mechanic maps — a ricochet-only bank shot, a trampoline-only map, a low-gravity Moon map and a very zoomed-out map. See §11.
 - **[DECIDED request by owner 2026-11-24]** "New obstacle types and map mechanics (moving platforms, breakables, portals or wind), all in SI level data with reference solutions that pass the existing tests." Implemented: **breakable props** and **one-way portals** (§8.6), each showcased by one new map (The Greenhouse, The Magic Act; §11), so there are now ten maps in every mode. Moving platforms and wind were not chosen and stay deferred (§4.2). Rules and values are [PROPOSED][TUNE].
+- **[DECIDED by owner 2026-11-25]** "A wind garden. A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match." Implemented as a constant horizontal wind on the ball (§8.7), showcased by one new map, Windy Washday (§11), so there are now eleven maps in every mode. Rules and values are [PROPOSED][TUNE].
 - Solo challenges: three attempts per map.
 - Local multiplayer, 2–4 players, one device, turn-based.
 - Saved aiming settings, previous-shot trails, scoring, quick rematch.
@@ -78,7 +79,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; drag and weather, and any wind that changes (gusts, per-shot or random wind) — a **constant per-level wind** is in scope since 2026-11-25, §8.7; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
 
 ## 5. Solo rules
 
@@ -236,6 +237,20 @@ Both live in SI level data (`src/levels/types.ts`) and are run by the physics ad
 - The hat and overhead checks cover the path up to the entry. The next step's sweep starts from the exit, so the swept guard and Jonh-hit detection work after the exit.
 - Level validation rejects an exit that overlaps any collider, Jonh's body or hat (at every target position) or any entry disc, and any entry within reach of the cannon muzzle. At runtime a blocked exit is skipped.
 
+### 8.7 Constant wind [DECIDED request 2026-11-25; PROPOSED rules; TUNE values]
+
+A level may declare `wind: { accelerationMs2, windsockX? }` (`src/levels/types.ts`). A map without it plays exactly as before (proved bit for bit by `tests/wind.test.ts` against results recorded before wind existed).
+
+- **What it is.** A constant **horizontal acceleration of the cannonball** in m/s², signed: positive blows towards +x (Jonh's side), negative back towards the cannon. It never changes during a shot or between attempts, so every attempt on a map sees the same wind. No gusts, no randomness, no vertical component, no drag.
+- **How it is applied.** As a Matter body force of `mass × a`, added the same way Matter adds gravity and re-added after every fixed step (Matter clears forces each update). So it is stepped only by `FixedStepper` at 1/120 s, is frame-rate independent (same outcome, end point and step count at 30/60/144 Hz, tested), and the swept guard reads the velocity Matter produced: it sees the wind with no second code path. In free flight the drift is ½·a·t² (tested against the analytic model).
+- **What it never does.** It acts on the ball only: Jonh, the ground and obstacles are static and untouched, and wind is never a contact (not an obstacle contact, ground contact or ricochet). It is **not applied while the ball rests on a top surface** (the same condition that applies rolling damping) [PROPOSED], so a rolling ball still settles instead of being blown along until the timeout.
+- **Level validation.** A non-zero finite acceleration of at most `WIND.maxAccelerationMs2` (8 m/s²) and a windsock inside the world. Wind keeps accelerating the ball in flight, so the collider thickness rule (§9.2) is sized for the top speed **plus** `|a| × WIND.thicknessFlightSeconds` (4 s, the longest legitimate flight) [PROPOSED].
+- **Launch preview (§10.3).** The 0.3 s analytic preview dots include the wind (`x += ½·a·t²`), so they bend the way the ball will. They agree with the simulated flight within 5 cm (tested) and still never show the landing point.
+- **Readability.** Visible before the first shot: a windsock on a pole (`windsockX`, default 6.8 m) that points downwind and lifts from limp to flat as the wind grows to `WIND.sockFlatMs2` (5 m/s²); a caption "Wind ← 3" (arrow = direction, number = m/s²) above it; faint streaks drifting the same way (`WIND.streak*`); a windsock and arrow in the map picker thumbnail. Under reduced motion (saved or OS) the sock hangs still and the streaks are static. The pole stands behind the playfield and does not collide, so there is no solid-looking decoration without collision (§11).
+- **Recorded flights.** The title-screen demo and the winning-shot replay run through the same `MatterAdapter`, so recorded flights include the wind (tested).
+- **Online.** Room map ids are validated by `validMaps` from the shared level list, so the Convex functions must be redeployed before a room can pick Windy Washday; clients simulate shots deterministically with the same wind.
+- **Not decided.** Whether a shot that uses the wind well (e.g. a hit that needs it) should ever count as a trick shot (§7.1, still [OPEN] for the other mechanics too). Today wind never does.
+
 ## 9. Hit detection and fast projectiles
 
 ### 9.1 Colliders
@@ -253,6 +268,7 @@ Matter.js has **no continuous collision detection**; a fast body can tunnel thro
 2. **Level validation:** every solid collider's minimum thickness ≥ `maxSpeed · dt` (≈ 0.17 m at 20 m/s, 1/120 s) **and** ≥ 0.2 m **[TUNE]**. Enforced by an automated level-data test.
 3. **Automated tunnelling test:** fire at maximum power across the full angle range into the thinnest obstacle and Jonh's collider; assert zero pass-throughs.
 4. **[2026-11-24]** A smashed breakable is removed from the swept guard for the rest of the shot only (§8.6). A teleport restarts the sweep at the portal exit.
+5. **[2026-11-25]** Wind keeps accelerating the ball in flight, so the thickness rule sizes colliders for the top speed plus `|a| × 4 s` of wind (§8.7).
 
 **[ASSUMPTION — verify in M1]** Matter can be driven headlessly in Vitest by importing Phaser's bundled Matter modules. If not, physics integration tests run in the browser (e.g. a `?selftest` route) and results are reported explicitly.
 
@@ -324,7 +340,7 @@ The owner asked for the game to look and feel polished and shareable, with art, 
 
 World 25.6 m × 14.4 m. Ground top at y = 1.6 m. Cannon pivot at (2.5 m, ground + 0.6 m) on every map — except where a map says otherwise (Across the Valley). All maps: fixed camera, simple background, readable obstacles, no invisible barriers, no solid-looking decoration without collision.
 
-**Per-level overrides [DECIDED 2026-10-10, values TUNE]:** `gravityMs2` (default 9.81) and `launchSpeedScale` (multiplies the whole 6–20 m/s range; collider thickness rule uses the scaled top speed). A level wider than 25.6 m is shown zoomed out at its resting view (`levelView`: same aspect, bottom-anchored, zoom = 25.6 m / width); labels near the cannon and Jonh keep their on-screen size.
+**Per-level overrides [DECIDED 2026-10-10, values TUNE]:** `gravityMs2` (default 9.81) and `launchSpeedScale` (multiplies the whole 6–20 m/s range; collider thickness rule uses the scaled top speed). **[PROPOSED 2026-11-25]** `wind` (§8.7): a constant horizontal acceleration on the ball. A level wider than 25.6 m is shown zoomed out at its resting view (`levelView`: same aspect, bottom-anchored, zoom = 25.6 m / width); labels near the cannon and Jonh keep their on-screen size.
 
 Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bounds, ground, cannon spawn, Jonh spawn (body + hat colliders), obstacle colliders with materials and ricochet flags, scenery, Jonh's arrival line, and **`referenceSolutions`**: at least one `{ angleDeg, powerPercent }` that an automated test proves hits Jonh's body.
 
@@ -348,6 +364,7 @@ Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bo
 | 8 | **Across the Valley** | 64 m × 28 m (camera 0.4×); cannon on a 10.4 m cliff, cannon ×1.6; grain silo; Jonh on one of three 1 m rock pillars ~45 m away. | Tiny far target; ~1 m per power step. |
 | 9 | **The Greenhouse** [PROPOSED 2026-11-24] | Glasshouse x 14–21.75 m: brick walls (front 2.2 m tall), glass front window and four glass roof panes in a white timber frame, gravel floor; Jonh inside on one of three spots under the roof panes. | Breakables: every hit smashes glass first (tested). Soft shots bounce; hard ones smash through and slow down. 1° grid: 7.1 / 5.1 / 3.8 %. |
 | 10 | **The Magic Act** [PROPOSED 2026-11-24] | Sealed velvet tent x 13–24.5 m (roof 8.5 m) with a carpeted stage; a hoop floats over the lawn at (8.5, 6.5) m, r 0.6 m; its exit hoop inside the tent at (14.3, 3.4) m throws the ball up at 65°. | Portals: every hit goes through the hoop (tested). The angle threads the hoop; power decides where it lands. 1° grid: 2.7 / 3.3 / 2.4 %. |
+| 11 | **Windy Washday** [PROPOSED 2026-11-25] | A steady 3 m/s² headwind blows from Jonh's side back towards the cannon (windsock on a pole at x = 7 m, caption "Wind ← 3", drifting streaks). A 6 m stone garden wall at x 10.6–11.1 m stops low shots; a low planter at x 15.4 m stops short rollers; Jonh stands on the lawn at x ≈ 19 m. | Wind: every shot is a high lob that the breeze drags backwards; aim long and let it bring the ball in. Shots that ignore the wind miss (tested: the reference solutions hit with the wind and miss without it; of the aims that hit in calm air, < 15 % still hit). 1° grid: WASH_GRID. |
 
 Each map introduces exactly one new complication.
 

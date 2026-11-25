@@ -1473,7 +1473,7 @@ export class PrototypeScene extends Phaser.Scene {
     const prev = this.prevVelocity;
     this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     if (!prev || state.hitJonh) return;
-    const dvx = state.vxSim - prev.vx;
+    const dvx = state.vxSim - prev.vx - this.levelPhys.windMs2 * PHYSICS.fixedStepSeconds;
     const dvy = state.vySim - prev.vy + this.levelPhys.gravity * PHYSICS.fixedStepSeconds;
     const dv = Math.hypot(dvx, dvy);
     if (dv < 1.2) return;

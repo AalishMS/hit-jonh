@@ -44,6 +44,8 @@ export const THEMES: Record<string, Theme> = {
   greenhouse: { id: 'greenhouse', skyTop: '#58C4F0', skyLow: '#FFF2C6', far: '#ACDBBE', farDetail: '#90C8A6', mid: '#84C86E', midDark: '#5AA44E', sunY: 86, sun: PAL.sun, skyline: 'village' },
   /** A garden party at dusk. */
   magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
+  /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
+  washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },
 };
 
 export function themeFor(levelId: string): Theme {

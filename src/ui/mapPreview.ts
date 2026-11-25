@@ -1,6 +1,7 @@
 import { backdropBox } from '../art/mechanicArt';
 import { PAL } from '../art/palette';
 import { THEMES } from '../art/sceneryArt';
+import { WIND } from '../config/tuning';
 import { MAPS } from '../levels';
 import type { Box2D, LevelData, ObstacleData, PortalData } from '../levels/types';
 
@@ -68,6 +69,21 @@ function portalSvg(portal: PortalData, f: Frame): string {
   return hoop(f.x(portal.entry.x), f.y(portal.entry.y), 1, 0) + hoop(f.x(portal.exit.x), f.y(portal.exit.y), 0.5, -portal.exit.angleDeg);
 }
 
+/** The windsock (pointing downwind) and the wind arrow, so a windy garden reads in its thumbnail. */
+function windSvg(level: LevelData, f: Frame): string {
+  const wind = level.wind;
+  if (!wind) return '';
+  const dir = Math.sign(wind.accelerationMs2);
+  const x = f.x(wind.windsockX ?? WIND.defaultSockXMetres);
+  const base = f.y(level.ground.maxY);
+  const top = base - 34;
+  const droop = Math.max(0, 1 - Math.abs(wind.accelerationMs2) / WIND.sockFlatMs2) * 14;
+  const sock = (k: number, fill: string) => `<path d="M${x + dir * (2 + k * 9)} ${top - 4 + k * droop * 0.3} L${x + dir * (11 + k * 9)} ${top - 2.5 + (k + 1) * droop * 0.3} L${x + dir * (11 + k * 9)} ${top + 3 + (k + 1) * droop * 0.3} L${x + dir * (2 + k * 9)} ${top + 4 + k * droop * 0.3} Z" fill="${fill}" ${INK} stroke-width="1.6"/>`;
+  const arrow = `<path d="M${x - dir * 20} ${top - 18} h${dir * 34} m${-dir * 8} -6 l${dir * 8} 6 l${-dir * 8} 6" fill="none" stroke="${PAL.paper}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g class="map-wind"><path d="M${x} ${base} V${top}" stroke="${PAL.ink}" stroke-width="3" stroke-linecap="round"/>` +
+    sock(0, PAL.pow) + sock(1, PAL.paper) + sock(2, PAL.pow) + arrow + '</g>';
+}
+
 function jonhSvg(body: Box2D, hat: Box2D | undefined, f: Frame): string {
   const heightPx = ((hat?.maxY ?? body.maxY) - body.minY) * f.s;
   const k = Math.max(0.35, (heightPx * FIGURE_BOOST) / 52);
@@ -114,6 +130,7 @@ export function mapPreview(id: string): string {
     ${interiorSvg(level, f)}
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
     ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
+    ${windSvg(level, f)}
     ${cannonSvg(level, f)}
     ${jonhSvg(level.jonhSpawn.bodyBox, level.jonhSpawn.hatBox, f)}
   </svg>`;
@@ -158,6 +175,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   valley: 'He is a dot on a far mesa. Hope you brought the big cannon.',
   greenhouse: 'Glass shrugs off a soft shot. Hit it hard enough and it smashes.',
   magic: 'Through the floating hoop and out the other. Power decides where it lands.',
+  washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
 };
 
 export function mapDescription(id: string): string {
