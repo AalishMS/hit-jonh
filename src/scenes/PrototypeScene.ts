@@ -65,7 +65,7 @@ import {
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
-import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
+import { loadOnlineProfile, loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveOnlineProfile, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
 import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
 import { shareBlock } from '../ui/share';
@@ -83,6 +83,8 @@ import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
 import { isOnlineConfigured } from '../net/convexClient';
 import { OnlineController, type OnlineSceneHooks } from './onlineController';
+import { FriendsBoardController } from './friendsBoardController';
+import { BOARD_LINK_PARAM } from '../rules/friendsBoard';
 
 /** Result labels when the official online outcome differs from what this device simulated. */
 const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
@@ -214,6 +216,8 @@ export class PrototypeScene extends Phaser.Scene {
   private multiplayerPositionKey = '';
   /** Online play glue; null when no Convex deployment is configured. */
   private online: OnlineController | null = null;
+  /** Daily Bonk friends boards (SPEC §6.2); null when no Convex deployment is configured. */
+  private boards: FriendsBoardController | null = null;
   /** This device's view of the current online shot, kept until the official outcome is applied. */
   private onlineLocal: { outcome: ClassifiedOutcome; label: string; quote: string; resultSeconds: number } | null = null;
   private sceneryRenderer!: SceneryRenderer;
@@ -368,6 +372,13 @@ export class PrototypeScene extends Phaser.Scene {
       onOnline: isOnlineConfigured() ? () => this.online?.open() : undefined,
     });
     this.online = isOnlineConfigured() ? new OnlineController(this.menuOverlay, this.onlineHooks()) : null;
+    this.boards = isOnlineConfigured() ? new FriendsBoardController(this.menuOverlay, {
+      progress: () => this.progress,
+      playDaily: () => this.playDailyNow(),
+      back: () => this.showDaily(),
+      loadName: () => loadOnlineProfile().name,
+      saveName: name => saveOnlineProfile({ ...loadOnlineProfile(), name }),
+    }) : null;
     document.documentElement.classList.toggle('reduced-motion', loadSaveData().settings.reducedMotion);
     setPlayerPalette(loadSaveData().settings.playerColors);
 
@@ -496,14 +507,23 @@ export class PrototypeScene extends Phaser.Scene {
     // A shared room link (?room=CODE) opens online play directly, rejoining this tab's seat after a reload.
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
+    const boardParam = params.get(BOARD_LINK_PARAM);
     if (roomParam && this.online) void this.online.openFromLink(roomParam);
-    else if (params.has(DAILY_LINK_PARAM)) {
+    else if (boardParam !== null) {
+      // A friends-board invite (?board=CODE) opens that board; without a backend, the Daily screen says why not.
+      const url = new URL(window.location.href);
+      url.searchParams.delete(BOARD_LINK_PARAM);
+      window.history.replaceState(null, '', url);
+      if (this.boards) this.boards.openFromLink(boardParam);
+      else this.showDaily();
+    } else if (params.has(DAILY_LINK_PARAM)) {
       // A shared Daily Bonk result links here: open today's challenge (once; a reload starts at Home).
       const url = new URL(window.location.href);
       url.searchParams.delete(DAILY_LINK_PARAM);
       window.history.replaceState(null, '', url);
       this.showDaily();
     }
+    void this.boards?.syncPosts();
   }
 
   /** True while the active player may adjust aim (drives drag input and the aim aids). */
@@ -1339,6 +1359,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.progress = after;
     // Storage writes wait until after the contact frame so the hit-stop starts on time.
     setTimeout(() => saveProgress(after), 0);
+    // A counted Daily run goes to the player's friends boards in the background (never blocks the result).
+    if (soloFinished && this.daily) setTimeout(() => void this.boards?.syncPosts(), 0);
     this.pendingUnlocks.push(...unlocks);
     if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
     if (unlocks.length && this.activeMode === 'multi') {
@@ -1371,6 +1393,7 @@ export class PrototypeScene extends Phaser.Scene {
         newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
         practiceMapId: !this.daily && soloAfter[mapId]?.bestShots != null ? mapId : null,
         share: this.dailyResultShare(before, after),
+        friendsBoard: this.daily ? this.friendsBoardEntry() : undefined,
       };
       this.pendingUnlocks = [];
       this.pendingFeats = [];
@@ -1488,6 +1511,21 @@ export class PrototypeScene extends Phaser.Scene {
       url: dailyLink(window.location.origin, window.location.pathname) });
   }
 
+  /** The "Friends board" entry for the Daily screens: disabled with a reason without a backend, like the Online card. */
+  private friendsBoardEntry(): { onOpen: (() => void) | undefined; reason: string } {
+    const boards = this.boards;
+    return { onOpen: boards ? () => boards.open() : undefined, reason: "Friends boards need the online server, which isn't configured." };
+  }
+
+  /** Starts today's Daily Bonk (from the Daily screen or a friends board). */
+  private playDailyNow(): void {
+    const key = dateKey(new Date());
+    const pick = dailyChallenge(key, MAPS);
+    if (!pick) return;
+    this.menuOverlay.hide(true);
+    this.loadMap(pick.mapId, { key, positionId: pick.positionId });
+  }
+
   private showDaily(): void {
     const key = dateKey(new Date());
     const pick = dailyChallenge(key, MAPS);
@@ -1517,16 +1555,21 @@ export class PrototypeScene extends Phaser.Scene {
       play.type = 'button';
       play.className = 'btn btn-primary';
       play.textContent = result === undefined ? 'Play today' : 'Play again';
-      play.addEventListener('click', () => {
-        this.menuOverlay.hide();
-        this.loadMap(pick.mapId, { key, positionId: pick.positionId });
-      }, { signal });
+      play.addEventListener('click', () => this.playDailyNow(), { signal });
+      const entry = this.friendsBoardEntry();
+      const board = document.createElement('button');
+      board.type = 'button';
+      board.className = 'btn';
+      board.id = 'daily-friends-board';
+      board.textContent = 'Friends board';
+      board.disabled = !entry.onOpen;
+      board.addEventListener('click', () => entry.onOpen?.(), { signal });
       const back = document.createElement('button');
       back.type = 'button';
       back.className = 'btn';
       back.textContent = 'Back';
       back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
-      actions.append(play, back);
+      actions.append(play, board, back);
       content.append(h, intro, art, status);
       const shareText = this.dailyShareFor(this.progress, key);
       if (shareText) {
@@ -1535,6 +1578,14 @@ export class PrototypeScene extends Phaser.Scene {
         actions.prepend(share.button);
       }
       content.appendChild(actions);
+      if (!entry.onOpen) {
+        const note = document.createElement('p');
+        note.className = 'home-note board-entry-note';
+        note.id = 'daily-board-reason';
+        note.textContent = entry.reason;
+        board.setAttribute('aria-describedby', note.id);
+        content.appendChild(note);
+      }
       play.focus();
     });
   }
@@ -1809,6 +1860,7 @@ export class PrototypeScene extends Phaser.Scene {
   private cleanup(): void {
     this.clipDirector?.cancel();
     this.online?.destroy();
+    this.boards?.destroy();
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.destroy();

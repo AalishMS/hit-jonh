@@ -71,6 +71,11 @@ export interface SoloResultExtras {
   practiceMapId?: string | null;
   /** Daily Bonk: the text Share puts on the clipboard (the day's counted run) and an optional note. */
   share?: { text: string; note?: string | undefined } | undefined;
+  /**
+   * Daily Bonk: the "Friends board" button (SPEC §6.2). `onOpen` is undefined when no Convex deployment is
+   * configured: the button is then disabled and `reason` says why, like the Online card.
+   */
+  friendsBoard?: { onOpen: (() => void) | undefined; reason: string } | undefined;
   /** After a body hit: record the replay as a shareable clip (share/clipDirector.ts). */
   clip?: ClipOffer | undefined;
 }
@@ -87,7 +92,7 @@ export interface HandoverParty {
   autoSeconds: number;
 }
 
-export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'feats' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'feats' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice' | 'board_hub' | 'board_view' | 'board_join';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
@@ -845,6 +850,17 @@ export class MenuOverlay {
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
     if (shareBtn) actions.appendChild(shareBtn);
+    if (extras.friendsBoard) {
+      const { onOpen, reason } = extras.friendsBoard;
+      const board = this.button('Friends board', 'btn-friends-board', () => { this.callbacks.onReturnToMenu(); onOpen?.(); }, signal, actions);
+      board.disabled = !onOpen;
+      if (!onOpen) {
+        const note = el('p', 'home-note board-entry-note', reason);
+        note.id = 'result-board-reason';
+        board.setAttribute('aria-describedby', note.id);
+        this.content.insertBefore(note, actions);
+      }
+    }
     if (clipUi) actions.appendChild(clipUi.button);
     const retry = () => { this.hide(); this.callbacks.onRetry(); };
     const next = success && extras.nextMapId ? extras.nextMapId : null;
