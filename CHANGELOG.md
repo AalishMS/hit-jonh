@@ -1,5 +1,20 @@
 # Changelog
 
+## Next 10 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the proposed next 10. Four of them were built in parallel worktrees and merged (entries below).
+- **Share the Daily Bonk.** The result card and the Daily screen offer Share: "Hit Jonh Daily · 25 Nov · ★★☆", one symbol per shot, the streak and a `?daily` link that opens the day's challenge. Phones get the share sheet, other devices copy the text.
+- **First-garden coach.** New players start Garden 1 from Play in one tap. A ghost glove shows the drag on the cannon, and until the first hit every miss names one fix ("Short. Add power.").
+- **Practice.** Unlimited shots on cleared gardens, which never change stars, bests or progress. It opens from a Challenge/Practice switch or Practice (P) on the result card.
+- **Feats.** A screen of 22 long-term goals with progress bars and the cosmetics they earn, including six for bragging rights (Moonstruck, Hat trick, Grand tour, …). Ribbons on the result card mark new ones.
+- **Sudden death (hot-seat).** A match still level after the tie-break goes to a one-shot shoot-out on the last garden. The best outcome wins, and after 3 rounds the win is shared.
+- **Accessibility.**
+  - Remappable keys (Settings → Keys).
+  - Screen-reader announcements for chapter cards, handovers and results.
+  - 44 px touch targets on phones.
+  - A colour-vision check: colour never stands alone.
+- **Physics fix.** The shipped game ran different contact-solver constants (Phaser's) from the tests, and spawned the ball with a differently-rounded formula. Lunar Picnic's reference shot missed in the game. The game now reproduces the tested physics bit for bit.
+
 ## Online emotes (branch `t3/online-room-emotes`, 25 November 2026)
 
 - **Emotes in online rooms.** Six canned reactions (Beat that!, Unlucky!, Nice shot!, Oof., Poor Jonh., Rematch?) that everyone in the room sees, in the lobby, during a match and on the result screen. An Emote button (or `E`, then `1`–`6`) opens them; the bubble shows in the sender's player-panel row with a soft sound, and your own appears at once. Rate-limited per seat (a burst of 3, then one every 2 s). Needs a Convex redeploy before it works online (`convex/README.md`).

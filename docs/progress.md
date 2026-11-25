@@ -1,8 +1,10 @@
 # Progress — Hit Jonh
 
-_Last updated: 2026-11-24_
+_Last updated: 2026-11-25_
 
 ## Current milestone
+
+**Current (2026-11-25): "next 10" pass complete on branch `real-game-pass` (not merged or pushed).** All ten proposed items are done: six built here and four in parallel worktrees, merged after review. Along the way a physics bug was found and fixed: the shipped game did not run the physics the tests prove. Per-item notes, evidence, owner decisions and the next proposal are in the "Next 10 (2026-11-25)" section at the end of this file. Online rooms need a Convex redeploy before they can use emotes and the two new gardens.
 
 **Current (2026-11-24): "real game" pass complete on branch `real-game-pass` (not merged or pushed).** All ten gaps from the ranked list are fixed. The list, per-item notes, evidence and the next-10 proposal are in the "Real game pass" section at the end of this file.
 

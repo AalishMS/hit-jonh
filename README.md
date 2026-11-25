@@ -5,10 +5,12 @@
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
 **Status:** Playable. It has:
-- a solo campaign through ten gardens, including smashable glass and a magician's portal hoops, with stars, trick-shot badges and unlocks;
-- 2–4 player hot-seat and online rooms with stakes callouts, taunts and a winning-shot replay;
-- a hand-drawn "Sunday Funnies" look;
-- layered impact effects with slow-motion replays, an original soundtrack, unlockable cosmetics and a Daily Bonk.
+- a solo campaign through twelve gardens, including smashable glass, a magician's portal hoops, a windy washing line and Jonh out for a walk, with stars, trick-shot badges, unlocks and practice on cleared gardens;
+- a first-garden coach for new players, a Feats screen of 22 long-term goals, and a Daily Bonk you can share;
+- 2–4 player hot-seat (with sudden death when it's still level) and online rooms with emotes, stakes callouts, taunts and a winning-shot replay;
+- a hand-drawn "Sunday Funnies" look, installable for offline play;
+- layered impact effects with slow-motion replays, an original soundtrack and unlockable cosmetics;
+- remappable keys, screen-reader announcements and 44 px touch targets.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](docs/progress.md) for history.
 
@@ -19,10 +21,10 @@ See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](doc
 | Aim | Drag the cannon (it points at your finger; distance is power) or drag the field up/down for angle | ← / → angle, ↓ / ↑ power |
 | Fire | FIRE button | Space |
 | Skip a rolling ball or a result | Skip / Next pill, or touch the aim | Space or Enter |
-| Retry / next garden (result screen) | Buttons | R / N |
+| Retry / next garden / practice (result screen) | Buttons | R / N / P |
 | Pause | Pause button | Escape |
 
-On a phone in landscape, the sliders icon at top right shows the precise Angle/Power sliders.
+On a phone in landscape, the sliders icon at top right shows the precise Angle/Power sliders. Every key except Escape can be changed in Settings → Keys. Practice (unlimited shots, nothing saved) opens from the Challenge/Practice switch on the garden list once you have cleared a garden. The Daily Bonk result card has a Share button, and a `?daily` link opens that day's challenge.
 
 ## Stack
 
