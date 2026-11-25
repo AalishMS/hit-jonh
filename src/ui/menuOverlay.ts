@@ -1,5 +1,6 @@
 import { DEFAULT_MAP_SET, MAP_IDS, MAPS } from '../levels';
 import { campaignStatus, campaignTotals, continueTarget, type CampaignEntry } from '../rules/campaign';
+import { chapterStatuses, type ChapterStatus } from '../rules/chapters';
 import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
@@ -55,6 +56,8 @@ export interface SoloResultExtras {
   unlockedMapId?: string | null;
   /** Campaign star total after this result (none for Daily Bonk). */
   campaignStars?: { stars: number; maxStars: number } | undefined;
+  /** This win cleared the last garden of a chapter for the first time (rules/chapters.ts). */
+  chapterComplete?: { number: number; name: string; stars: number; maxStars: number } | null;
   /** First trick-shot badge on this garden. */
   newTrick?: boolean;
   /** Feats completed during this run (rules/feats.ts), shown as ribbons. */
@@ -415,12 +418,29 @@ export class MenuOverlay {
     bar.style.setProperty('--fill', `${totals.maxStars ? (totals.stars / totals.maxStars) * 100 : 0}%`);
     tally.appendChild(bar);
     this.content.appendChild(tally);
-    const list = el('div', 'map-list');
     const target = continueTarget(campaign);
     let focus: HTMLElement | null = null;
+    // The gardens grouped under their chapter headers (rules/chapters.ts); one grid of cards per chapter.
+    const chapterByMap = new Map(chapterStatuses(campaign).flatMap(c => c.entries.map(e => [e.mapId, c] as const)));
+    const groups = el('div', 'chapter-list');
+    let list = el('div', 'map-list');
+    let currentChapter: ChapterStatus | null = null;
     for (const entry of campaign) {
       const map = MAPS.find(m => m.id === entry.mapId);
       if (!map) continue;
+      const chapter = chapterByMap.get(entry.mapId) ?? null;
+      if (chapter !== currentChapter || !groups.childElementCount) {
+        currentChapter = chapter;
+        const section = el('section', `chapter${chapter?.unlocked === false ? ' locked' : ''}`);
+        list = el('div', 'map-list');
+        if (chapter) {
+          const head = this.chapterHeader(chapter);
+          section.setAttribute('aria-labelledby', head.id);
+          section.appendChild(head);
+        }
+        section.appendChild(list);
+        groups.appendChild(section);
+      }
       const score = data.solo[map.id];
       const available = practice ? entry.cleared : entry.unlocked;
       const btn = el('button', `map-btn${available ? '' : ' locked'}`);
@@ -466,11 +486,29 @@ export class MenuOverlay {
       list.appendChild(btn);
       if ((!practice && entry.mapId === target) || (!focus && available)) focus = btn;
     }
-    this.content.appendChild(list);
+    this.content.appendChild(groups);
     const actions = el('div', 'menu-actions');
     this.content.appendChild(actions);
     this.button('Back', '', () => { this.callbacks.onReturnToMenu(); this.showMainMenu(); }, signal, actions);
     focus?.focus();
+  }
+
+  /** A chapter's heading on the garden list: number, name, and its stars (or that it is locked). */
+  private chapterHeader(chapter: ChapterStatus): HTMLElement {
+    const head = el('h3', 'chapter-head');
+    head.id = `chapter-head-${chapter.id}`;
+    // Plain spaces between the parts so a screen reader names the heading "Chapter 2 Mild Inconveniences ...".
+    if (chapter.number !== null) head.append(el('span', 'chapter-no', `Chapter ${chapter.number}`), ' ');
+    head.append(el('span', 'chapter-name', chapter.name), ' ');
+    if (!chapter.unlocked) {
+      head.appendChild(el('span', 'chapter-state', `Locked. Clear ${mapName(chapter.lockedBy ?? '')} to open`));
+    } else {
+      if (chapter.complete) head.append(el('span', 'chapter-state done', 'Complete'), ' ');
+      const stars = el('span', 'chapter-stars', `★ ${chapter.stars} / ${chapter.maxStars}`);
+      stars.setAttribute('aria-label', `${chapter.stars} of ${chapter.maxStars} stars`);
+      head.appendChild(stars);
+    }
+    return head;
   }
 
   /** Opens a garden for solo play, with the iris transition into play. */
@@ -674,6 +712,13 @@ export class MenuOverlay {
       for (let i = 0; i < 3; i++) starsDiv.appendChild(el('span', i < stars ? 'on' : '', '★'));
       this.content.appendChild(starsDiv);
       this.content.appendChild(el('p', '', `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}.`));
+      if (extras.chapterComplete) {
+        const done = extras.chapterComplete;
+        const card = el('div', 'chapter-complete');
+        card.append(el('span', 'ribbon chapter-ribbon', `Chapter ${done.number} complete!`),
+          el('p', '', `${done.name} · ★ ${done.stars} / ${done.maxStars}`));
+        this.content.appendChild(card);
+      }
       const ribbons = el('div');
       if (extras.newBest) ribbons.appendChild(el('span', 'ribbon', 'New best!'));
       if (hasStyle) ribbons.appendChild(el('span', 'ribbon pow', extras.newTrick ? 'Trick badge!' : 'Trick shot!'));
@@ -701,7 +746,8 @@ export class MenuOverlay {
     }
     if (extras.quote) this.content.appendChild(el('p', 'quote', `“${extras.quote}”`));
     announce(sentence(success ? `Bullseye! ${stars} of 3 stars` : 'Jonh wins', success ? `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}` : 'Three shots, zero Jonhs',
-      extras.newBest && 'New best', hasStyle && 'Trick shot', extras.unlockedMapId && `Unlocked ${mapName(extras.unlockedMapId)}`,
+      extras.newBest && 'New best', hasStyle && 'Trick shot',
+      extras.chapterComplete && `Chapter ${extras.chapterComplete.number} complete: ${extras.chapterComplete.name}. ${extras.chapterComplete.stars} of ${extras.chapterComplete.maxStars} stars`, extras.unlockedMapId && `Unlocked ${mapName(extras.unlockedMapId)}`,
       extras.feats?.length ? `Feat: ${extras.feats.join(', ')}` : null, extras.quote && `Jonh: ${extras.quote}`));
     if (extras.unlockHtml) {
       const unlock = el('div');
@@ -777,7 +823,7 @@ export class MenuOverlay {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const reduced = document.documentElement.classList.contains('reduced-motion') ||
       Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
-    // A chapter card (ui/transition.ts) already covers the way into play.
+    // A title card (ui/transition.ts) already covers the way into play.
     if (enteringPlay && !reduced && !document.querySelector('.title-card')) {
       const iris = el('div', 'iris');
       document.body.appendChild(iris);

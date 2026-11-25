@@ -1,14 +1,16 @@
 import { announce, sentence } from './announcer';
 /**
- * The comic "chapter card" between gardens: an ink panel with the garden's name stamped on it, then
- * an iris opening onto play. Purely decorative (pointer-events pass through); off under reduced
- * motion. The game underneath is already loaded when it opens.
+ * The comic "title card" between gardens: an ink panel with the garden's name stamped on it, then
+ * an iris opening onto play. The first garden of a campaign chapter also names the chapter
+ * ("Chapter 2 · Mild Inconveniences", `chapter`) on the same card: never a second screen. Purely
+ * decorative (pointer-events pass through); off under reduced motion. The game underneath is
+ * already loaded when it opens.
  */
 export const TITLE_CARD_SECONDS = 1.2;
 
-export function playTitleCard(title: string, kicker: string | null, reduced: boolean): void {
+export function playTitleCard(title: string, kicker: string | null, reduced: boolean, chapter: string | null = null): void {
   // The card itself is aria-hidden; a screen reader hears the same words (also under reduced motion).
-  announce(sentence(kicker, title));
+  announce(sentence(chapter, kicker, title));
   if (typeof document === 'undefined' || reduced) return;
   document.querySelectorAll('.title-card, .iris').forEach(node => node.remove());
   const card = document.createElement('div');
@@ -18,6 +20,12 @@ export function playTitleCard(title: string, kicker: string | null, reduced: boo
   hole.className = 'title-card-iris';
   const text = document.createElement('div');
   text.className = 'title-card-text';
+  if (chapter) {
+    const line = document.createElement('em');
+    line.className = 'title-chapter';
+    line.textContent = chapter;
+    text.appendChild(line);
+  }
   if (kicker) {
     const small = document.createElement('small');
     small.textContent = kicker;

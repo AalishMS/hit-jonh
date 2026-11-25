@@ -29,6 +29,7 @@ import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
 import { MAP_IDS, MAPS } from '../levels';
 import { campaignStatus, campaignTotals, nextCampaignMap } from '../rules/campaign';
+import { chapterCompletedBy, chapterLabel, chapterOpenedBy } from '../rules/chapters';
 import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
 import { BallRenderer } from '../render/ballRenderer';
@@ -175,7 +176,7 @@ export class PrototypeScene extends Phaser.Scene {
   private matchHighlights: Array<{ player: number; mapId: string; positionId: string; angle: number; power: number; outcome: ClassifiedOutcome }> = [];
   /** In-canvas text grows on small screens (speech bubble, landing label). */
   private textBoost = 1;
-  /** A chapter card is covering the start of this round: the first handover waits for it. */
+  /** A title card is covering the start of this round: the first handover waits for it. */
   private titleCardPending = false;
   /** The winning-shot replay before the match result: not started, playing, or done for this match. */
   private showcaseState: 'none' | 'playing' | 'done' = 'none';
@@ -760,7 +761,9 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
     const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
-    playTitleCard(level.name, daily ? 'Daily Bonk' : this.practice ? `Practice · Garden ${number}` : `Garden ${number}`, data.settings.reducedMotion);
+    // The first garden of a campaign chapter names the chapter on the same card (not practice or Daily).
+    const opened = daily || this.practice ? null : chapterOpenedBy(campaignStatus(MAP_IDS, data.solo), level.id);
+    playTitleCard(level.name, daily ? 'Daily Bonk' : this.practice ? `Practice · Garden ${number}` : `Garden ${number}`, data.settings.reducedMotion, opened ? chapterLabel(opened) : null);
     this.startCoachHand();
   }
 
@@ -1291,6 +1294,7 @@ export class PrototypeScene extends Phaser.Scene {
       const campaignAfter = campaignStatus(MAP_IDS, soloAfter);
       const nextMapId = !this.daily && res.success ? nextCampaignMap(campaignAfter, mapId) : null;
       const wasLocked = nextMapId !== null && !campaignBefore.find(e => e.mapId === nextMapId)?.unlocked;
+      const finished = this.daily || !res.success ? null : chapterCompletedBy(campaignBefore, campaignAfter, mapId);
       this.soloResultExtras = {
         newBest: !this.daily && res.success && (previous === null || res.shotsUsed < previous),
         quote,
@@ -1299,6 +1303,7 @@ export class PrototypeScene extends Phaser.Scene {
         feats: [...new Set(this.pendingFeats)],
         nextMapId,
         unlockedMapId: wasLocked ? nextMapId : null,
+        chapterComplete: finished?.number != null ? { number: finished.number, name: finished.name, stars: finished.stars, maxStars: finished.maxStars } : null,
         campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
         newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
         practiceMapId: !this.daily && soloAfter[mapId]?.bestShots != null ? mapId : null,
@@ -1900,7 +1905,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   private updateUIPerMultiState(): void {
     const match = this.multiMachine;
-    // A round's chapter card pads only the handover that follows it (an online rebuild may land mid-turn).
+    // A round's title card pads only the handover that follows it (an online rebuild may land mid-turn).
     if (match.state !== 'handover') this.titleCardPending = false;
     if (match.state === 'handover') this.applyMultiplayerPosition();
     const shootOut = match.suddenDeath;
@@ -1937,7 +1942,7 @@ export class PrototypeScene extends Phaser.Scene {
       const tauntText = prev && prev.shooter !== match.activePlayerIndex ? tauntFor(prev.outcome) : null;
       const shooter = prev ? match.players[prev.shooter] : undefined;
       const taunt = tauntText && shooter ? { name: shooter.name, color: shooter.color, text: tauntText } : null;
-      // The round's chapter card covers the first moment, so the first handover waits it out.
+      // The round's title card covers the first moment, so the first handover waits it out.
       const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0)
         + (this.titleCardPending ? TITLE_CARD_SECONDS : 0);
       this.titleCardPending = false;
