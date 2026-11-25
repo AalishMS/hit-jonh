@@ -4,6 +4,7 @@ import { AIM, MULTIPLAYER } from '../config/tuning';
 import { cosmeticContext } from '../rules/cosmetics';
 import { freshProgress, recordEarned, sanitizeProgress, type Progress } from '../rules/progression';
 import { sanitizePlayerName } from '../rules/playerName';
+import type { PlayerPalette } from '../art/palette';
 export { sanitizePlayerName };
 
 export interface LevelScore {
@@ -35,6 +36,8 @@ export interface Settings {
   music: boolean;
   /** Remappable gameplay keys (input/keyBindings.ts). */
   keys: KeyBindings;
+  /** Player colours: the standard set or the colour-blind friendly one (art/palette.ts). */
+  playerColors: PlayerPalette;
 }
 
 export interface SaveData {
@@ -56,6 +59,7 @@ const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
   music: true,
   keys: DEFAULT_KEYS,
+  playerColors: 'standard',
 };
 
 function getFreshData(): SaveData {
@@ -164,6 +168,7 @@ export function loadSaveData(): SaveData {
       data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
       data.settings.music = typeof pSet.music === 'boolean' ? pSet.music : DEFAULT_SETTINGS.music;
       data.settings.keys = sanitizeKeys(pSet.keys);
+      data.settings.playerColors = pSet.playerColors === 'colorblind' ? 'colorblind' : 'standard';
     }
 
     // Validate solo

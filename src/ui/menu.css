@@ -126,6 +126,9 @@
 .setting-row input[type='checkbox']:checked { background: var(--leaf); }
 .setting-row input[type='checkbox']:checked::after { transform: translateX(22px); background: var(--paper); }
 .setting-row.volume { flex-direction: column; align-items: stretch; cursor: default; }
+/* Player colours: the four cannon colours of the chosen palette, beside its switch. */
+.palette-preview { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+.palette-dot { width: 16px; height: 16px; border: 2px solid var(--ink); border-radius: 50%; }
 .setting-row.volume div { display: flex; justify-content: space-between; }
 
 /* ---------- Locker (hats) ---------- */

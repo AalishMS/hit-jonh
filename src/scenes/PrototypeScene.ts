@@ -3,6 +3,7 @@ import { AudioManager } from '../audio/audioManager';
 import { FootstepTracker } from '../audio/footsteps';
 import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
+import { setPlayerPalette } from '../art/palette';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
 import { aimFrame, flightFrame, impactFrame, levelView, replayFrame, type Frame, type Viewport } from '../fx/cameraDirector';
@@ -362,6 +363,7 @@ export class PrototypeScene extends Phaser.Scene {
     });
     this.online = isOnlineConfigured() ? new OnlineController(this.menuOverlay, this.onlineHooks()) : null;
     document.documentElement.classList.toggle('reduced-motion', loadSaveData().settings.reducedMotion);
+    setPlayerPalette(loadSaveData().settings.playerColors);
 
     this.inputCoordinator = new InputCoordinator({
       onFire: () => this.fire(),

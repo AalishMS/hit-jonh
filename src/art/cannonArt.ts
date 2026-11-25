@@ -1,5 +1,5 @@
 import { MULTIPLAYER } from '../config/tuning';
-import { PAL, cssColor, playerDisplayColor } from './palette';
+import { PAL, PLAYER_PALETTES, cssColor, playerDisplayColor, playerPalette, type PlayerPalette } from './palette';
 import type { CannonSkinId } from '../rules/cosmetics';
 import { CANNON_THEMES, type CannonTheme } from './cannonSkins';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
@@ -39,8 +39,10 @@ function patternSvg(pattern: string): string {
   return '';
 }
 
-export function barrelKey(color: number | null, pattern: string | null): string {
-  return color === null ? 'cannon-barrel' : `cannon-barrel-${color.toString(16)}-${pattern ?? 'solid'}`;
+/** A player's barrel texture, painted in the chosen palette (the standard palette keeps the original keys). */
+export function barrelKey(color: number | null, pattern: string | null, palette: PlayerPalette = playerPalette()): string {
+  if (color === null) return 'cannon-barrel';
+  return `cannon-barrel-${palette === 'standard' ? '' : `${palette}-`}${color.toString(16)}-${pattern ?? 'solid'}`;
 }
 
 function carriageBody(t: CannonTheme['carriage'] = CLASSIC.carriage): string {
@@ -96,9 +98,11 @@ export function cannonArt(): ArtDef[] {
       wheelArt(keys.wheel, theme.wheel),
     );
   }
-  for (const color of MULTIPLAYER.colors) {
-    for (const pattern of MULTIPLAYER.patterns) {
-      defs.push(barrel(barrelKey(color, pattern), cssColor(playerDisplayColor(color)), pattern));
+  for (const palette of PLAYER_PALETTES) {
+    for (const color of MULTIPLAYER.colors) {
+      for (const pattern of MULTIPLAYER.patterns) {
+        defs.push(barrel(barrelKey(color, pattern, palette), cssColor(playerDisplayColor(color, palette)), pattern));
+      }
     }
   }
   return defs;

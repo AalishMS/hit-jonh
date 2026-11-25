@@ -9,6 +9,7 @@ import { MECHANIC_FX_ART, mechanicArt } from './mechanicArt';
 import { clouds, obstacleArt, obstacleKey, props, sceneryArt, themeArt, themeFor } from './sceneryArt';
 import { WIND_ART } from './windArt';
 import type { ArtDef } from './svgKit';
+import { PLAYER_PALETTES, playerPalette, type PlayerPalette } from './palette';
 import type { CannonSkinId, OutfitId } from '../rules/cosmetics';
 import { OUTFIT_ORDER } from '../rules/cosmetics';
 
@@ -25,7 +26,8 @@ export const SCENERY_COMMON_GROUP = 'scenery-common';
 export const hatGroup = (id: string) => `hat:${id}`;
 export const outfitGroup = (id: OutfitId) => `outfit:${id}`;
 export const cannonSkinGroup = (id: CannonSkinId) => `cannon:${id}`;
-export const barrelGroup = (color: number, pattern: string) => `barrel:${color.toString(16)}-${pattern}`;
+export const barrelGroup = (color: number, pattern: string, palette: PlayerPalette = playerPalette()) =>
+  `barrel:${palette === 'standard' ? '' : `${palette}-`}${color.toString(16)}-${pattern}`;
 export const themeGroup = (levelId: string) => `theme:${themeFor(levelId).id}`;
 export const levelGroup = (levelId: string) => `level:${levelId}`;
 
@@ -55,8 +57,10 @@ function buildGroups(): Map<string, ArtDef[]> {
     // The classic parts are drawn by every cannon (they are the renderer's initial textures).
     put(skin === 'classic' ? CORE_GROUP : cannonSkinGroup(skin), [k.barrel, k.carriage, k.wheel]);
   }
-  for (const color of MULTIPLAYER.colors) {
-    for (const pattern of MULTIPLAYER.patterns) put(barrelGroup(color, pattern), [barrelKey(color, pattern)]);
+  for (const palette of PLAYER_PALETTES) {
+    for (const color of MULTIPLAYER.colors) {
+      for (const pattern of MULTIPLAYER.patterns) put(barrelGroup(color, pattern, palette), [barrelKey(color, pattern, palette)]);
+    }
   }
   put(SCENERY_COMMON_GROUP, [...clouds, ...props, ...MECHANIC_FX_ART].map(def => def.key));
   for (const theme of new Set(MAPS.map(level => themeFor(level.id)))) put(`theme:${theme.id}`, themeArt(theme).map(def => def.key));
@@ -82,7 +86,7 @@ export function cosmeticArtGroups(look: { hat: string; outfit: OutfitId; cannon:
   return [hatGroup(look.hat), outfitGroup(look.outfit), cannonSkinGroup(look.cannon)].filter(id => ART_GROUPS.has(id));
 }
 
-/** The barrels of the players at the table (multiplayer cannons are painted in the player's colour). */
+/** The barrels of the players at the table (multiplayer cannons are painted in the player's colour, in the chosen palette). */
 export function playerBarrelGroups(players: ReadonlyArray<{ color: number; pattern: string }>): string[] {
   return players.map(p => barrelGroup(p.color, p.pattern)).filter(id => ART_GROUPS.has(id));
 }

@@ -2,7 +2,7 @@ import { DEFAULT_MAP_SET, MAP_IDS, MAPS } from '../levels';
 import { campaignStatus, campaignTotals, continueTarget, type CampaignEntry } from '../rules/campaign';
 import { chapterStatuses, type ChapterStatus } from '../rules/chapters';
 import { FLOW, MULTIPLAYER } from '../config/tuning';
-import { cssColor, playerDisplayColor } from '../art/palette';
+import { cssColor, playerDisplayColor, setPlayerPalette } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
 import { shareBlock } from './share';
@@ -329,6 +329,24 @@ export class MenuOverlay {
     volRow.append(head, slider);
     list.appendChild(volRow);
     toggle('settings-reduced-motion', 'Reduced motion', reducedMotion, v => { reducedMotion = v; });
+    // Player colours (art/palette.ts): a colour-blind friendly set, previewed as the four cannon colours.
+    const colors = toggle('settings-player-colors', 'Colour-blind friendly player colours', data.settings.playerColors === 'colorblind', v => {
+      const playerColors = v ? 'colorblind' : 'standard';
+      saveSettings({ playerColors });
+      setPlayerPalette(playerColors);
+      paintPreview();
+    });
+    const preview = el('span', 'palette-preview');
+    preview.setAttribute('aria-hidden', 'true');
+    const paintPreview = () => {
+      preview.replaceChildren(...MULTIPLAYER.colors.map(c => {
+        const dot = el('span', 'palette-dot');
+        dot.style.background = cssColor(playerDisplayColor(c));
+        return dot;
+      }));
+    };
+    paintPreview();
+    colors.before(preview);
     this.content.appendChild(list);
     this.content.appendChild(this.keysSection(signal));
     this.button('Back', '', () => this.showHome(), signal).focus();
