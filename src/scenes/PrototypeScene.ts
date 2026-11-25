@@ -66,6 +66,7 @@ import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, sav
 import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
 import { shareBlock } from '../ui/share';
+import { DEFAULT_KEYS, keyLabel, type KeyBindings } from '../input/keyBindings';
 import { coachActive, missHint, showGhostHand } from '../rules/coach';
 import { FEATS, FEAT_GROUPS, featStatuses, featsDone, newlyCompletedFeats, type FeatInput } from '../rules/feats';
 import { buildFeats } from '../ui/feats';
@@ -84,7 +85,8 @@ const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
 type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | { kind: 'cannon'; id: CannonSkinId };
 
 /** Keys that adjust the aim; pressing one during a solo miss's result goes straight back to aiming. */
-const AIM_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+/** The bound aim keys (angle and power), for "touching the aim skips a miss's result". */
+const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDown, k.powerUp];
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
 const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
@@ -135,6 +137,8 @@ export class PrototypeScene extends Phaser.Scene {
   private dailyRun = '';
   /** Practice on a cleared garden: unlimited shots, nothing saved (SPEC §4.2). */
   private practice = false;
+  /** Gameplay key bindings (Settings → Keys). */
+  private keys: KeyBindings = DEFAULT_KEYS;
   /** The coach's ghost hand on the first garden while it plays (rules/coach.ts). */
   private coachHand: CoachRenderer | null = null;
   /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
@@ -334,6 +338,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.attract?.stage.jonh.setReducedMotion(settings.reducedMotion);
       },
       onClick: () => this.audioManager.playClick(),
+      onKeysChange: (keys) => this.applyKeys(keys),
       onHomeExtras: (row, signal) => this.addHomeExtras(row, signal),
       onOnline: isOnlineConfigured() ? () => this.online?.open() : undefined,
     });
@@ -420,7 +425,7 @@ export class PrototypeScene extends Phaser.Scene {
       
       const isOverlayOpen = this.menuOverlay.isVisible() && !this.menuOverlay.isPauseMenuVisible();
       this.inputCoordinator.setOverlayVisible(isOverlayOpen);
-      if (!isInput && !e.repeat && AIM_KEYS.has(e.code)) this.skipResult(true);
+      if (!isInput && !e.repeat && aimKeys(this.keys).includes(e.code)) this.skipResult(true);
 
       const focused = e.target instanceof HTMLElement ? e.target : document.activeElement;
       const isActionButton = focused instanceof HTMLButtonElement && focused.id !== 'fire-btn';
@@ -432,6 +437,7 @@ export class PrototypeScene extends Phaser.Scene {
     const onKeyUp = (e: KeyboardEvent) => {
       this.inputCoordinator.handleKeyUp(e.code);
     };
+    this.applyKeys(loadSaveData().settings.keys);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     this.cleanupHandlers.push(() => window.removeEventListener('keydown', onKeyDown));
@@ -755,6 +761,13 @@ export class PrototypeScene extends Phaser.Scene {
     if (!ground || state.obstacleContacts.length === 0) return false;
     const near = Math.min(...state.obstacleContacts.map(c => this.currentLevel.obstacles.find(o => o.id === c.id)?.box.minX ?? Number.POSITIVE_INFINITY));
     return ground.xSim < near;
+  }
+
+  /** Remapped keys (Settings → Keys): the keyboard coordinator and the HUD's key labels follow them. */
+  private applyKeys(keys: KeyBindings): void {
+    this.keys = keys;
+    this.inputCoordinator.setKeys(keys);
+    this.htmlControls.setKeyLabels(keyLabel(keys.fire), keyLabel(keys.next));
   }
 
   /** The coach's ghost hand: on the first garden, for a player who has never hit Jonh (rules/coach.ts). */

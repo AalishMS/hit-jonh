@@ -61,6 +61,11 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 - Display angle in whole degrees and power as an integer percentage. **[DECIDED]**
 - Angle range **5°–85°** above horizontal **[PROPOSED][TUNE]**. Power **0–100 %**. Every map must be solvable inside these ranges.
 - Controls are **HTML elements outside the canvas** (native slider accessibility, touch, focus handling) **[PROPOSED]**.
+- **Accessibility pass [DECIDED request 2026-11-25; details PROPOSED]:**
+  - **Remappable keys.** Settings → Keys rebinds Fire, Skip/next, angle, power, Aim again/retry and Sound (`input/keyBindings.ts`, saved in settings). Escape (pause/back) and Tab (focus) are fixed. Binding a key that is already used swaps the two actions. The FIRE button, the Next pill and the result card's retry hint show the bound keys.
+  - **Screen readers.** A polite live region (`ui/announcer.ts`) reads out moments that only show on screen: the chapter card, each handover (banner, stakes, taunt), round and match results, and the solo result (stars, ribbons, unlocks, feats, Jonh's line). The HUD caption was already live.
+  - **Touch targets.** Every control is at least 44 CSS px on phones (audited at 390×844 and 844×390).
+  - **Colour vision.** Player colours stay distinguishable with normal vision. Under simulated deuteranopia, tomato/leaf and sky/grape come close (ΔE76 about 15 and 11). Colour therefore never stands alone: cannons pair it with patterns, panels and cards show names, and trails have ink outlines (`tests/colorVision.test.ts`).
 - **Accidental-action rules [DECIDED]:**
   - Fire is accepted only in the `aiming` state.
   - Fire requires a fresh press: ignore `KeyboardEvent.repeat`, and ignore Space until it has been released at least once after entering `aiming`.

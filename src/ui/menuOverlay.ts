@@ -5,6 +5,8 @@ import { cssColor, playerDisplayColor } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
 import { shareBlock } from './share';
+import { announce, sentence } from './announcer';
+import { DEFAULT_KEYS, KEY_ACTIONS, KEY_ACTION_LABELS, actionFor, isBindableCode, keyLabel, rebind, type KeyAction, type KeyBindings } from '../input/keyBindings';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
@@ -26,6 +28,8 @@ export interface MenuCallbacks {
   onPauseResume?: () => void;
   onPauseQuit?: () => void;
   onSettingsChange?: (settings: MenuSettings) => void;
+  /** Settings → Keys changed the gameplay key bindings (already saved). */
+  onKeysChange?: (keys: KeyBindings) => void;
   /** Retention hooks (polish pass): extra home-screen entries rendered by the scene. */
   onHomeExtras?: (container: HTMLElement, signal: AbortSignal) => void;
   onClick?: () => void;
@@ -319,7 +323,70 @@ export class MenuOverlay {
     list.appendChild(volRow);
     toggle('settings-reduced-motion', 'Reduced motion', reducedMotion, v => { reducedMotion = v; });
     this.content.appendChild(list);
+    this.content.appendChild(this.keysSection(signal));
     this.button('Back', '', () => this.showHome(), signal).focus();
+  }
+
+  /** Settings → Keys: rebind each gameplay key. Escape cancels a change; a key already in use swaps. */
+  private keysSection(signal: AbortSignal): HTMLElement {
+    const section = el('section', 'keys-section');
+    const title = el('h3', 'keys-title', 'Keys');
+    title.id = 'keys-title';
+    section.setAttribute('aria-labelledby', title.id);
+    const table = el('div', 'keys-list');
+    const status = el('p', 'keys-status');
+    status.setAttribute('role', 'status');
+    let keys = loadSaveData().settings.keys;
+    let stopCapture: (() => void) | null = null;
+    const save = (next: KeyBindings, message: string, focusAction: KeyAction | null) => {
+      keys = next;
+      saveSettings({ keys });
+      this.callbacks.onKeysChange?.(keys);
+      render();
+      status.textContent = message;
+      // Focus returns after the key is released, so a Space or Enter binding can't re-press the button.
+      if (focusAction) window.addEventListener('keyup', () => (table.querySelector(`[data-action="${focusAction}"]`) as HTMLElement | null)?.focus(), { once: true, signal });
+    };
+    const capture = (action: KeyAction, button: HTMLButtonElement) => {
+      stopCapture?.();
+      const name = KEY_ACTION_LABELS[action];
+      button.textContent = 'Press a key…';
+      button.classList.add('capturing');
+      status.textContent = `Press the new key for ${name}. Escape cancels.`;
+      const onKey = (e: KeyboardEvent) => {
+        // First in line (window, capture phase): the game and the menus never see this key.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.repeat) return;
+        stopCapture?.();
+        if (e.code === 'Escape') { render(); status.textContent = `${name} unchanged.`; return; }
+        if (!isBindableCode(e.code)) { render(); status.textContent = `That key can't be used. Try another.`; return; }
+        const other = actionFor(keys, e.code);
+        const swapped = other && other !== action ? ` ${KEY_ACTION_LABELS[other]} now uses ${keyLabel(keys[action])}.` : '';
+        save(rebind(keys, action, e.code), `${name}: ${keyLabel(e.code)}.${swapped}`, action);
+      };
+      window.addEventListener('keydown', onKey, { capture: true, signal });
+      stopCapture = () => { window.removeEventListener('keydown', onKey, { capture: true }); stopCapture = null; };
+    };
+    const render = () => {
+      table.replaceChildren();
+      for (const action of KEY_ACTIONS) {
+        const row = el('div', 'key-row');
+        const change = el('button', 'btn key-change', 'Change');
+        change.type = 'button';
+        change.dataset.action = action;
+        change.setAttribute('aria-label', `Change the key for ${KEY_ACTION_LABELS[action]}, now ${keyLabel(keys[action])}`);
+        change.addEventListener('click', () => capture(action, change), { signal });
+        row.append(el('span', 'key-action', KEY_ACTION_LABELS[action]), el('kbd', 'key-current', keyLabel(keys[action])), change);
+        table.appendChild(row);
+      }
+    };
+    render();
+    const reset = el('button', 'btn btn-quiet keys-reset', 'Reset keys');
+    reset.type = 'button';
+    reset.addEventListener('click', () => save({ ...DEFAULT_KEYS }, 'Keys reset to the defaults.', null), { signal });
+    section.append(title, el('p', 'home-note', 'Escape always pauses and goes back. In online rooms E and 1–6 also send emotes.'), table, status, reset);
+    return section;
   }
 
   /** The campaign gardens; `practice` lists the same cards for practice (cleared gardens only). */
@@ -504,7 +571,10 @@ export class MenuOverlay {
       this.content.appendChild(taunt);
     }
     // attemptNum 0: a sudden-death shot (one each), not one of the round's three.
-    this.content.appendChild(el('p', '', attemptNum > 0 ? `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}` : `${mapName} · One shot`));
+    const where = attemptNum > 0 ? `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}` : `${mapName} · One shot`;
+    this.content.appendChild(el('p', '', where));
+    announce(sentence(party?.kicker, headline ?? `Pass the cannon to ${player.name}`, party?.stakes,
+      party?.taunt ? `${party.taunt.name} says: ${party.taunt.text}` : null, where.replace(' · ', ', ')));
     const btn = this.button('Ready now', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerHandoverContinue?.(); }, signal);
     const bar = el('div', 'auto-bar');
     bar.style.setProperty('--auto-duration', `${party?.autoSeconds ?? FLOW.handoverSeconds}s`);
@@ -535,6 +605,7 @@ export class MenuOverlay {
     this.content.appendChild(this.scoreRows(sorted, p => `+${p.roundScores[roundIndex] ?? 0} this round`));
     const finalNext = roundIndex === roundCount - 2;
     if (finalNext) this.content.appendChild(el('p', 'stakes-line', 'Final round next. Everything to play for.'));
+    announce(sentence(`Round ${roundIndex + 1} done`, sorted.map(p => `${p.name} ${p.totalScore}`).join(', '), finalNext && 'Final round next'));
     const btn = this.button(roundIndex >= roundCount - 1 ? 'Final result' : finalNext ? 'Final round ›' : 'Next round', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
     const bar = el('div', 'auto-bar');
     bar.style.setProperty('--auto-duration', `${FLOW.roundResultSeconds}s`);
@@ -552,6 +623,10 @@ export class MenuOverlay {
     const signal = this.open('match_result');
     this.content.appendChild(el('h1', '', winners.length > 1 ? "It's a tie!" : `${winners[0]?.name ?? 'Nobody'} wins!`));
     if (note) this.content.appendChild(el('p', 'stakes-line decisive', note));
+    if (firstRender) {
+      announce(sentence(winners.length > 1 ? "It's a tie" : `${winners[0]?.name ?? 'Nobody'} wins`, note,
+        [...players].sort((a, b) => b.totalScore - a.totalScore).map(p => `${p.name} ${p.totalScore} points`).join(', ')));
+    }
     const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `${p.bodyHits} hit${p.bodyHits === 1 ? '' : 's'}`, winners));
     this.content.appendChild(el('p', 'quote', '“I want it noted that I was here first.” — Jonh'));
@@ -621,6 +696,9 @@ export class MenuOverlay {
       this.content.appendChild(feats);
     }
     if (extras.quote) this.content.appendChild(el('p', 'quote', `“${extras.quote}”`));
+    announce(sentence(success ? `Bullseye! ${stars} of 3 stars` : 'Jonh wins', success ? `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}` : 'Three shots, zero Jonhs',
+      extras.newBest && 'New best', hasStyle && 'Trick shot', extras.unlockedMapId && `Unlocked ${mapName(extras.unlockedMapId)}`,
+      extras.feats?.length ? `Feat: ${extras.feats.join(', ')}` : null, extras.quote && `Jonh: ${extras.quote}`));
     if (extras.unlockHtml) {
       const unlock = el('div');
       unlock.innerHTML = extras.unlockHtml;
@@ -647,8 +725,9 @@ export class MenuOverlay {
     }
     const quiet = next !== null || shareBtn !== null;
     const retryBtn = this.button(extras.share ? 'Play again' : success ? 'Retry' : 'Retry map', quiet ? 'btn-retry-quiet' : 'btn-retry', retry, signal, actions);
-    this.keyHint(retryBtn, 'R');
-    this.shortcut('KeyR', retry, signal);
+    const retryKey = loadSaveData().settings.keys.retry;
+    this.keyHint(retryBtn, keyLabel(retryKey));
+    this.shortcut(retryKey, retry, signal);
     if (extras.share) this.button('Home', '', () => { this.callbacks.onReturnToMenu(); this.showHome(); }, signal, actions);
     else this.button('Map select', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
     const practiceId = extras.practiceMapId;

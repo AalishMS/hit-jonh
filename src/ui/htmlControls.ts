@@ -264,8 +264,20 @@ export class HTMLControls {
     if (debugGroup) debugGroup.hidden = !optIn;
   }
 
+  /** Labels shown for the bound keys (input/keyBindings.ts): FIRE's key and the ↵ on the pill. */
+  private nextKeyLabel = '↵';
+
+  setKeyLabels(fire: string, next: string): void {
+    const small = this.fireButton.querySelector('small');
+    if (small) small.textContent = fire;
+    this.nextKeyLabel = next;
+    const current = this.resetButton.dataset.label;
+    if (current) this.setResetLabel(current);
+  }
+
   setResetLabel(label: string): void {
-    this.resetButton.textContent = label;
+    this.resetButton.dataset.label = label;
+    this.resetButton.textContent = label.replace('↵', this.nextKeyLabel);
     this.resetButton.classList.toggle('is-next', /next|continue|skip/i.test(label));
   }
 

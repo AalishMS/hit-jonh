@@ -1,3 +1,4 @@
+import { DEFAULT_KEYS, sanitizeKeys, type KeyBindings } from '../input/keyBindings';
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
 import { cosmeticContext } from '../rules/cosmetics';
@@ -32,6 +33,8 @@ export interface Settings {
   reducedMotion: boolean;
   /** Background music loop (sound effects follow `muted`). */
   music: boolean;
+  /** Remappable gameplay keys (input/keyBindings.ts). */
+  keys: KeyBindings;
 }
 
 export interface SaveData {
@@ -52,6 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   volume: 1.0,
   reducedMotion: false,
   music: true,
+  keys: DEFAULT_KEYS,
 };
 
 function getFreshData(): SaveData {
@@ -159,6 +163,7 @@ export function loadSaveData(): SaveData {
         : DEFAULT_SETTINGS.volume;
       data.settings.reducedMotion = typeof pSet.reducedMotion === 'boolean' ? pSet.reducedMotion : DEFAULT_SETTINGS.reducedMotion;
       data.settings.music = typeof pSet.music === 'boolean' ? pSet.music : DEFAULT_SETTINGS.music;
+      data.settings.keys = sanitizeKeys(pSet.keys);
     }
 
     // Validate solo

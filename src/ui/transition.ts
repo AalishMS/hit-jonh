@@ -1,3 +1,4 @@
+import { announce, sentence } from './announcer';
 /**
  * The comic "chapter card" between gardens: an ink panel with the garden's name stamped on it, then
  * an iris opening onto play. Purely decorative (pointer-events pass through); off under reduced
@@ -6,6 +7,8 @@
 export const TITLE_CARD_SECONDS = 1.2;
 
 export function playTitleCard(title: string, kicker: string | null, reduced: boolean): void {
+  // The card itself is aria-hidden; a screen reader hears the same words (also under reduced motion).
+  announce(sentence(kicker, title));
   if (typeof document === 'undefined' || reduced) return;
   document.querySelectorAll('.title-card, .iris').forEach(node => node.remove());
   const card = document.createElement('div');
