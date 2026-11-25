@@ -18,7 +18,7 @@ import {
 import { outfitFigureSvg } from '../art/outfitArt';
 import { cannonSkinFigureSvg } from '../art/cannonArt';
 import { cannonSkinGroup, cosmeticArtGroups, hatGroup, levelArtGroups, outfitGroup, playerBarrelGroups } from '../art/library';
-import { artMeta, artReady, whenArtReady } from '../render/artTextures';
+import { artMeta, artReady, ensureArt, whenArtReady } from '../render/artTextures';
 import { pickAttractLevel } from './attractLevel';
 import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
@@ -30,7 +30,7 @@ import { CanvasAim } from '../input/canvasAim';
 import { AutoAdvance } from '../rules/autoAdvance';
 import { InputCoordinator, isTextInputElement } from '../input/controls';
 import { MAP_IDS, MAPS } from '../levels';
-import { campaignStatus, campaignTotals, nextCampaignMap } from '../rules/campaign';
+import { campaignStatus, campaignSuccessor, campaignTotals, nextCampaignMap } from '../rules/campaign';
 import { chapterCompletedBy, chapterLabel, chapterOpenedBy } from '../rules/chapters';
 import { levelAtMultiplayerPosition } from '../levels/multiplayerPositions';
 import { MatterAdapter, type ProjectileState } from '../physics/matterAdapter';
@@ -99,6 +99,12 @@ const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDo
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
 const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
+
+/** Runs `fn` when the main thread is idle (Safari has no requestIdleCallback: a short timer stands in). */
+function whenIdle(fn: () => void): void {
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 2000 });
+  else globalThis.setTimeout(fn, 200);
+}
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
@@ -642,15 +648,13 @@ export class PrototypeScene extends Phaser.Scene {
     const a = this.attract;
     if (!a || typeof window === 'undefined') return;
     const pending = a.stage.level.referenceSolutions.slice();
-    // Safari has no requestIdleCallback: a short timer stands in.
-    const idle = (fn: () => void): void => { if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 2000 }); else globalThis.setTimeout(fn, 200); };
     const next = (): void => {
       const aim = pending.shift();
       if (!aim || this.attract !== a) return;
       this.recordedShot(a.stage.level, aim.angleDeg, aim.powerPercent);
-      idle(next);
+      whenIdle(next);
     };
-    idle(next);
+    whenIdle(next);
   }
 
   /** Title screen: aim at Jonh, wind up and fire a recorded reference shot (tap = right now). */
@@ -700,8 +704,25 @@ export class PrototypeScene extends Phaser.Scene {
     // Art is rasterized the first time a garden (or hat, outfit, cannon) is needed; wait for it, then build the scene.
     const token = ++this.loadToken;
     whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups()], () => {
-      if (token === this.loadToken) this.loadMapNow(mapId, daily, practice);
+      if (token !== this.loadToken) return;
+      this.loadMapNow(mapId, daily, practice);
+      this.warmNextGarden();
     });
+  }
+
+  /**
+   * Once the garden is up and the player is aiming, rasterizes the garden that most likely comes next (the next
+   * one in the campaign, or the next round's map) in idle time, so Next garden doesn't wait on art.
+   */
+  private warmNextGarden(): void {
+    const next = this.activeMode === 'multi' ? this.multiMachine.nextMapId
+      : this.daily ? null : campaignSuccessor(MAP_IDS, this.currentLevel.id);
+    if (!next || artReady(levelArtGroups(next))) return;
+    const token = this.loadToken;
+    globalThis.setTimeout(() => whenIdle(() => {
+      if (token !== this.loadToken) return; // left the garden meanwhile
+      ensureArt(this, levelArtGroups(next)).catch((error: unknown) => console.error('Hit Jonh failed to prepare art', error));
+    }), FLOW.warmNextGardenSeconds * MS_PER_SECOND);
   }
 
   private loadMapNow(mapId: string, daily: { key: string; positionId: string } | null, practice: boolean): void {
@@ -1882,6 +1903,7 @@ export class PrototypeScene extends Phaser.Scene {
     whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups(), ...playerBarrelGroups(this.multiMachine.players)], () => {
       if (token !== this.loadToken) return; // the player left (or started something else) meanwhile
       this.loadMultiplayerMapNow(mapId);
+      this.warmNextGarden();
       // Paused while it loaded: the screen for this state is drawn on resume (onResume) instead.
       if (!this.sessionCoordinator.isPaused) then?.();
     });

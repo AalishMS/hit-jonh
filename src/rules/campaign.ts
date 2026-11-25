@@ -81,6 +81,13 @@ export function campaignTotals(entries: readonly CampaignEntry[]): CampaignTotal
   };
 }
 
+/** The garden after `mapId` in campaign order, locked or not (to prepare its art early); null after the last. */
+export function campaignSuccessor(mapIds: readonly string[], mapId: string): string | null {
+  const order = campaignOrder(mapIds);
+  const at = order.indexOf(mapId);
+  return at >= 0 ? order[at + 1] ?? null : null;
+}
+
 /** The garden after `mapId` in campaign order, if it is unlocked (e.g. just cleared `mapId`). */
 export function nextCampaignMap(entries: readonly CampaignEntry[], mapId: string): string | null {
   const at = entries.findIndex(e => e.mapId === mapId);

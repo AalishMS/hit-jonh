@@ -134,6 +134,8 @@ export class MultiplayerMatchMachine {
   get roundIndex(): number { return this._roundIndex; }
   get currentMapId(): string { return this.maps[this._roundIndex] ?? this.maps[0]!; }
   get roundCount(): number { return this.maps.length; }
+  /** The next round's map, or null in the last round. */
+  get nextMapId(): string | null { return this.maps[this._roundIndex + 1] ?? null; }
 
   /** Resolution advances the turn counter; keep the finished cycle until handover. */
   get activeCycleIndex(): number {

@@ -158,6 +158,11 @@ export const FLOW = {
   /** Winning-shot replay [TUNE]: a beat before the cannon swings, and how long after the impact it lingers. */
   showcaseLeadSeconds: 0.5,
   showcaseAfterSeconds: 2.2,
+  /**
+   * Seconds after a garden is built before the next garden's art is prepared in idle time (after its title card,
+   * while the player aims), so Next garden never waits on art [TUNE].
+   */
+  warmNextGardenSeconds: 2.5,
 } as const;
 
 /** Reversible art direction: a quiet, sunlit garden with inked cartoon figures. */

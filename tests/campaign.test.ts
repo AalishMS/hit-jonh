@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_IDS } from '../src/levels';
 import {
-  CAMPAIGN_ORDER, campaignOrder, campaignStatus, campaignTotals, continueTarget, nextCampaignMap, starsFor,
+  CAMPAIGN_ORDER, campaignOrder, campaignStatus, campaignSuccessor, campaignTotals, continueTarget, nextCampaignMap, starsFor,
 } from '../src/rules/campaign';
 
 const best = (bestShots: number | null, hasStyle = false) => ({ bestShots, hasStyle });
@@ -56,5 +56,15 @@ describe('campaign', () => {
     expect(continueTarget(entries)).toBe(CAMPAIGN_ORDER[2]);
     const perfect = campaignStatus(CAMPAIGN_ORDER, Object.fromEntries(CAMPAIGN_ORDER.map(id => [id, best(1)])));
     expect(continueTarget(perfect)).toBeNull();
+  });
+});
+
+describe('campaignSuccessor', () => {
+  it('names the next garden in campaign order, locked or not, and null after the last', () => {
+    const order = CAMPAIGN_ORDER.filter(id => MAP_IDS.includes(id));
+    expect(campaignSuccessor(MAP_IDS, order[0]!)).toBe(order[1]);
+    expect(campaignSuccessor(MAP_IDS, 'nowhere')).toBeNull();
+    const all = [...order, ...MAP_IDS.filter(id => !order.includes(id))];
+    expect(campaignSuccessor(MAP_IDS, all[all.length - 1]!)).toBeNull();
   });
 });
