@@ -412,8 +412,6 @@ export const WIND = {
   streakDriftPxPerMs2: 70,
   /** Streak opacity range. */
   streakAlpha: 0.55,
-  /** Gust sound: loudness at full wind (0–1). */
-  gustVolume: 0.5,
 } as const;
 
 /**
@@ -456,4 +454,92 @@ export const ONLINE = {
   emoteMaxAgeSeconds: 10,
   /** [PROPOSED 2026-11-25] Bubbles on screen at once (the newest win). */
   emoteMaxVisible: 3,
+} as const;
+
+/**
+ * Sound levels and the cues added for the gardens [PROPOSED 2026-11-25][TUNE]. Cosmetic only: nothing here
+ * touches the simulation. Every cue plays through its own trim bus (`CUE_NAMES`), so balancing is a table of
+ * dB offsets rather than gains scattered through the synth code. The values are set from the offline
+ * loudness report (`audio-levels.html`, `src/dev/audioLevelsPage.ts`); nothing has been judged by ear.
+ */
+export const CUE_NAMES = [
+  'cannon', 'fuse', 'hit', 'hat', 'surface', 'glass', 'portal', 'jonhVoice', 'mutter', 'outOfBounds',
+  'drumroll', 'sting', 'whoosh', 'click', 'emoteIn', 'emoteOut', 'footstep',
+] as const;
+export type CueName = (typeof CUE_NAMES)[number];
+
+export const AUDIO = {
+  /**
+   * Per-cue trim in dB, applied on the cue's own bus ahead of the shared compressor and master volume.
+   * Tiers: 0 = impacts, 1 = voices and big accents, 2 = scenery and results, 3 = accents that sit under
+   * everything, 4 = beds, steps and UI (targets in `src/audio/loudness.ts`).
+   */
+  cueTrimDb: {
+    cannon: -2.3, fuse: 10.4, hit: -3.4, hat: 1.9, surface: -1.7, glass: 0.6, portal: 0.3, jonhVoice: -0.2, mutter: 14,
+    outOfBounds: 8.7, drumroll: -8.8, sting: -7.9, whoosh: -0.8, click: 7.6, emoteIn: -1.3, emoteOut: 5.3, footstep: 0.8,
+  } as Record<CueName, number>,
+  /**
+   * Level targets [TUNE], measured on a cue's loudest variant at master volume 1, after the compressor:
+   * `targetLufs` is its K-weighted loudness over the loudest 200 ms (mono) and `maxPeakDb` its sample
+   * peak, whichever is the stricter; `cues` are the members. Short cues (clicks, steps) are held by
+   * the peak ceiling so they stay quiet in absolute terms, long ones by the loudness. The report page
+   * (audio-levels.html) checks these; the trims above are what makes them true.
+   */
+  tiers: [
+    { name: 'impact', targetLufs: -15.5, maxPeakDb: -5, cues: ['cannon', 'hit'] },
+    { name: 'voice', targetLufs: -19, maxPeakDb: -8.5, cues: ['outOfBounds', 'glass', 'drumroll'] },
+    { name: 'scenery', targetLufs: -21, maxPeakDb: -10, cues: ['surface', 'hat', 'portal', 'sting'] },
+    // Jonh's yelp plays on top of every hit, so it sits well under it (about 7 dB by loudness) instead of fighting it.
+    { name: 'reaction', targetLufs: -25, maxPeakDb: -15, cues: ['jonhVoice'] },
+    { name: 'accent', targetLufs: -26, maxPeakDb: -13, cues: ['mutter', 'emoteIn', 'fuse'] },
+    { name: 'quiet', targetLufs: -30, maxPeakDb: -17, cues: ['click', 'footstep', 'emoteOut', 'whoosh'] },
+  ] as ReadonlyArray<{ name: string; targetLufs: number; maxPeakDb: number; cues: readonly CueName[] }>,
+  /** Beds at their loudest (the wind's gust peak at full strength; the music loop): short-event loudness in LUFS. */
+  bedTargetLufs: { wind: -34, music: -30 },
+  /** Music and the garden ambience (the wind bed) share the music toggle; these are the bus gains. */
+  musicGain: 0.16,
+  musicDuckedGain: 0.06,
+  /** The ambience bus (wind bed) sits on the music toggle and ducking, scaled by this. */
+  ambienceGain: 1,
+  /** Soft clip after the compressor: linear up to `kneeLevel`, then bending towards `ceilingLevel` (full scale = 1). */
+  softClip: { kneeLevel: 0.75, ceilingLevel: 0.97 },
+  /** Wind bed on gardens with wind (level data). Strength is `|a| / WIND.sockFlatMs2`, clamped to 0..1. */
+  wind: {
+    /** Bed loudness at full strength; a breeze is `floor` of this. */
+    bedGain: 0.234,
+    floor: 0.35,
+    /** Low-pass corner of the rumble layer and band-pass centre of the air layer, calm → full (Hz). */
+    rumbleHz: [260, 520],
+    airHz: [520, 1150],
+    /** Gust: seconds between gusts, swell and fade times (calm → full), and the extra gain over the bed at full strength. */
+    gustGapSeconds: [7, 3.2],
+    gustSwellSeconds: [1.1, 0.7],
+    gustFadeSeconds: [2.2, 1.6],
+    gustLift: 1.1,
+    /** The first gust arrives this soon after the bed starts (seconds, plus up to the same again). */
+    firstGustSeconds: 1.5,
+    /** Fade-in and fade-out when the bed starts or stops (seconds). */
+    fadeInSeconds: 0.8,
+    fadeOutSeconds: 0.35,
+    /** The scene must refresh the bed this often (seconds) or it fades away (pause, quit, hidden tab). */
+    keepAliveSeconds: 0.4,
+    /** Shot cues dip the bed by this many dB for `duckSeconds`, so it stays under them. */
+    duckDb: -9,
+    duckSeconds: 0.9,
+  },
+  /** Gravel footsteps: one per foot-plant, in step with the walk cycle (levels/jonhRoute distance). */
+  footstep: {
+    /** Phase of the walk cycle (0..1 of a stride, which has two steps) at which the first foot lands. */
+    plantPhase: 0.25,
+    /** At most this many steps are voiced per frame (a stalled frame must not machine-gun). */
+    maxPerFrame: 2,
+    /** Pitch spread between steps. */
+    pitchSpread: 0.12,
+  },
+  /** Rate limits (seconds between sounds, and a cap per window) so bursts never stack into noise. */
+  limits: {
+    emoteIn: { minGapSeconds: 0.3, windowSeconds: 3, maxInWindow: 3 },
+    emoteOut: { minGapSeconds: 0.18, windowSeconds: 3, maxInWindow: 3 },
+    footstep: { minGapSeconds: 0.12, windowSeconds: 1, maxInWindow: 6 },
+  },
 } as const;

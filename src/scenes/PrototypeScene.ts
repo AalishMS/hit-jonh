@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
+import { FootstepTracker } from '../audio/footsteps';
 import { AIM, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
@@ -94,6 +95,7 @@ const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', ru
 
 export class PrototypeScene extends Phaser.Scene {
   private readonly stepper = new FixedStepper(PHYSICS.fixedStepSeconds, PHYSICS.maxStepsPerFrame);
+  private readonly footsteps = new FootstepTracker();
   private attemptMachine!: ShotAttemptMachine;
   private soloMachine!: SoloChallengeMachine;
   private soloCoordinator!: SoloCoordinator;
@@ -251,6 +253,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
+        this.audioManager.setWindBed(null);
         this.canvasAim.cancel();
         this.inputCoordinator.setPaused(true);
         this.htmlControls.setControlsInert(true);
@@ -524,6 +527,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.stopShowcase();
     this.titleCardPending = false;
     this.loadToken++; // a garden still loading its art must not build itself after this
+    this.audioManager.setWindBed(null);
+    this.footsteps.reset();
     this.missStreak = 0;
     this.daily = null;
     this.practice = false;
@@ -995,11 +1000,15 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     // Walking Jonh follows the physics' route clock; the replay re-walks it in step with the ball.
-    this.jonhRenderer.followRoute(this.physicsAdapter?.jonhRoutePoseAt(
-      replayFrameNow?.phase === 'pre' ? replayFrameNow.simT : this.attemptMachine.simulatedTime) ?? null);
+    const routePose = this.physicsAdapter?.jonhRoutePoseAt(
+      replayFrameNow?.phase === 'pre' ? replayFrameNow.simT : this.attemptMachine.simulatedTime) ?? null;
+    this.jonhRenderer.followRoute(routePose);
+    // Footsteps come from the same walked distance as his legs, so they also follow replays and stop when he does.
+    for (const foot of this.footsteps.update(routePose)) this.audioManager.playFootstep(foot);
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
+    this.audioManager.setWindBed(this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
@@ -2122,7 +2131,7 @@ export class PrototypeScene extends Phaser.Scene {
       presentSkippedTurn: (seat, angle, power, text) => this.presentSkippedTurn(seat, angle, power, text),
       applyOfficialOutcome: (outcome, mine) => this.applyOfficialOutcome(outcome, mine),
       refreshPlayerPresence: () => this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null),
-      playEmoteSound: () => this.audioManager.playEmote(),
+      playEmoteSound: own => this.audioManager.playEmote(own),
       refreshMatchResult: () => {
         if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
       },

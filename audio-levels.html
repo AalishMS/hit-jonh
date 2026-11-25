@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hit Jonh sound level report</title>
+  </head>
+  <body style="font-family: system-ui, sans-serif; margin: 16px;">
+    <h1>Sound level report</h1>
+    <p>Renders every cue through an OfflineAudioContext at master volume 1 and measures it (dev tool, never part of the build). Add <code>?trim</code> to also print suggested trims.</p>
+    <pre id="out">Rendering…</pre>
+    <script type="module" src="/src/dev/audioLevelsPage.ts"></script>
+  </body>
+</html>

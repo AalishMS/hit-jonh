@@ -4,11 +4,19 @@
  * Sounds are never time-stretched: hit-stop and slow motion affect visuals only.
  * Pitch is randomised per play with a cosmetic RNG; if a sample cannot be decoded (e.g. an older
  * browser without Ogg Vorbis), the synthesized layer still plays.
+ *
+ * Levels: every cue plays through its own trim bus (`AUDIO.cueTrimDb`, tiers in `AUDIO.tiers`), then one
+ * shared compressor, a soft clip that keeps stacked cues under full scale, and the master volume.
+ * Music and the garden wind bed sit on their own buses (the music toggle and ducking govern both).
  */
 
+import { AUDIO, CUE_NAMES, type CueName } from '../config/tuning';
 import { loadSaveData, saveSettings } from '../storage/storage';
 import type { HitQuality } from '../fx/impactProfile';
-import { loopNotes, loopSeconds, midiToHz } from './music';
+import { CueGate } from './cueGate';
+import { dbToGain, softClipCurve } from './loudness';
+import { loopNotes, loopSeconds, midiToHz, type ScheduledNote } from './music';
+import { gustPlan, windBedFilters, windBedLevel } from './windSound';
 
 export const SAMPLE_NAMES = [
   'impactPunch_heavy_000', 'impactPunch_heavy_001', 'impactPunch_heavy_002', 'impactPunch_heavy_003',
@@ -33,11 +41,43 @@ export async function preloadSamples(baseUrl = './audio/'): Promise<void> {
 
 export type SurfaceSound = 'ground' | 'wood' | 'concrete' | 'rubber' | 'glass' | 'body';
 
+/** The garden wind bed's nodes while it plays (see `setWindBed`). */
+interface WindBed {
+  accel: number;
+  sources: AudioScheduledSourceNode[];
+  air: BiquadFilterNode;
+  bed: GainNode;
+  gust: GainNode;
+  /** The bed stops when the scene has not refreshed it by this audio time. */
+  freshUntil: number;
+  gustIndex: number;
+  nextGustAt: number;
+}
+
+type AnyContext = AudioContext | OfflineAudioContext;
+
 export class AudioManager {
-  private ctx: AudioContext | null = null;
+  private ctx: AnyContext | null = null;
   private masterGain: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
+  private ambienceBus: GainNode | null = null;
+  private ambienceDuck: GainNode | null = null;
+  /** One trim bus per cue (see `AUDIO.cueTrimDb`); all feed `sfxBus`. */
+  private readonly cueBuses = new Map<CueName, GainNode>();
+  /** The cue bus the synth primitives write to; set by `route()` at the start of each cue. */
+  private dest: AudioNode | null = null;
+  private readonly gates = {
+    emoteIn: new CueGate(AUDIO.limits.emoteIn),
+    emoteOut: new CueGate(AUDIO.limits.emoteOut),
+    footstep: new CueGate(AUDIO.limits.footstep),
+  };
+  private wind: WindBed | null = null;
+  private windBuffer: AudioBuffer | null = null;
+  /** The tab is hidden: the context is suspended and nothing new is voiced. */
+  private hiddenTab = false;
+  private offline = false;
+  private softClip = true;
   private noiseBuffer: AudioBuffer | null = null;
   private readonly buffers = new Map<SampleName, AudioBuffer>();
   private _isMuted = false;
@@ -73,32 +113,83 @@ export class AudioManager {
     if (!AudioContextClass) return;
 
     if (!this.ctx) {
-      this.ctx = new AudioContextClass();
-      const compressor = this.ctx.createDynamicsCompressor();
-      compressor.threshold.value = -14;
-      compressor.knee.value = 10;
-      compressor.ratio.value = 4;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.2;
-      this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this._isMuted ? 0 : this._volume;
-      this.sfxBus = this.ctx.createGain();
-      this.musicBus = this.ctx.createGain();
-      this.musicBus.gain.value = this._music ? 0.16 : 0;
-      this.sfxBus.connect(compressor);
-      this.musicBus.connect(compressor);
-      compressor.connect(this.masterGain);
-      this.masterGain.connect(this.ctx.destination);
-      this.analyser = this.ctx.createAnalyser();
-      this.analyser.fftSize = 2048;
-      this.masterGain.connect(this.analyser);
-      this.noiseBuffer = this.makeNoise(1.5);
-      this.decodeSamples();
+      this.buildGraph(new AudioContextClass());
+      if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisibility);
+      this.hiddenTab = typeof document !== 'undefined' && document.hidden;
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    const ctx = this.ctx as AudioContext | null;
+    if (ctx && ctx.state === 'suspended' && !this.hiddenTab) void ctx.resume().catch(() => { /* retried on the next gesture */ });
     this.isUnlocked = true;
     this.startMusic();
   }
+
+  /**
+   * Level report / tests: use `ctx` (an OfflineAudioContext) instead of a real one. Nothing is
+   * unlocked, no music timer starts, and `softClip: false` exposes the raw peak before the safety clip.
+   */
+  attachContext(ctx: OfflineAudioContext, options: { softClip?: boolean } = {}): void {
+    this.offline = true;
+    this.softClip = options.softClip !== false;
+    this.isUnlocked = true;
+    this.buildGraph(ctx);
+  }
+
+  private buildGraph(ctx: AnyContext): void {
+    this.ctx = ctx;
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -14;
+    compressor.knee.value = 10;
+    compressor.ratio.value = 4;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.2;
+    this.masterGain = ctx.createGain();
+    this.masterGain.gain.value = this._isMuted ? 0 : this._volume;
+    this.sfxBus = ctx.createGain();
+    for (const name of CUE_NAMES) {
+      const bus = ctx.createGain();
+      bus.gain.value = dbToGain(AUDIO.cueTrimDb[name]);
+      bus.connect(this.sfxBus);
+      this.cueBuses.set(name, bus);
+    }
+    this.musicBus = ctx.createGain();
+    this.musicBus.gain.value = this._music ? AUDIO.musicGain : 0;
+    this.ambienceBus = ctx.createGain();
+    this.ambienceBus.gain.value = this._music ? AUDIO.musicGain * AUDIO.ambienceGain : 0;
+    this.ambienceDuck = ctx.createGain();
+    this.ambienceDuck.connect(this.ambienceBus);
+    this.sfxBus.connect(compressor);
+    this.musicBus.connect(compressor);
+    this.ambienceBus.connect(compressor);
+    // A soft clip after the compressor: stacked cues bend towards full scale instead of hard-clipping.
+    let tail: AudioNode = compressor;
+    if (this.softClip) {
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = softClipCurve(2049, AUDIO.softClip.kneeLevel, AUDIO.softClip.ceilingLevel);
+      shaper.oversample = '2x';
+      compressor.connect(shaper);
+      tail = shaper;
+    }
+    tail.connect(this.masterGain);
+    this.masterGain.connect(ctx.destination);
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 2048;
+    this.masterGain.connect(this.analyser);
+    this.noiseBuffer = this.makeNoise(1.5);
+    this.decodeSamples();
+  }
+
+  /** The tab went to the background: stop everything (music, wind, tails) until it is back. */
+  private readonly onVisibility = (): void => {
+    const ctx = this.ctx;
+    if (!ctx || this.offline) return;
+    this.hiddenTab = document.hidden;
+    if (this.hiddenTab) {
+      this.stopWind(true);
+      void (ctx as AudioContext).suspend().catch(() => { /* already closed */ });
+    } else if (this.isUnlocked) {
+      void (ctx as AudioContext).resume().catch(() => { /* needs a gesture first */ });
+    }
+  };
 
   private decodeSamples(): void {
     const ctx = this.ctx;
@@ -124,12 +215,17 @@ export class AudioManager {
   setMusicEnabled(enabled: boolean): void {
     this._music = enabled;
     saveSettings({ music: enabled });
-    if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(enabled ? 0.16 : 0, this.ctx.currentTime, 0.1);
+    if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(enabled ? AUDIO.musicGain : 0, this.ctx.currentTime, 0.1);
+    if (this.ambienceBus && this.ctx) this.ambienceBus.gain.setTargetAtTime(enabled ? AUDIO.musicGain * AUDIO.ambienceGain : 0, this.ctx.currentTime, 0.1);
+    if (!enabled) this.stopWind();
   }
 
   /** Lowers the music under pause and result screens. */
   duckMusic(ducked: boolean): void {
-    if (this.musicBus && this.ctx && this._music) this.musicBus.gain.setTargetAtTime(ducked ? 0.06 : 0.16, this.ctx.currentTime, 0.15);
+    if (!this.ctx || !this._music) return;
+    const level = ducked ? AUDIO.musicDuckedGain : AUDIO.musicGain;
+    this.musicBus?.gain.setTargetAtTime(level, this.ctx.currentTime, 0.15);
+    this.ambienceBus?.gain.setTargetAtTime(level * AUDIO.ambienceGain, this.ctx.currentTime, 0.15);
   }
 
   private applyMaster(): void {
@@ -153,11 +249,15 @@ export class AudioManager {
     return silence;
   }
 
-  private ready(): AudioContext | null {
-    if (this._isMuted || !this.ctx || !this.sfxBus) return null;
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+  private ready(): AnyContext | null {
+    if (this._isMuted || this.hiddenTab || !this.ctx || !this.sfxBus) return null;
+    if (this.ctx.state === 'suspended' && !this.offline) void (this.ctx as AudioContext).resume().catch(() => { /* needs a gesture first */ });
     return this.ctx;
   }
+
+  /** Points the synth primitives at a cue's trim bus; each public cue calls this first. */
+  private route(name: CueName): void { this.dest = this.cueBuses.get(name) ?? this.sfxBus; }
+  private out(): AudioNode { return this.dest ?? this.sfxBus!; }
 
   /** ±spread pitch variation from the cosmetic RNG. */
   private vary(spread = 0.08): number { return 1 + (this.rng() - 0.5) * 2 * spread; }
@@ -172,7 +272,7 @@ export class AudioManager {
     src.playbackRate.value = rate;
     const g = ctx.createGain();
     g.gain.value = gain;
-    src.connect(g).connect(this.sfxBus);
+    src.connect(g).connect(this.out());
     src.start(ctx.currentTime + when);
     return true;
   }
@@ -188,7 +288,7 @@ export class AudioManager {
     g.gain.setValueAtTime(0.0001, start);
     g.gain.exponentialRampToValueAtTime(gain, start + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(g).connect(this.sfxBus!);
+    osc.connect(g).connect(this.out());
     osc.start(start);
     osc.stop(start + duration + 0.02);
   }
@@ -206,7 +306,7 @@ export class AudioManager {
     g.gain.setValueAtTime(0.0001, start);
     g.gain.exponentialRampToValueAtTime(gain, start + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    src.connect(filter).connect(g).connect(this.sfxBus!);
+    src.connect(filter).connect(g).connect(this.out());
     src.start(start, this.rng() * 1);
     src.stop(start + duration + 0.02);
   }
@@ -223,6 +323,7 @@ export class AudioManager {
   playFuse(): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('fuse');
     this.noise(ctx.currentTime, 0.13, 'highpass', 5200, 0.7, 0.12, 0.01);
   }
 
@@ -233,6 +334,8 @@ export class AudioManager {
   playCannonFire(power = 1): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('cannon');
+    this.duckAmbience();
     const p = Math.max(0, Math.min(1, power));
     const now = ctx.currentTime;
     const v = this.vary(0.06);
@@ -250,6 +353,8 @@ export class AudioManager {
   playHit(quality: HitQuality): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('hit');
+    this.duckAmbience();
     const now = ctx.currentTime;
     const strong = quality === 'strong' || quality === 'trick';
     const v = this.vary(0.07);
@@ -263,6 +368,7 @@ export class AudioManager {
     this.sample(this.pick(['impactWood_heavy_000', 'impactWood_heavy_001'] as const), strong ? 0.55 : 0.35, 1.35 * v);
     // Jonh's yelp, same frame.
     this.playJonhReaction(strong ? 1 : 0.75);
+    this.route('hit');
     if (strong) this.slideWhistle(now + 0.06, 1500 * v, 380, 0.55, 0.08);
     if (quality === 'trick') this.sample('impactBell_heavy_000', 0.55, 1.25, 0.04);
   }
@@ -271,6 +377,7 @@ export class AudioManager {
   playHatHit(): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('hat');
     const v = this.vary(0.1);
     if (!this.sample('impactTin_medium_000', 0.7, 1.4 * v)) this.kick(ctx.currentTime, 1400 * v, 900, 0.12, 0.3);
     this.sample('impactPlate_light_000', 0.35, 1.6 * v);
@@ -287,6 +394,7 @@ export class AudioManager {
   playSurface(surface: SurfaceSound, strength: number): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('surface');
     const s = Math.max(0.15, Math.min(1, strength));
     const v = this.vary(0.1);
     const now = ctx.currentTime;
@@ -315,7 +423,7 @@ export class AudioManager {
         g.gain.setValueAtTime(0.0001, now);
         g.gain.exponentialRampToValueAtTime(0.5 * s, now + 0.01);
         g.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
-        osc.connect(g).connect(this.sfxBus!);
+        osc.connect(g).connect(this.out());
         osc.start(now);
         osc.stop(now + 0.35);
         break;
@@ -336,7 +444,7 @@ export class AudioManager {
     g.gain.setValueAtTime(0.0001, start);
     g.gain.exponentialRampToValueAtTime(gain, start + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(g).connect(this.sfxBus!);
+    osc.connect(g).connect(this.out());
     osc.start(start);
     osc.stop(start + duration + 0.02);
   }
@@ -345,6 +453,7 @@ export class AudioManager {
   playGlassBreak(strength: number): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('glass');
     const s = Math.max(0.35, Math.min(1, strength));
     const now = ctx.currentTime;
     const v = this.vary(0.08);
@@ -361,6 +470,7 @@ export class AudioManager {
   playPortal(): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('portal');
     const now = ctx.currentTime;
     const v = this.vary(0.06);
     const src = ctx.createBufferSource();
@@ -375,7 +485,7 @@ export class AudioManager {
     g.gain.setValueAtTime(0.0001, now);
     g.gain.exponentialRampToValueAtTime(0.42, now + 0.04);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
-    src.connect(filter).connect(g).connect(this.sfxBus!);
+    src.connect(filter).connect(g).connect(this.out());
     src.start(now, this.rng());
     src.stop(now + 0.3);
     this.slideWhistle(now + 0.16, 420 * v, 1500 * v, 0.24, 0.09);
@@ -386,6 +496,7 @@ export class AudioManager {
   playJonhReaction(intensity = 1): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('jonhVoice');
     const start = ctx.currentTime;
     const base = [215, 165, 260, 190][this.reactionIndex++ % 4]! * this.vary(0.08);
     const duration = 0.42 + this.rng() * 0.14;
@@ -411,7 +522,7 @@ export class AudioManager {
       g.gain.exponentialRampToValueAtTime(level * intensity, start + 0.025);
       g.gain.setValueAtTime(level * intensity, start + duration * 0.55);
       g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      voice.connect(f).connect(g).connect(this.sfxBus!);
+      voice.connect(f).connect(g).connect(this.out());
     }
     this.noise(start, 0.09, 'bandpass', 1600, 0.8, 0.12 * intensity);
     voice.start(start);
@@ -427,6 +538,7 @@ export class AudioManager {
   playMutter(length = 24): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('mutter');
     const syllables = Math.max(2, Math.min(5, Math.round(length / 9)));
     const vowels: Array<[number, number]> = [[640, 1190], [480, 1720], [560, 920], [390, 2000], [700, 1100]];
     let t = ctx.currentTime + 0.02;
@@ -449,7 +561,7 @@ export class AudioManager {
         g.gain.setValueAtTime(0.0001, t);
         g.gain.exponentialRampToValueAtTime(level, t + 0.015);
         g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-        voice.connect(f).connect(g).connect(this.sfxBus!);
+        voice.connect(f).connect(g).connect(this.out());
       }
       voice.start(t);
       voice.stop(t + d + 0.02);
@@ -473,7 +585,7 @@ export class AudioManager {
     g.gain.exponentialRampToValueAtTime(gain, start + 0.03);
     g.gain.setValueAtTime(gain, start + duration * 0.7);
     g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(g).connect(this.sfxBus!);
+    osc.connect(g).connect(this.out());
     osc.start(start);
     lfo.start(start);
     osc.stop(start + duration + 0.02);
@@ -484,6 +596,7 @@ export class AudioManager {
   playDrumroll(seconds = 1.1): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('drumroll');
     const now = ctx.currentTime;
     let t = 0;
     let gap = 0.075;
@@ -500,6 +613,7 @@ export class AudioManager {
   playOutOfBounds(): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('outOfBounds');
     const start = ctx.currentTime;
     this.noise(start, 0.13, 'highpass', 2200, 0.7, 0.18, 0.02);
     const voice = ctx.createOscillator();
@@ -517,7 +631,7 @@ export class AudioManager {
       g.gain.setValueAtTime(0.0001, start + 0.08);
       g.gain.exponentialRampToValueAtTime(level, start + 0.13);
       g.gain.exponentialRampToValueAtTime(0.0001, start + 0.88);
-      voice.connect(f).connect(g).connect(this.sfxBus!);
+      voice.connect(f).connect(g).connect(this.out());
     }
     voice.start(start + 0.08);
     voice.stop(start + 0.9);
@@ -527,7 +641,7 @@ export class AudioManager {
   setFlightWhoosh(speed01: number | null): void {
     const ctx = this.ctx;
     if (!ctx || !this.sfxBus || !this.noiseBuffer) return;
-    if (speed01 === null || this._isMuted) {
+    if (speed01 === null || this._isMuted || this.hiddenTab) {
       if (this.whoosh) {
         const w = this.whoosh;
         w.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
@@ -545,7 +659,7 @@ export class AudioManager {
       filter.Q.value = 1.4;
       const gain = ctx.createGain();
       gain.gain.value = 0;
-      src.connect(filter).connect(gain).connect(this.sfxBus);
+      src.connect(filter).connect(gain).connect(this.cueBuses.get('whoosh')!);
       src.start();
       this.whoosh = { src, filter, gain };
     }
@@ -592,24 +706,212 @@ export class AudioManager {
   playClick(): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('click');
     this.kick(ctx.currentTime, 900 * this.vary(0.05), 600, 0.05, 0.18);
   }
 
-  /** A quiet two-note pop when another player's emote arrives (online rooms). */
-  playEmote(): void {
+  /**
+   * Emote pops (online rooms), both short and friendly and distinguishable by ear: another player's emote is a
+   * bright rising two-pop "pi-pip"; your own is a single softer, lower "pup". Rate-limited, so a burst of
+   * emotes never stacks into noise.
+   */
+  playEmote(own = false): void {
     const ctx = this.ready();
     if (!ctx) return;
+    if (!(own ? this.gates.emoteOut : this.gates.emoteIn).allow(ctx.currentTime)) return;
     const t = ctx.currentTime;
-    this.marimba(t, 79, 0.12, this.sfxBus!);
-    this.marimba(t + 0.07, 84, 0.1, this.sfxBus!);
+    if (own) {
+      this.route('emoteOut');
+      this.pop(t, midiToHz(72), 1.3, 0.2, 0.1);
+    } else {
+      this.route('emoteIn');
+      this.pop(t, midiToHz(79), 1.5, 0.2, 0.11);
+      this.pop(t + 0.075, midiToHz(84), 1.5, 0.17, 0.13);
+    }
+  }
+
+  /** A bubble pop: a sine gliding quickly up by `rise`, with a faint octave, decaying within `duration`. */
+  private pop(start: number, hz: number, rise: number, gain: number, duration: number): void {
+    const ctx = this.ctx!;
+    for (const [mult, level] of [[1, 1], [2, 0.22]] as const) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(hz * mult * 0.8, start);
+      osc.frequency.exponentialRampToValueAtTime(hz * mult * rise, start + 0.04);
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.exponentialRampToValueAtTime(gain * level, start + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      osc.connect(g).connect(this.out());
+      osc.start(start);
+      osc.stop(start + duration + 0.02);
+    }
+  }
+
+  /**
+   * One footfall on the gravel path: a few grains of band-passed noise (the crunch) over a soft low
+   * heel thud. `foot` alternates 0/1 and nudges the pitch so the two feet are not identical.
+   */
+  playFootstep(foot: 0 | 1 = 0): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    if (!this.gates.footstep.allow(ctx.currentTime)) return;
+    this.route('footstep');
+    const t = ctx.currentTime;
+    const v = this.vary(AUDIO.footstep.pitchSpread) * (foot === 1 ? 0.93 : 1.04);
+    const grains = 4 + Math.floor(this.rng() * 3);
+    for (let i = 0; i < grains; i++) {
+      const at = t + i * 0.011 + this.rng() * 0.008;
+      this.noise(at, 0.022 + this.rng() * 0.02, 'bandpass', (1800 + this.rng() * 2600) * v, 0.9, 0.22 - i * 0.02, 0.002);
+    }
+    this.kick(t, 105 * v, 58, 0.09, 0.3);
+  }
+
+  /**
+   * The garden's wind: a soft airy bed whose loudness and brightness follow the wind strength (the
+   * windsock's lift), with gusts that swell and fade now and then. Call every frame while playing a
+   * garden with wind, with its acceleration (m/s²), and `null` otherwise; if it is not refreshed
+   * (pause, quit, hidden tab) the bed fades away by itself. Also off while muted or with music off.
+   */
+  setWindBed(accelerationMs2: number | null): void {
+    const ctx = this.ctx;
+    const silent = accelerationMs2 === null || accelerationMs2 === 0 || this._isMuted || !this._music || this.hiddenTab;
+    if (!ctx || !this.ambienceDuck || silent) { this.stopWind(); return; }
+    if (this.wind && Math.abs(this.wind.accel - accelerationMs2) > 1e-6) this.stopWind();
+    const now = ctx.currentTime;
+    if (!this.wind) this.startWind(ctx, accelerationMs2, now);
+    this.wind!.freshUntil = now + AUDIO.wind.keepAliveSeconds;
+  }
+
+  get windBedPlaying(): boolean { return this.wind !== null; }
+
+  private startWind(ctx: AnyContext, accel: number, now: number): void {
+    this.windBuffer ??= this.makeWindBuffer(ctx, 6);
+    const filters = windBedFilters(accel);
+    const rumble = ctx.createBiquadFilter();
+    rumble.type = 'lowpass';
+    rumble.frequency.value = filters.rumbleHz;
+    rumble.Q.value = 0.7;
+    const air = ctx.createBiquadFilter();
+    air.type = 'bandpass';
+    air.frequency.value = filters.airHz;
+    air.Q.value = 0.9;
+    // The air layer's centre drifts slowly so the bed never sits on one pitch.
+    const drift = ctx.createOscillator();
+    const driftDepth = ctx.createGain();
+    drift.frequency.value = 0.17;
+    driftDepth.gain.value = filters.airHz * 0.22;
+    drift.connect(driftDepth).connect(air.frequency);
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.value = 1;
+    const airGain = ctx.createGain();
+    airGain.gain.value = 0.55;
+    const gust = ctx.createGain();
+    gust.gain.value = 1;
+    const bed = ctx.createGain();
+    bed.gain.setValueAtTime(0, now);
+    bed.gain.linearRampToValueAtTime(windBedLevel(accel), now + AUDIO.wind.fadeInSeconds);
+    const sources: AudioScheduledSourceNode[] = [0, 1].map(i => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.windBuffer;
+      src.loop = true;
+      src.playbackRate.value = i === 0 ? 0.97 : 1.03;
+      src.connect(i === 0 ? rumble : air);
+      src.start(now, this.rng() * 5);
+      return src;
+    });
+    drift.start(now);
+    sources.push(drift);
+    rumble.connect(rumbleGain).connect(gust);
+    air.connect(airGain).connect(gust);
+    gust.connect(bed).connect(this.ambienceDuck!);
+    this.wind = {
+      accel, sources, air, bed, gust, freshUntil: now + AUDIO.wind.keepAliveSeconds,
+      gustIndex: 0, nextGustAt: now + gustPlan(0, accel).gapSeconds,
+    };
+    this.scheduleGusts();
+  }
+
+  /** Queues the gusts due in the next half second (called from the 50 ms scheduler), or `ahead` seconds. */
+  private scheduleGusts(ahead = 0.5): void {
+    const ctx = this.ctx;
+    const w = this.wind;
+    if (!ctx || !w) return;
+    const horizon = ctx.currentTime + ahead;
+    const filters = windBedFilters(w.accel);
+    while (w.nextGustAt < horizon) {
+      const plan = gustPlan(w.gustIndex, w.accel);
+      const start = w.nextGustAt;
+      const peak = start + plan.swellSeconds;
+      const end = peak + plan.fadeSeconds;
+      w.gust.gain.setValueAtTime(1, start);
+      w.gust.gain.linearRampToValueAtTime(1 + plan.lift, peak);
+      w.gust.gain.linearRampToValueAtTime(1, end);
+      // A gust is also brighter at its peak.
+      w.air.frequency.setValueAtTime(filters.airHz, start);
+      w.air.frequency.linearRampToValueAtTime(filters.airHz * (1 + 0.35 * plan.lift), peak);
+      w.air.frequency.linearRampToValueAtTime(filters.airHz, end);
+      w.gustIndex++;
+      w.nextGustAt = end + gustPlan(w.gustIndex, w.accel).gapSeconds;
+    }
+  }
+
+  /** Fades the wind bed out and releases its nodes (`now`: stop immediately, for a hidden tab). */
+  private stopWind(now = false): void {
+    const w = this.wind;
+    const ctx = this.ctx;
+    this.wind = null;
+    if (!w || !ctx) return;
+    const t = ctx.currentTime;
+    const fade = now ? 0.02 : AUDIO.wind.fadeOutSeconds;
+    w.bed.gain.cancelScheduledValues(t);
+    w.bed.gain.setTargetAtTime(0, t, fade / 3);
+    for (const node of w.sources) { try { node.stop(t + fade + 0.1); } catch { /* already stopped */ } }
+  }
+
+  /** Shot cues dip the wind bed briefly so it stays under them. */
+  private duckAmbience(): void {
+    const duck = this.ambienceDuck;
+    const ctx = this.ctx;
+    if (!duck || !ctx || !this.wind) return;
+    const t = ctx.currentTime;
+    duck.gain.cancelScheduledValues(t);
+    duck.gain.setTargetAtTime(dbToGain(AUDIO.wind.duckDb), t, 0.03);
+    duck.gain.setTargetAtTime(1, t + AUDIO.wind.duckSeconds, 0.4);
+  }
+
+  /** Looping brown-ish noise for the wind, with the seam cross-faded so the loop never clicks. */
+  private makeWindBuffer(ctx: AnyContext, seconds: number): AudioBuffer {
+    const rate = ctx.sampleRate;
+    const length = Math.floor(rate * seconds);
+    const fade = Math.floor(rate * 0.5);
+    const raw = new Float32Array(length + fade);
+    let last = 0;
+    for (let i = 0; i < raw.length; i++) {
+      last = (last + 0.04 * (this.rng() * 2 - 1)) / 1.02;
+      raw[i] = last;
+    }
+    const buffer = ctx.createBuffer(1, length, rate);
+    const data = buffer.getChannelData(0);
+    let peak = 1e-6;
+    for (let i = 0; i < length; i++) {
+      // The first `fade` samples blend in the extra tail, so the end meets the start.
+      const k = i < fade ? i / fade : 1;
+      const tail = i < fade ? raw[length + i]! : 0;
+      data[i] = i < fade ? raw[i]! * Math.sqrt(k) + tail * Math.sqrt(1 - k) : raw[i]!;
+      peak = Math.max(peak, Math.abs(data[i]!));
+    }
+    for (let i = 0; i < length; i++) data[i] = data[i]! / peak * 0.9;
+    return buffer;
   }
 
   /** Two-note sting for results; success rises, failure falls. */
   playSting(success: boolean): void {
     const ctx = this.ready();
     if (!ctx) return;
+    this.route('sting');
     const notes = success ? [72, 76, 79, 84] : [67, 63, 60];
-    notes.forEach((n, i) => this.marimba(ctx.currentTime + i * 0.11, n, 0.35, this.sfxBus!));
+    notes.forEach((n, i) => this.marimba(ctx.currentTime + i * 0.11, n, 0.35, this.out()));
   }
 
   private marimba(start: number, note: number, gain: number, bus: AudioNode): void {
@@ -651,7 +953,7 @@ export class AudioManager {
     if (this.musicTimer || !this.ctx || typeof setInterval === 'undefined') return;
     this.musicLoopStart = this.ctx.currentTime + 0.2;
     this.musicNextIndex = 0;
-    this.musicTimer = setInterval(() => this.scheduleMusic(), 50);
+    this.musicTimer = setInterval(() => { this.tickWind(); this.scheduleMusic(); }, 50);
   }
 
   /** Look-ahead scheduler: queues notes up to 0.25 s ahead on the audio clock. */
@@ -671,13 +973,42 @@ export class AudioManager {
       if (!note) { this.musicLoopStart += loop; this.musicNextIndex = 0; continue; }
       const time = this.musicLoopStart + note.time;
       if (time > horizon) break;
-      if (time >= ctx.currentTime - 0.02 && this._music) {
-        if (note.voice === 'marimba') this.marimba(time, note.note, 0.32, this.musicBus);
-        else if (note.voice === 'bass') this.pluck(time, note.note, 0.55);
-        else this.shaker(time);
-      }
+      if (time >= ctx.currentTime - 0.02 && this._music) this.playMusicNote(note, time);
       this.musicNextIndex++;
     }
+  }
+
+  private playMusicNote(note: ScheduledNote, time: number): void {
+    if (note.voice === 'marimba') this.marimba(time, note.note, 0.32, this.musicBus!);
+    else if (note.voice === 'bass') this.pluck(time, note.note, 0.55);
+    else this.shaker(time);
+  }
+
+  /** Level report: starts the wind bed and queues all its gusts for the next `seconds` (no timer involved). */
+  windForReport(accelerationMs2: number, seconds: number): void {
+    this.setWindBed(accelerationMs2);
+    this.scheduleGusts(seconds);
+  }
+
+  /** Tuning aid / level report: sets one cue's trim in dB (e.g. -120 to isolate another cue). */
+  setCueTrimDb(name: CueName, db: number): void {
+    const bus = this.cueBuses.get(name);
+    if (bus) bus.gain.value = dbToGain(db);
+  }
+
+  /** Level report: schedules the first `seconds` of the music loop from now (no timer involved). */
+  scheduleMusicForReport(seconds: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.musicBus) return;
+    for (const note of this.notes) if (note.time < seconds) this.playMusicNote(note, ctx.currentTime + note.time);
+  }
+
+  /** Keeps the wind bed's gusts queued, and lets it fade away when the scene stops refreshing it. */
+  private tickWind(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.wind) return;
+    if (ctx.currentTime > this.wind.freshUntil) { this.stopWind(); return; }
+    this.scheduleGusts();
   }
 
   private shaker(start: number): void {
@@ -711,14 +1042,20 @@ export class AudioManager {
 
   destroy(): void {
     this.setFlightWhoosh(null);
+    this.stopWind(true);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
     if (this.musicTimer) clearInterval(this.musicTimer);
     this.musicTimer = null;
     if (this.ctx) {
-      void this.ctx.close();
+      if (!this.offline) void (this.ctx as AudioContext).close();
       this.ctx = null;
       this.masterGain = null;
       this.sfxBus = null;
       this.musicBus = null;
+      this.ambienceBus = null;
+      this.ambienceDuck = null;
+      this.cueBuses.clear();
+      this.windBuffer = null;
     }
   }
 }
