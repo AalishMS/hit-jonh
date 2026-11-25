@@ -88,6 +88,8 @@ Online rooms need a Convex deployment. Without one the game runs normally and th
 
 Deploying later: `npx convex deploy` creates the production backend. Build with `VITE_CONVEX_URL` set to the production URL (`npm run build`), then serve `dist/` from any static host.
 
+On Vercel (`vercel.json`), a production build runs `npx convex deploy` with the project's production deploy key, so merging to `main` ships the backend and the site together. Preview builds (pull requests) only run `npm run build` and never touch a Convex deployment, so online play is off in previews unless the Preview environment sets `VITE_CONVEX_URL`.
+
 ## Project documents
 
 - [`SPEC.md`](SPEC.md) — authoritative implementation specification.
