@@ -130,6 +130,11 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     miss: ['The magician will hear about this.', 'Nothing up my sleeve, either.'],
     hit: ['Was that part of the act?', "Through the hoop? That's cheating."],
   },
+  stroll: {
+    arrival: ['Just a quick stroll. Nobody bother me.', 'A man is allowed a walk in his own garden.', 'Same route every day. Lovely and predictable.'],
+    miss: ['Moving target. Too much for you?', 'I walk this path every afternoon, you know.', 'Keep up.'],
+    hit: ['Mid-stroll! Have you no decency?', 'I was walking. Minding my own business.', 'You timed that, did you?'],
+  },
   valley: {
     arrival: ["They'll never reach me out here.", 'Is that a cannon? From over there?'],
     miss: ['Long way to come to miss.', 'The valley has an echo, you know.'],

@@ -12,7 +12,7 @@
  * through glass, bank off rubber, bank off a billboard, a magic hoop, low gravity, a trampoline),
  * the long shot last.
  */
-export const CAMPAIGN_ORDER: readonly string[] = ['backyard', 'fence', 'rooftop', 'greenhouse', 'rubber', 'bankshot', 'magic', 'moon', 'trampoline', 'valley'];
+export const CAMPAIGN_ORDER: readonly string[] = ['backyard', 'fence', 'rooftop', 'greenhouse', 'rubber', 'bankshot', 'magic', 'stroll', 'moon', 'trampoline', 'valley'];
 
 /** What the campaign needs from a saved solo best (storage `LevelScore`). */
 export interface MapRecord {
