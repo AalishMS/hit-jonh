@@ -5,12 +5,12 @@
 A humorous 2D browser game: adjust a cannon's angle and power to hit Jonh. Consistent gravity, slapstick reactions, solo challenges and 2–4 player local hot-seat matches.
 
 **Status:** Playable. It has:
-- a solo campaign through twelve gardens, including smashable glass, a magician's portal hoops, a windy washing line and Jonh out for a walk, with stars, trick-shot badges, unlocks and practice on cleared gardens;
-- a first-garden coach for new players, a Feats screen of 22 long-term goals, and a Daily Bonk you can share;
+- a solo campaign of four chapters (twelve gardens), including smashable glass, a magician's portal hoops, a windy washing line and Jonh out for a walk, with stars, trick-shot badges, unlocks that stay earned and practice on cleared gardens;
+- a first-garden coach and a one-line tip for each new mechanic, a Feats screen of 22 long-term goals, a Daily Bonk you can share, and save codes to move progress between devices;
 - 2–4 player hot-seat (with sudden death when it's still level) and online rooms with emotes, stakes callouts, taunts and a winning-shot replay;
 - a hand-drawn "Sunday Funnies" look, installable for offline play;
-- layered impact effects with slow-motion replays, an original soundtrack and unlockable cosmetics;
-- remappable keys, screen-reader announcements and 44 px touch targets.
+- layered impact effects with slow-motion replays you can save as a video clip, an original soundtrack with garden ambience, and unlockable cosmetics;
+- remappable keys, screen-reader announcements, 44 px touch targets and colour-blind friendly player colours.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](docs/progress.md) for history.
 
@@ -24,7 +24,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for what changed and [`docs/progress.md`](doc
 | Retry / next garden / practice (result screen) | Buttons | R / N / P |
 | Pause | Pause button | Escape |
 
-On a phone in landscape, the sliders icon at top right shows the precise Angle/Power sliders. Every key except Escape can be changed in Settings → Keys. Practice (unlimited shots, nothing saved) opens from the Challenge/Practice switch on the garden list once you have cleared a garden. The Daily Bonk result card has a Share button, and a `?daily` link opens that day's challenge.
+On a phone in landscape, the sliders icon at top right shows the precise Angle/Power sliders. Every key except Escape can be changed in Settings → Keys. Practice (unlimited shots, nothing saved) opens from the Challenge/Practice switch on the garden list once you have cleared a garden. The Daily Bonk result card has a Share button, and a `?daily` link opens that day's challenge. After a hit, Save clip records the replay as a short video (on phones: Record clip, then Share clip). Settings → Your progress copies a save code or loads one from another device, keeping the best of both.
 
 ## Stack
 

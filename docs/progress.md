@@ -4,7 +4,9 @@ _Last updated: 2026-11-25_
 
 ## Current milestone
 
-**Current (2026-11-25): "next 10" pass complete on branch `real-game-pass` (not merged or pushed).** All ten proposed items are done: six built here and four in parallel worktrees, merged after review. Along the way a physics bug was found and fixed: the shipped game did not run the physics the tests prove. Per-item notes, evidence, owner decisions and the next proposal are in the "Next 10 (2026-11-25)" section at the end of this file. Online rooms need a Convex redeploy before they can use emotes and the two new gardens.
+**Current (2026-11-25, second round): the next proposed 10 are done on branch `real-game-pass` (not merged or pushed).** Online play was tested live against the Convex dev deployment (pushed with a dev deploy key; production not deployed), and the real-phone pass ran on a OnePlus Nord. Per-item notes, measurements, owner decisions and the next proposal are in "Next 10, round 2 (2026-11-25)" at the end of this file.
+
+**Earlier (2026-11-25): "next 10" pass complete on branch `real-game-pass` (not merged or pushed).** All ten proposed items are done: six built here and four in parallel worktrees, merged after review. Along the way a physics bug was found and fixed: the shipped game did not run the physics the tests prove. Per-item notes, evidence, owner decisions and the next proposal are in the "Next 10 (2026-11-25)" section at the end of this file. Online rooms need a Convex redeploy before they can use emotes and the two new gardens.
 
 **Current (2026-11-24): "real game" pass complete on branch `real-game-pass` (not merged or pushed).** All ten gaps from the ranked list are fixed. The list, per-item notes, evidence and the next-10 proposal are in the "Real game pass" section at the end of this file.
 
@@ -1426,3 +1428,193 @@ The physics fix (the game now runs the tested physics) came out of item 6's chec
 8. **Chapters for the 12-garden campaign.** Groups of 3 with a chapter-complete moment and a title card per chapter. Medium effort.
 9. **Colour-blind palette option.** Alternative player colours with more lightness separation. Low effort.
 10. **Trick-shot rules for the new mechanics.** Implement the owner's §7.1 decision, with tests and Jonh's lines. Low effort once decided.
+
+## Next 10, round 2 (2026-11-25)
+
+The owner asked to continue with the proposed list and answered three questions first:
+- **Online:** push to the Convex **dev** deployment with a dev deploy key given in a secure card. Production was not touched.
+- **Phone:** the owner unlocked it.
+- **Trick shots (SPEC §7.1, was [OPEN]):** a hit through a portal hoop counts as a trick shot. Glass and wind never do.
+
+Chapters (8), sound (5) and the winning-shot clip (7) were built in parallel worktrees and merged after review. The rest were built here.
+
+### 1. Go live online — done (dev deployment)
+- `npx convex dev --once` with the dev deploy key pushed the emotes table and its two indexes to `proper-lapwing-569`. `.env.local` was unchanged. It was pushed again after item 10 (the server's trick check). **Production is not deployed.**
+- Live test: two separate headless Chromium contexts against the dev deployment, with the dev build on port 5181 from a snapshot of the code.
+  - Room create, then join by `?room=` link. The host picked Windy Washday and The Afternoon Stroll (the server used to reject both as `INVALID_MAPS`).
+  - A full match of 12 shots, each fired on its player's own client. Both clients showed the same result for every shot, including two 125-point bank shots off the Stroll's pear tree. Round summaries, then "It's a tie!" (625–625) on both.
+  - Emotes both ways: host "Unlucky!" seen by the guest, guest "Oof." seen by the host.
+  - After item 10, a Magic Act match: all six shots "HOOP HIT +125" on both screens, accepted by the server.
+  - No console errors or warnings.
+  - Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/a60b04a1-53c9-4751-8498-41a61b2def8c/scratchpad/pw/shots/o4-*.png`.
+- Seen, not changed: each client picks Jonh's reaction line with its own random generator, so the two screens can show different lines for the same shot. Scores always agree.
+
+### 2. Earned cosmetics stay earned — done
+- `Progress` gains `earnedHats`, `earnedCannons` and `earnedOutfits`. Everything unlocked is recorded on every load and save, and when a solo result brings new stars (`recordSoloResult`). Unlock checks are "earned, or the rule holds now".
+- **Migration:** a save without the lists that has three stars on the eight first-release gardens (`FIRST_RELEASE_MAPS`, the gardens on `main`) keeps the Crown. A current save must earn it on all twelve.
+- On the Feats screen, a reward already earned shows in colour even when its feat now has further to go (Every last star after new gardens).
+- Verified: `tests/earnedCosmetics.test.ts` (5) and a storage test proving the stored save itself holds the earned cannon.
+
+### 3. First-meeting tips — done
+- `rules/mechanicTips.ts`. Each mechanic garden names its mechanic in level data: glass, wind, rubber, bank, portal, walking, lowGravity, trampoline or longShot. The first visit to a garden with an unmet mechanic (solo or Daily, never practice) puts a one-line tip in the aiming caption, for example "Wind blows the ball back. Watch the windsock and aim long." After a miss it adds the shots left.
+- The tip stays until the first hit there or leaving the garden. A coach miss tip wins over it.
+- Seen tips are saved in `progress.seenTips`. A garden cleared before tips existed counts as met, so returning players are not tipped. Wording and rules are [PROPOSED].
+- Verified: `tests/mechanicTips.test.ts` (5). Headless Chromium:
+  - The wind tip shows on arrival at 1280×800, 844×390 and 390×844 (two lines in portrait).
+  - After a miss: "… aim long. 2 shots left."
+  - It is gone after the hit, and a revisit has no tip.
+  - An unseen hoop garden shows its tip.
+
+### 4. Real-phone pass — done
+**Phone:** OnePlus Nord AC2001 (Snapdragon 765G, 8 GB, Android 12, Chrome 158). Production build on `vite preview`, reached through `adb reverse`; measured over DevTools (`adb forward` to `chrome_devtools_remote`). Taps went through the device tool.
+- **Portrait only.** The phone refused `adb` rotation changes (`WRITE_SETTINGS` denied, so nothing changed), so every run was in portrait. The canvas renders at a fixed 1280×560 whatever the orientation, so its render cost should be the same in landscape.
+
+**Measurements:**
+- **Boot is fine.** Title interactive (`hj-boot-done`) 0.64 / 0.70 / 0.92 s cold (offline worker and cache cleared, about 700 kB downloaded), 0.65 / 0.72 / 0.76 s warm (0 bytes; the worker serves everything). The art phase takes 0.15–0.22 s.
+- **Frame rate:** about 60 fps on the title, while aiming and through a hit, on both builds below.
+- **Main-thread time** was the headroom problem. A CPU profile showed most render time in Phaser's `GraphicsWebGLRenderer` and `earcut`: the trail's dots were `Graphics` circles that Phaser re-triangulates every frame. After two shots that is 1,770 commands, about 100 circles, and it stays on screen while aiming.
+- **Long tasks:** a 50–67 ms long task on the title in half the runs, and sometimes when the result card appeared. Both were synchronous whole-shot re-simulations: the title demo shot recorded on its first fire, and the clip offer computed as the card appeared.
+- **Memory (Chrome memory-infra dump, game renderer):**
+
+  | Kind | Size |
+  | --- | --- |
+  | JS heap | 23 MB used / 26 MB total |
+  | WebGL | 38 MB |
+  | 2D canvases | 13 MB |
+  | Compositor tiles | 54 MB |
+
+  Of the WebGL 38 MB, the drawing buffer is 32.8 MB: 4× multisample colour 10.9, multisample depth/stencil 10.9, back buffer 2.7, exported buffers 5.5, pool 2.7. Vertex buffers are 5.5 MB. Texture memory sits in the GPU process's shared images (135–174 MB for all of Chrome, three tabs) and can't be separated per page. (Another tab, a chess site, held an 846 MB V8 heap; it is not the game.)
+
+**Fixes** (commit `0b8e85e`):
+- Trail dots are pooled sprites of one 32 px white disc, tinted and scaled per style. Only the landing crosses remain `Graphics`, at 80 commands after two shots instead of 1,770. Old and new screenshots of the same trail look the same by eye; no pixel diff was run.
+- The title's demo shots are recorded in idle time (`requestIdleCallback`, or a timer on Safari).
+- The clip re-simulates only when the player presses Record. If the replay ever failed to reproduce the hit, the press would say "this shot can't be replayed".
+
+**Before / after on the phone.** Same scripted session and seeded save, three runs each. Script time is milliseconds of main-thread script per 12 s (hits) or 6 s (aiming), median.
+
+| Moment | Old (`0633d4b`) | New (`0b8e85e`) |
+| --- | --- | --- |
+| A hit with the previous shot's trail on screen | 4,983 (4,533–5,448) | **3,105** (2,564–3,444), −38% |
+| First hit | 4,395 (3,970–4,709) | **3,539** (3,376–3,668), −19% |
+| Aiming with a trail on screen | 1,748 (1,712–2,108) | **1,546** (1,315–2,114), −12% |
+| Aiming with no trail (control) | 1,334 | 1,389 (no change, as expected) |
+| Long tasks in 15 samples | 6, of 50–67 ms | **0** |
+
+- **Real phone, clip:** on the result card, Record clip recorded the replay in real time ("Clip ready (6 s, 2.0 MB)"). Share clip opened Android's share sheet with "Hit Jonh video"; it was dismissed, and nothing was shared.
+- **Not done:** landscape, a low-end phone, iOS, and a per-page texture figure.
+- **Possible next lever:** turning off 4× multisampling would save about 22 MB of GPU memory and some fill cost, but edges of the remaining vector shapes (ball ribbon, crosses, speech bubble, windsock) would be rougher. Not changed: it is a visual call.
+
+### 5. Sound for the new gardens and a level pass — done (branch `t3/garden-audio-balance`, merged)
+Owner request: "Sound for the new gardens and a listening pass. Wind gusts, Jonh's footsteps and the emote pops, then balance all cues by ear."
+- **Wind bed** [PROPOSED][TUNE] on gardens with level `wind` (`windSound.ts`): a two-layer bed, louder and brighter with the windsock's lift, with deterministic gusts that are audio-only.
+  - It rides the music bus, so it follows the music toggle and ducking, and dips 9 dB under cannon and hit cues.
+  - It stops on leaving the garden, pause, mute, music off and a hidden tab.
+- **Footsteps** [PROPOSED][TUNE] (`footsteps.ts`): gravel steps every half stride of the distance Jonh has walked since Fire, the same distance that drives his legs. So they follow replays and stop when he stops or is hit.
+- **Emote pops:** an incoming emote is a rising two-pop and your own a softer single pop, both rate-limited (`cueGate.ts`).
+- **Level pass** (`AUDIO.cueTrimDb`, `AUDIO.tiers`, a soft clip after the compressor): every cue was rendered through an `OfflineAudioContext` and measured (`audio-levels.html`, dev only).
+  - Impacts are loudest, then voices, scenery and results, Jonh's yelp (about 7 dB under the hit), accents, then the quiet tier.
+  - The worst stack (drumroll, trick hit, sting, wind, music) peaks at −0.9 dBFS before the soft clip.
+  - Hits are about 2 dB quieter overall. Mutter, fuse, click and your own emote pop are louder. The results sting is quieter.
+- A hidden tab now suspends the whole audio context, so the music stops too.
+- **Verified:** unit tests for the loudness maths, soft clip, rate gate, footstep timing against the real Stroll route and the gust schedule. Headless Chromium: the wind started and stopped as above, five footsteps matched the route clock and stopped on the hit, and emote bursts were gated.
+- **Nothing was listened to by a human**: every level and timbre needs an ear.
+
+### 6. Save code — done
+- `storage/saveCode.ts`, under Settings → Your progress.
+- **Copy save code** gives `HJ1-xxxx-…`: compact JSON, `deflate-raw` (`CompressionStream`), base64url and a 4-character checksum. Without `CompressionStream` it is an uncompressed `HJ0-` code. Phones get the share sheet.
+  - It holds the solo bests and `progress`: stars, tricks, hits, streaks, Daily results, earned cosmetics and seen tips.
+  - It does not hold settings, keys, names, the online identity or the selected hat, outfit and cannon.
+  - Daily results pack one character per day.
+- Measured lengths: 219 characters (fresh), about 350 (mid-campaign; 348 in the browser test), 335 (a synthetic year of Daily Bonks).
+- **Load code** ignores the spaces and line breaks of copying and rejects a code copied short, mistyped, garbled or from a newer version, each with its own message.
+  - Loading merges: the better best per garden, any trick badge, the higher count, every map, unlock and tip from either, and every Daily day (the better result where both played it).
+  - So a code can never take anything away; loading an older code changes nothing. Format and merge rules are [PROPOSED].
+- **Verified:** `tests/saveCode.test.ts` (5: round trip, copying noise, the HJ0 path, a year of Daily results, rejection cases, validation of hostile content, merge semantics and idempotence). Headless Chromium with two contexts as two devices:
+  - "Device A" copied its code (348 characters, read back from the clipboard).
+  - "Device B" (390×844) rejected the code with 10 characters cut off, then loaded the full code pasted with a line break. Status: "Loaded. This device now has 9 / 36 stars and 23 hits." Home showed ★ 9/36, and the scene's progress was refreshed.
+- Not done: a `?save=` link or QR code.
+
+### 7. Shareable winning-shot clip — done (branch `t3/shareable-winning-shot-clip`, merged)
+- **Where:** Save clip on the solo result card after a body hit (including trick and Daily hits) and on the hot-seat match result card (the winning shot). Not offered online.
+- **How:** it replays the shot in `ShowcaseScene` while the card steps aside, and records the canvas with `captureStream()` + `MediaRecorder`. A copy canvas adds an in-picture caption ("Hit Jonh · garden · Bullseye!" and the game's address), so HTML overlays are never captured.
+- **Length and format:** from the replay start to 2 s after impact, 3–6 s; mp4 preferred, then VP9, then VP8 WebM; 30 fps at 2.5 Mbps.
+- **Sound:** taps the master output, so Mute and volume apply.
+- **Sharing:** phones that can share files get Record clip, then Share clip (the sheet needs a fresh tap). Elsewhere the file downloads.
+- **Safety:** one recording at a time. Skip, tap, Home, a new match or a hidden tab discards it. Recording never touches the simulation, scores or saved data. The action is hidden without `MediaRecorder`.
+- After the phone pass, the re-simulation runs on the Record press, not when the card appears (item 4).
+- **Verified:** 40 unit tests. Headless Chromium on the real loop: a solo hit gave an mp4 at 1280×560 with audio, saved data unchanged; the hot-seat share path worked against a stub.
+  - After the merge with the sound branch, a re-check gave a 2.3 MB mp4 with VP9 video at 1280×560 and Opus audio (`ffprobe`). This needed one fix: the audio tap now skips the offline report context.
+  - **On the real phone:** a 6 s, 2.0 MB clip recorded in real time, and Share clip opened the Android share sheet.
+- **Not verified:** Safari or iOS mp4, and actually posting a clip.
+
+### 8. Chapters — done (branch `t3/add-campaign-chapters`, merged)
+- `rules/chapters.ts` (pure, 14 tests): four chapters of three gardens in campaign order [PROPOSED].
+
+  | Chapter | Name | Gardens |
+  | --- | --- | --- |
+  | 1 | Jonh Is Reading | Backyard, Fence, Rooftop |
+  | 2 | Mild Inconveniences | Greenhouse, Windy Washday, Rubber Yard |
+  | 3 | Showing Off | Bank Shot, Magic Act, Afternoon Stroll |
+  | 4 | Going Too Far | Lunar Picnic, Bounce House, Valley |
+
+  A chapter is complete when all three gardens are cleared. Unlock and star rules are unchanged.
+- **Garden list:** chapter headers with stars (x / 9), "Complete", or "Locked. Clear … to open".
+- **Title card:** the first garden of a chapter shows a "Chapter N · Name" pill on the existing card, in the campaign only. It appeared on the real phone too.
+- **Result card:** the first completion of a chapter gets a "Chapter N complete!" ribbon, which is also announced.
+- Nothing new is saved: a result completes a chapter exactly when the chapter was incomplete before it and complete after, so old saves never get a flood of celebrations.
+- "Chapter card" in code comments became "title card".
+- **Verified:** headless Chromium at three sizes; title cards for chapters 1, 2 and 4; and the chapter-complete flow by firing Rooftop's reference shot.
+- **Known issue:** in portrait each chapter's three cards wrap to two columns.
+
+### 9. Colour-blind palette option — done
+- Settings → "Colour-blind friendly player colours" draws players in brick, sky, gold and navy (`PLAYER_COLORS_COLORBLIND`), previewed as four dots beside the switch.
+  - The closest pair stays ΔE76 ≥ 43.9 under protanopia, deuteranopia and tritanopia. The standard set falls to 11.0 under deuteranopia.
+  - Lightness runs from L* 28 to 82. The colours were chosen by searching candidate sets with `art/colorVision.ts`. [PROPOSED]
+- **Implementation:** `playerDisplayColor` follows a module-level active palette. Barrels get palette-specific texture keys (the standard keys are unchanged) in their own lazy groups, so only the chosen palette is rasterized.
+  - It is a per-device display choice: saves and online seats keep the same stored colour ids.
+  - Settings is only reachable from the menus, so a palette never changes mid-match.
+- **Verified:** two new colour-vision tests. Headless Chromium: the preview switched colours and the setting was saved and survived a reload. In a hot-seat match, Player 1's barrel and panel stripe were brick and Player 2's sky, and only the colour-blind barrel textures were loaded.
+
+### 10. Trick shots on the new mechanics — done (owner decision)
+- **Rule:** a body hit after going through a portal hoop is a trick shot: `ricochet_body`, 125 points, labelled "HOOP HIT". It has its own Jonh lines ("Ta-da. Ow.", "Nobody said the hoop was loaded.").
+- It counts everywhere a trick does: trick badge, feats, cosmetics, the Daily share's 🎱, the trick replay look. Every Magic Act hit is now a trick, like every Billboard hit. Smashing glass and wind never make a trick.
+- **Code:** `ShotClassifier` takes a `portal` contact (only before the body counts). The scene and headless runner feed `portalsUsed`, and the shot recorder marks hoop hits as tricks.
+- **Server:** `mapHasTrick` (ricochet surface or portal) replaces `mapHasRicochet` for the `IMPOSSIBLE_OUTCOME` check. Pushed to dev.
+- Feats and cosmetic hints now say "a bank shot or a hoop shot". SPEC §7.1 records the decision; wind is decided too.
+- **Verified:** classification, reaction, online-rules and headless tests (every Magic Act reference shot is a trick; Greenhouse and Washday shots are not), and the live Magic Act match in item 1.
+
+### Round-2 summary, owner decisions and the next proposal
+**All ten done.** Final `npm run check`: `Test Files 89 passed (89)`, `Tests 865 passed | 12 skipped (877)`. `npm run build` passes.
+
+| # | Item | Built | Notes |
+| --- | --- | --- | --- |
+| 1 | Go live online | here | Dev deployment only |
+| 2 | Earned cosmetics stay earned | here | |
+| 3 | First-meeting tips | here | |
+| 4 | Real-phone pass | here | Portrait only; −38% script time per hit, no long tasks |
+| 5 | Sound for the new gardens | worktree | Not listened to |
+| 6 | Save code | here | |
+| 7 | Shareable winning-shot clip | worktree | Recorded and shared on the real phone |
+| 8 | Chapters | worktree | |
+| 9 | Colour-blind palette | here | |
+| 10 | Hoop trick shots | here | Owner decision |
+
+**Owner decisions needed** (reversible defaults in place, labelled [PROPOSED]):
+- **Production deploy.** `npx convex deploy` (and hosting the build) is still yours. Only dev was pushed.
+- **A listening session.** Nothing was heard. `audio-levels.html` is the reference for adjusting `AUDIO.cueTrimDb`.
+- **Wording and names:** chapter names, tip lines, hoop-trick lines, and the colour-blind palette colours.
+- **Save-code rules:** merge, never replace. There is no way to wipe progress through a code.
+- **Multisampling.** Turning off 4× MSAA saves about 22 MB of GPU memory on phones, at the cost of rougher vector edges.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Ship it.** Production Convex deploy, host the build over HTTPS, and a smoke test on the real URL (owner action plus a check).
+2. **A listening pass by ear** with `audio-levels.html`, then retune the trims.
+3. **Same Jonh line on every screen.** Seed online reaction lines from the shot, so both players read the same joke.
+4. **Landscape and low-end phone check.** Rotate the Nord by hand, and try an older Android; decide on MSAA with numbers.
+5. **Gust visuals.** Streaks and windsock that swell with the audio gusts on Windy Washday.
+6. **Warm the next garden** while the player aims, so Next garden never waits on art.
+7. **Save code by link or QR**: a `?save=` link that asks before merging.
+8. **Online winning-shot clip.** Offer Save clip on the online match result too.
+9. **Chapter 5: three new gardens**, each with one new mechanic and its tip.
+10. **Daily Bonk friends board**: compare today's result with friends through a room-style code (Convex).
+

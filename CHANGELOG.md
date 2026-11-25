@@ -1,5 +1,19 @@
 # Changelog
 
+## Next 10, round 2 (branch `real-game-pass`, 25 November 2026)
+
+The owner approved the next proposed 10. Chapters, sound and the winning-shot clip were built in parallel worktrees and merged.
+- **Online, live.** The new gardens and emotes work against the Convex dev deployment (a full two-browser match was played). Production still needs `npx convex deploy`.
+- **Earned cosmetics stay earned.** Adding gardens can no longer take away a hat, cannon or outfit, and Crown holders from the first release keep it.
+- **First-meeting tips.** The first time you meet wind, glass, a hoop, bounce, low gravity, a long shot or a walking Jonh, the aiming caption explains it in one line.
+- **Phone performance.** Measured on a real Android phone: boot under a second, 60 fps. Trail dots are now sprites and two re-simulation hitches are gone, so a hit costs 38% less main-thread time.
+- **Sound.** A wind bed with gusts on Windy Washday, gravel footsteps for walking Jonh, distinct emote pops, and every cue balanced by measurement (not yet by ear).
+- **Save codes.** Settings → Your progress: copy a code on one device and load it on another. Loading keeps the best of both.
+- **Shareable clips.** Save clip (Record and Share on phones) records a few seconds of your winning shot, with a caption, as a video to post.
+- **Chapters.** The twelve gardens form four chapters of three, with a chapter line on the title card and a "Chapter complete!" moment.
+- **Colour-blind player colours.** A Settings switch for brick, sky, gold and navy, which stay distinct under every common colour-vision type.
+- **Hoop trick shots.** A hit through a magic hoop now counts as a trick shot (125 points), by the owner's decision.
+
 ## Next 10 (branch `real-game-pass`, 25 November 2026)
 
 The owner approved the proposed next 10. Four of them were built in parallel worktrees and merged (entries below).
