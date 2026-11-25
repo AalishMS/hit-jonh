@@ -5,7 +5,8 @@ import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor, setPlayerPalette } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
-import { shareBlock } from './share';
+import { shareBlock, shareOrCopy } from './share';
+import { exportSaveCode, importSaveCode } from '../storage/saveCode';
 import { clipControl } from './clipButton';
 import type { ClipOffer } from '../share/clipTypes';
 import { announce, sentence } from './announcer';
@@ -33,6 +34,8 @@ export interface MenuCallbacks {
   onSettingsChange?: (settings: MenuSettings) => void;
   /** Settings → Keys changed the gameplay key bindings (already saved). */
   onKeysChange?: (keys: KeyBindings) => void;
+  /** A save code from another device was merged into this save: reload progress. */
+  onSaveImported?: () => void;
   /** Retention hooks (polish pass): extra home-screen entries rendered by the scene. */
   onHomeExtras?: (container: HTMLElement, signal: AbortSignal) => void;
   onClick?: () => void;
@@ -348,8 +351,60 @@ export class MenuOverlay {
     paintPreview();
     colors.before(preview);
     this.content.appendChild(list);
+    this.content.appendChild(this.saveCodeSection(signal));
     this.content.appendChild(this.keysSection(signal));
     this.button('Back', '', () => this.showHome(), signal).focus();
+  }
+
+  /**
+   * Settings → Your progress (storage/saveCode.ts): copy or share this device's save code, or paste one
+   * from another device. Loading merges (the best of both), so it never takes anything away.
+   */
+  private saveCodeSection(signal: AbortSignal): HTMLElement {
+    const section = el('section', 'keys-section save-code-section');
+    const title = el('h3', 'keys-title', 'Your progress');
+    title.id = 'save-code-title';
+    section.setAttribute('aria-labelledby', title.id);
+    const status = el('p', 'keys-status save-code-status');
+    status.setAttribute('role', 'status');
+    const say = (text: string, error = false) => {
+      if (signal.aborted) return;
+      status.textContent = text;
+      status.classList.toggle('is-error', error);
+    };
+    const actions = el('div', 'save-code-actions');
+    const copy = this.button('Copy save code', '', () => {
+      void exportSaveCode().then(code => shareOrCopy(code)).then(outcome => {
+        if (outcome === 'copied') say('Copied. Paste it into Settings on your other device.');
+        else if (outcome === 'shared') say('Shared. Open it on your other device and paste it here.');
+        else if (outcome === 'failed') void exportSaveCode().then(code => { if (!signal.aborted) { input.value = code; input.focus(); input.select(); say('Copy the code from the box.'); } });
+      });
+    }, signal, actions);
+    copy.id = 'save-code-copy';
+    const label = el('label', 'visually-hidden', 'Save code from another device');
+    label.htmlFor = 'save-code-input';
+    const input = el('textarea', 'online-input save-code-input');
+    input.id = 'save-code-input';
+    input.rows = 2;
+    input.placeholder = 'Paste a code from another device (HJ1-…)';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    const load = this.button('Load code', '', () => {
+      const code = input.value.trim();
+      if (!code) { say('Paste a save code into the box first.', true); input.focus(); return; }
+      load.disabled = true;
+      void importSaveCode(code).then(result => {
+        load.disabled = false;
+        if (!result.ok) { say(result.message, true); return; }
+        input.value = '';
+        say(`Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${result.hits} hit${result.hits === 1 ? '' : 's'}.`);
+        this.callbacks.onSaveImported?.();
+      });
+    }, signal, actions);
+    load.id = 'save-code-load';
+    section.append(title, el('p', 'home-note', 'Move your stars, tricks and unlocks to another device. Loading a code keeps the best of both.'),
+      label, input, actions, status);
+    return section;
   }
 
   /** Settings → Keys: rebind each gameplay key. Escape cancels a change; a key already in use swaps. */

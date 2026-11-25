@@ -358,6 +358,7 @@ export class PrototypeScene extends Phaser.Scene {
       },
       onClick: () => this.audioManager.playClick(),
       onKeysChange: (keys) => this.applyKeys(keys),
+      onSaveImported: () => { this.progress = loadProgress(); },
       onHomeExtras: (row, signal) => this.addHomeExtras(row, signal),
       onOnline: isOnlineConfigured() ? () => this.online?.open() : undefined,
     });

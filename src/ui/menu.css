@@ -398,6 +398,11 @@
 .menu-content .key-change { min-height: 44px; padding: 8px 14px; font-size: 13px; }
 .menu-content .key-change.capturing { background: var(--zap); }
 .keys-status { min-height: 1.3em; margin: 8px 0 !important; font-size: 13px !important; color: var(--pow) !important; }
+.save-code-input { display: block; width: 100%; min-height: 54px; resize: vertical; font: 600 13px/1.3 ui-monospace, monospace; word-break: break-all; }
+.save-code-status { color: var(--ink) !important; }
+.save-code-status.is-error { color: var(--pow) !important; }
+.save-code-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.save-code-actions .btn { flex: 1 1 140px; }
 .keys-reset { min-height: 44px; }
 
 /* ---------- Campaign chapters (groups of three gardens) ---------- */
