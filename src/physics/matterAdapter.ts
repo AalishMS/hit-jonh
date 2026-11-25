@@ -3,6 +3,7 @@ import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
 import type { BreakableData, LevelData, PortalData } from '../levels/types';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
+import './matterSolver';
 import {
   accelerationToMatter,
   metresToPixels,

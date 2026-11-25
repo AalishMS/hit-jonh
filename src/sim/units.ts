@@ -23,6 +23,21 @@ export function simYToWorldY(yMetres: number, worldHeightPx: number, pixelsPerMe
   return worldHeightPx - yMetres * pixelsPerMetre;
 }
 
+/**
+ * Where the ball spawns for a shot, in world px: `offsetMetres` from the cannon pivot (metres) along
+ * the aim. The game, the headless shot runner and the shot recorder must all use this one formula:
+ * the same maths written another way rounds differently in the last bit, and on a grazing bounce
+ * that is enough to change the outcome (Lunar Picnic's reference shot missed in the game).
+ */
+export function muzzleSpawnPx(pivot: { x: number; y: number }, angleDeg: number, offsetMetres: number,
+  pixelsPerMetre: number, worldHeightPx: number): { x: number; y: number } {
+  const angle = angleDeg * Math.PI / 180;
+  return {
+    x: metresToPixels(pivot.x + offsetMetres * Math.cos(angle), pixelsPerMetre),
+    y: simYToWorldY(pivot.y + offsetMetres * Math.sin(angle), worldHeightPx, pixelsPerMetre),
+  };
+}
+
 /** World y (down, pixels) → simulation y (up, metres). */
 export function worldYToSimY(yPx: number, worldHeightPx: number, pixelsPerMetre: number): number {
   return (worldHeightPx - yPx) / pixelsPerMetre;

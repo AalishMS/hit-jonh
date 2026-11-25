@@ -2,7 +2,7 @@ import Matter from '@matter-js';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
-import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
+import { launchVelocityToWorld, matterGravityY, muzzleSpawnPx } from '../sim/units';
 import { MatterAdapter, type MechanicEvent } from './matterAdapter';
 
 export interface RecordedPoint { t: number; x: number; y: number }
@@ -34,12 +34,8 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
   });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
-  const angle = angleDeg * Math.PI / 180;
   const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
-  const start = {
-    x: metresToPixels(level.cannonSpawn.x + offset * Math.cos(angle), ppm),
-    y: simYToWorldY(level.cannonSpawn.y + offset * Math.sin(angle), WORLD.designHeightPx, ppm),
-  };
+  const start = muzzleSpawnPx(level.cannonSpawn, angleDeg, offset, ppm, WORLD.designHeightPx);
   adapter.spawnProjectile(start.x, start.y, PROJECTILE.radiusMetres * ppm, launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm));
   const points: RecordedPoint[] = [{ t: 0, ...start }];
   const events: RecordedShot['events'] = [];

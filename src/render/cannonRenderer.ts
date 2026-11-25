@@ -6,7 +6,7 @@ import { AIM, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
 import { previewDotsPx } from '../sim/ballistics';
-import { metresToPixels, simYToWorldY } from '../sim/units';
+import { metresToPixels, muzzleSpawnPx, simYToWorldY } from '../sim/units';
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { artImage, artScale } from './artTextures';
 
@@ -25,6 +25,7 @@ export class CannonRenderer {
   private showAimAids = true;
   private pivotXPx: number;
   private pivotYPx: number;
+  private readonly spawn: Point2D;
   private readonly carriage: Phaser.GameObjects.Image;
   private readonly barrel: Phaser.GameObjects.Image;
   private readonly wheel: Phaser.GameObjects.Image;
@@ -45,6 +46,7 @@ export class CannonRenderer {
     private readonly physics: LevelPhysics = levelPhysics({}),
     private skin: CannonSkinId = DEFAULT_CANNON_SKIN,
   ) {
+    this.spawn = { x: cannonSpawn.x, y: cannonSpawn.y };
     this.pivotXPx = metresToPixels(cannonSpawn.x, ppm);
     this.pivotYPx = simYToWorldY(cannonSpawn.y, worldHeightPx, ppm);
     this.shadow = scene.add.image(this.pivotXPx, this.pivotYPx + 32, 'fx-shadow').setScale(0.75, 0.5).setDepth(9);
@@ -79,15 +81,10 @@ export class CannonRenderer {
     this.pivotYPx = simYToWorldY(cannonSpawn.y, this.worldHeightPx, this.ppm);
   }
 
+  /** Where the ball spawns: just ahead of the barrel (the same formula the tests and replays use). */
   getMuzzlePosition(angleDeg: number, ballRadiusMetres: number): { x: number; y: number } {
-    const rad = (angleDeg * Math.PI) / 180;
-    // Spawn tip offset: slightly ahead of barrel so ball cannot intersect barrel
     const offsetMetres = AIM.barrelLengthMetres + ballRadiusMetres + AIM.muzzleGapMetres;
-    const offsetPx = metresToPixels(offsetMetres, this.ppm);
-    return {
-      x: this.pivotXPx + offsetPx * Math.cos(rad),
-      y: this.pivotYPx - offsetPx * Math.sin(rad),
-    };
+    return muzzleSpawnPx(this.spawn, angleDeg, offsetMetres, this.ppm, this.worldHeightPx);
   }
 
   setRecoil(pixels: number, _angleDeg?: number): void { this.recoilPx = pixels; }

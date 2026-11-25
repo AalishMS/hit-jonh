@@ -217,6 +217,8 @@ x(t)   = x0 + vx·t ;  y(t) = y0 + vy·t − ½·g·t²
 - Reproducibility target: identical within one build + browser + configuration. Cross-device bit-identity is **not** assumed.
 - Matter sleeping disabled during shots (`enableSleeping: false`) **[PROPOSED]**.
 
+- **The game runs the tested physics [DECIDED fix 2026-11-25].** The game, the headless shot runner, the shot recorder and the tests use one spawn formula (`muzzleSpawnPx`) and the same Matter contact-solver constants (`PHYSICS.matterSolver`, Matter's defaults). Phaser's Matter plugin otherwise sets `restingThresh` 4 and `restingThreshTangent` 6 for the game only, so slow contacts behaved differently from what the reference-shot tests prove. Lunar Picnic's reference shot 69°/28% slid to a stop on the slab in the game. The game now reproduces the headless run bit for bit (946 steps, difference 0).
+
 ### 8.4 Materials [TUNE]
 
 Per-surface `restitution` and `friction` come from a material table in tuning config, referenced by name in level data. First release uses **grass** (low bounce), **wood** (fence; solid, static), **concrete** (roof/wall; some bounce). A surface that looks the same must behave the same every attempt. Glass was deferred; it was added on 2026-11-24 for breakable panes (below).

@@ -4,7 +4,7 @@ import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
-import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
+import { launchVelocityToWorld, matterGravityY, muzzleSpawnPx } from '../sim/units';
 import { MatterAdapter } from './matterAdapter';
 
 export interface HeadlessShotResult {
@@ -27,11 +27,11 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
   });
   const adapter = new MatterAdapter(engine.world, ppm, WORLD.designHeightPx);
   adapter.setupLevel(level);
-  const angle = angleDeg * Math.PI / 180;
   const offset = AIM.barrelLengthMetres + PROJECTILE.radiusMetres + AIM.muzzleGapMetres;
+  const start = muzzleSpawnPx(level.cannonSpawn, angleDeg, offset, ppm, WORLD.designHeightPx);
   adapter.spawnProjectile(
-    metresToPixels(level.cannonSpawn.x + offset * Math.cos(angle), ppm),
-    simYToWorldY(level.cannonSpawn.y + offset * Math.sin(angle), WORLD.designHeightPx, ppm),
+    start.x,
+    start.y,
     PROJECTILE.radiusMetres * ppm,
     launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm),
   );

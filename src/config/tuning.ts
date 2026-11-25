@@ -24,6 +24,20 @@ export const PHYSICS = {
   /** Matter's gravity.scale default; gravity.y is derived from this so units stay explicit. */
   matterGravityScale: 0.001,
   /**
+   * Matter's contact solver constants (Matter's own defaults). Phaser's Matter plugin overwrites
+   * these globals with 4 and 6 for the game only, so without passing them explicitly the shipped
+   * game ran different contact physics from the headless tests that prove every reference shot
+   * (Lunar Picnic's 69°/28% slid to a stop on the slab in the game instead of bouncing on to Jonh).
+   * main.ts passes them to Phaser and physics/matterSolver.ts sets them on the adapter's Matter.
+   */
+  matterSolver: {
+    restingThresh: 2,
+    restingThreshTangent: Math.sqrt(6),
+    positionDampen: 0.9,
+    positionWarming: 0.8,
+    frictionNormalMultiplier: 5,
+  },
+  /**
    * Linear rolling damping factor applied per fixed step while the projectile rests on a top
    * surface (ground, roof, deck), unless that material sets its own `rollingDamping` [TUNE].
    */

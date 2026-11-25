@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { PHYSICS, WORLD } from './config/tuning';
+import { WORLD } from './config/tuning';
 import { BootScene } from './scenes/BootScene';
 import { PrototypeScene } from './scenes/PrototypeScene';
 import { ShowcaseScene } from './scenes/ShowcaseScene';
-import { matterGravityY } from './sim/units';
+import { matterWorldConfig } from './config/matterWorld';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -18,16 +18,8 @@ const config: Phaser.Types.Core.GameConfig = {
   },
   physics: {
     default: 'matter',
-    matter: {
-      // Simulation is stepped manually from a fixed-step accumulator (SPEC.md §7).
-      autoUpdate: false,
-      gravity: {
-        x: 0,
-        y: matterGravityY(PHYSICS.gravity, WORLD.pixelsPerMetre, PHYSICS.matterGravityScale),
-      },
-      enableSleeping: false,
-      debug: import.meta.env.DEV && new URLSearchParams(location.search).has('debug'),
-    },
+    // Fixed-step, no sleeping, and the tested contact solver (config/matterWorld.ts).
+    matter: matterWorldConfig(import.meta.env.DEV && new URLSearchParams(location.search).has('debug')),
   },
   scene: [BootScene, PrototypeScene, ShowcaseScene],
 };

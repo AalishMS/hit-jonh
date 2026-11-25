@@ -31,12 +31,15 @@ declare module '@matter-js' {
     rectangle(x: number, y: number, width: number, height: number, options?: unknown): MatterJS.BodyType;
     circle(x: number, y: number, radius: number, options?: unknown): MatterJS.BodyType;
   };
+  /** The contact solver; its tuning constants (`_restingThresh`, …) are module globals. */
+  export const Resolver: Record<string, unknown>;
 
   const MatterExport: {
     Body: typeof Body;
     World: typeof World;
     Engine: typeof Engine;
     Bodies: typeof Bodies;
+    Resolver: typeof Resolver;
   };
 
   export default MatterExport;
