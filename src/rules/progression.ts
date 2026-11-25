@@ -3,6 +3,7 @@
  * persisted by storage.ts. Nothing here affects physics or scoring.
  */
 
+import { sanitizeDailyShots } from './dailyShare';
 import {
   DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, sanitizeCannonSkin, sanitizeOutfit,
   type CannonSkinId, type CosmeticContext, type OutfitId,
@@ -21,6 +22,8 @@ export interface Progress {
   threeStarMaps: string[];
   /** Daily results by local date key (YYYY-MM-DD): stars (0 = attempted, failed). */
   daily: Record<string, number>;
+  /** The counted daily run's shots by date key, for sharing (rules/dailyShare.ts; e.g. "mb"). */
+  dailyShots: Record<string, string>;
   selectedHat: HatName;
   /** Cannon skin worn in solo and on the title screen (rules/cosmetics.ts). */
   selectedCannon: CannonSkinId;
@@ -29,7 +32,7 @@ export interface Progress {
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
@@ -53,10 +56,18 @@ export function recordSoloFinish(p: Progress, mapId: string, stars: number): Pro
   return { ...p, threeStarMaps: [...p.threeStarMaps, mapId] };
 }
 
-/** Only the first daily attempt of a date is recorded; replays never overwrite it. */
-export function recordDaily(p: Progress, dateKey: string, stars: number): Progress {
+/**
+ * Only the first daily attempt of a date is recorded; replays never overwrite it. `shots` is that
+ * run's pattern (rules/dailyShare.ts), kept so the result can be shared later in the day.
+ */
+export function recordDaily(p: Progress, dateKey: string, stars: number, shots = ''): Progress {
   if (dateKey in p.daily) return p;
-  return { ...p, daily: { ...p.daily, [dateKey]: Math.max(0, Math.min(3, Math.round(stars))) } };
+  const pattern = sanitizeDailyShots(shots);
+  return {
+    ...p,
+    daily: { ...p.daily, [dateKey]: Math.max(0, Math.min(3, Math.round(stars))) },
+    dailyShots: pattern ? { ...p.dailyShots, [dateKey]: pattern } : p.dailyShots,
+  };
 }
 
 export interface HatRule { name: string; hint: string; unlocked: (p: Progress, mapIds: readonly string[]) => boolean }
@@ -139,6 +150,12 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: C
   if (r.daily && typeof r.daily === 'object' && !Array.isArray(r.daily)) {
     for (const [k, v] of Object.entries(r.daily as Record<string, unknown>)) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof v === 'number' && Number.isFinite(v)) p.daily[k] = Math.max(0, Math.min(3, Math.round(v)));
+    }
+  }
+  if (r.dailyShots && typeof r.dailyShots === 'object' && !Array.isArray(r.dailyShots)) {
+    for (const [k, v] of Object.entries(r.dailyShots as Record<string, unknown>)) {
+      const pattern = sanitizeDailyShots(v);
+      if (k in p.daily && pattern) p.dailyShots[k] = pattern;
     }
   }
   if (typeof r.selectedHat === 'string' && (HAT_ORDER as readonly string[]).includes(r.selectedHat)) {

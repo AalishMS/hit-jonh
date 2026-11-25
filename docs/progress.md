@@ -1033,3 +1033,15 @@ There were also fixes from an independent review.
 9. **Mobile performance and install.** Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone. Today's GPU cost is unknown (headless SwiftShader only).
 10. **A walking-Jonh garden.** A predictable route timed from Fire (a timing challenge). SPEC lists "Jonh moving during shots" as deferred, so it needs owner approval.
 
+
+## Next 10 (2026-11-25)
+
+The owner approved the proposed next 10 ("I like the proposal. Continue with them"), including the two items the spec had deferred (hot-seat sudden death and a walking-Jonh garden). Independent items run in parallel worktrees: the wind garden (5), online emotes (4), mobile performance and install (9) and the walking-Jonh garden (10). Items 1, 2, 3, 6, 7 and 8 are built on `real-game-pass` directly.
+
+### 1. Shareable Daily Bonk result — done
+- `rules/dailyShare.ts` builds the text: "Hit Jonh Daily · 25 Nov · ★★☆", one symbol per shot (⬜ miss, 🎩 hat, 💥 hit, 🎱 trick, or "Jonh wins"), "🔥 3-day streak" from two days, and the game's address with `?daily`. Format and symbols are [PROPOSED].
+- The day's counted run is saved as `progress.dailyShots` (sanitized: up to three shots, only the last may be a hit). Older saves share stars only.
+- The Daily result card offers **Share result** (focused), **Play again** (R) and **Home**. The Daily screen offers Share once today's run exists. A replay shares the counted run and says so.
+- Phones get the share sheet (`navigator.share` on coarse pointers); elsewhere the text is copied. Without the Clipboard API (plain-http LAN addresses) the text becomes a selected box to copy by hand.
+- `?daily` opens today's Daily Bonk directly, then drops the parameter so a reload starts at Home.
+- Verified: `tests/dailyShare.test.ts` (text, codes, dates, saved patterns, share/copy fallbacks). Headless Chromium: `/?daily` opened the Daily screen; a miss then the reference shot gave "★★☆ ⬜🎱 trick shot!"; Share copied exactly the previewed text (read back from the clipboard); the Daily screen then offered Share. Emoji show as boxes in headless Chromium (no emoji font); not checked on a phone.

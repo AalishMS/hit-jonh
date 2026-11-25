@@ -60,7 +60,9 @@ import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
 import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
+import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
+import { shareBlock } from '../ui/share';
 import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
 import { isOnlineConfigured } from '../net/convexClient';
@@ -120,6 +122,8 @@ export class PrototypeScene extends Phaser.Scene {
   private pendingUnlocks: Unlock[] = [];
   /** Set while playing today's Daily Bonk (never overwrites solo bests). */
   private daily: { key: string; positionId: string } | null = null;
+  /** This daily run's shots so far (rules/dailyShare.ts codes), saved with the day's first result. */
+  private dailyRun = '';
   private readonly hatImages = new Map<string, string>();
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
@@ -279,6 +283,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.htmlControls.setVisible(true);
         this.htmlControls.setControlsInert(false);
         this.soloMachine.retry();
+        this.dailyRun = '';
         this.reset();
       },
       onReturnToMenu: () => {
@@ -439,8 +444,16 @@ export class PrototypeScene extends Phaser.Scene {
     this.showAttract();
 
     // A shared room link (?room=CODE) opens online play directly, rejoining this tab's seat after a reload.
-    const roomParam = new URLSearchParams(window.location.search).get('room');
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
     if (roomParam && this.online) void this.online.openFromLink(roomParam);
+    else if (params.has(DAILY_LINK_PARAM)) {
+      // A shared Daily Bonk result links here: open today's challenge (once; a reload starts at Home).
+      const url = new URL(window.location.href);
+      url.searchParams.delete(DAILY_LINK_PARAM);
+      window.history.replaceState(null, '', url);
+      this.showDaily();
+    }
   }
 
   /** True while the active player may adjust aim (drives drag input and the aim aids). */
@@ -613,6 +626,7 @@ export class PrototypeScene extends Phaser.Scene {
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
     this.daily = daily;
+    this.dailyRun = '';
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
     this.lastMissQuote = null;
 
@@ -1054,6 +1068,7 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (this.activeMode === 'solo') {
+      if (this.daily) this.dailyRun += shotCode(classification.outcome);
       this.soloCoordinator.resolveShot(isBodyHit, classification.outcome === 'ricochet_body');
     } else if (this.activeMode === 'multi' && !this.online?.inMatch) {
       this.multiCoordinator.resolveShot(classification.outcome);
@@ -1128,7 +1143,7 @@ export class PrototypeScene extends Phaser.Scene {
     const soloFinished = this.activeMode === 'solo' && this.soloMachine.state === 'solo_result';
     if (soloFinished) {
       const res = this.soloMachine.result!;
-      if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0);
+      if (this.daily) after = recordDaily(after, this.daily.key, res.success ? res.stars : 0, this.dailyRun);
       else if (res.success) after = recordSoloFinish(after, this.currentLevel.id, res.stars);
     }
     // The solo bests before and after this result (the save itself is written after the contact
@@ -1170,6 +1185,7 @@ export class PrototypeScene extends Phaser.Scene {
         unlockedMapId: wasLocked ? nextMapId : null,
         campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
         newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
+        share: this.dailyResultShare(before, after),
       };
       this.pendingUnlocks = [];
       if (res.success && !this.daily) {
@@ -1260,6 +1276,22 @@ export class PrototypeScene extends Phaser.Scene {
     row.append(daily, hats);
   }
 
+  /** Share extras for a finished daily run; a replay shares the day's counted (first) run, as the note says. */
+  private dailyResultShare(before: Progress, after: Progress): SoloResultExtras['share'] {
+    if (!this.daily) return undefined;
+    const text = this.dailyShareFor(after, this.daily.key);
+    if (!text) return undefined;
+    return { text, note: this.daily.key in before.daily ? 'Replays are just for fun: Share sends your first run of the day.' : undefined };
+  }
+
+  /** The day's counted Daily Bonk run as text to share, or null if it hasn't been played. */
+  private dailyShareFor(progress: Progress, key: string): string | null {
+    const stars = progress.daily[key];
+    if (stars === undefined) return null;
+    return dailyShareText({ key, shots: progress.dailyShots[key] ?? '', stars, streak: dailyStreak(progress, new Date()),
+      url: dailyLink(window.location.origin, window.location.pathname) });
+  }
+
   private showDaily(): void {
     const key = dateKey(new Date());
     const pick = dailyChallenge(key, MAPS);
@@ -1299,7 +1331,14 @@ export class PrototypeScene extends Phaser.Scene {
       back.textContent = 'Back';
       back.addEventListener('click', () => this.menuOverlay.showHome(), { signal });
       actions.append(play, back);
-      content.append(h, intro, art, status, actions);
+      content.append(h, intro, art, status);
+      const shareText = this.dailyShareFor(this.progress, key);
+      if (shareText) {
+        const share = shareBlock(shareText, signal, 'Share result');
+        content.appendChild(share.block);
+        actions.prepend(share.button);
+      }
+      content.appendChild(actions);
       play.focus();
     });
   }

@@ -4,6 +4,7 @@ import { FLOW, MULTIPLAYER } from '../config/tuning';
 import { cssColor, playerDisplayColor } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
+import { shareBlock } from './share';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
 
 import type { MPPlayerSetup, MPPlayerView } from '../rules/multiplayerMatch';
@@ -50,6 +51,8 @@ export interface SoloResultExtras {
   campaignStars?: { stars: number; maxStars: number } | undefined;
   /** First trick-shot badge on this garden. */
   newTrick?: boolean;
+  /** Daily Bonk: the text Share puts on the clipboard (the day's counted run) and an optional note. */
+  share?: { text: string; note?: string | undefined } | undefined;
 }
 
 
@@ -574,8 +577,16 @@ export class MenuOverlay {
       unlock.innerHTML = extras.unlockHtml;
       this.content.appendChild(unlock);
     }
+    let shareBtn: HTMLButtonElement | null = null;
+    if (extras.share) {
+      if (extras.share.note) this.content.appendChild(el('p', 'home-note', extras.share.note));
+      const share = shareBlock(extras.share.text, signal, 'Share result', 'btn btn-primary btn-share');
+      this.content.appendChild(share.block);
+      shareBtn = share.button;
+    }
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
+    if (shareBtn) actions.appendChild(shareBtn);
     const retry = () => { this.hide(); this.callbacks.onRetry(); };
     const next = success && extras.nextMapId ? extras.nextMapId : null;
     let nextBtn: HTMLButtonElement | null = null;
@@ -585,11 +596,13 @@ export class MenuOverlay {
       this.keyHint(nextBtn, 'N');
       this.shortcut('KeyN', goNext, signal);
     }
-    const retryBtn = this.button(success ? 'Retry' : 'Retry map', next ? 'btn-retry-quiet' : 'btn-retry', retry, signal, actions);
+    const quiet = next !== null || shareBtn !== null;
+    const retryBtn = this.button(extras.share ? 'Play again' : success ? 'Retry' : 'Retry map', quiet ? 'btn-retry-quiet' : 'btn-retry', retry, signal, actions);
     this.keyHint(retryBtn, 'R');
     this.shortcut('KeyR', retry, signal);
-    this.button('Map select', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
-    (nextBtn ?? retryBtn).focus();
+    if (extras.share) this.button('Home', '', () => { this.callbacks.onReturnToMenu(); this.showHome(); }, signal, actions);
+    else this.button('Map select', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
+    (nextBtn ?? shareBtn ?? retryBtn).focus();
   }
 
   showPauseMenu(quitLabel = 'Quit to menu'): void {

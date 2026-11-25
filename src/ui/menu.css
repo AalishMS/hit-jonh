@@ -318,3 +318,11 @@
 .unlock-art svg, .unlock-art img { width: 100%; height: 100%; object-fit: contain; }
 .unlock-many .unlock-art { width: 46px; margin-right: -8px; }
 
+
+/* ---------- Daily Bonk share (next 10) ---------- */
+.share-block { display: grid; justify-items: center; gap: 6px; margin: 10px auto 0; }
+.share-preview, .share-text { margin: 0; padding: 10px 16px; max-width: 100%; text-align: left; white-space: pre-wrap; word-break: break-word;
+  background: #fff; border: 3px dashed var(--ink); border-radius: 12px; transform: rotate(-1deg);
+  font: 800 15px/1.45 var(--ui); color: var(--ink); }
+.share-text { width: min(360px, 100%); resize: none; transform: none; }
+.share-status { min-height: 1.2em; font: 900 13px var(--ui); color: var(--pow); }
