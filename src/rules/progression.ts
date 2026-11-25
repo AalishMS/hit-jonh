@@ -5,8 +5,8 @@
 
 import { sanitizeDailyShots } from './dailyShare';
 import {
-  DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, sanitizeCannonSkin, sanitizeOutfit,
-  type CannonSkinId, type CosmeticContext, type OutfitId,
+  DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, isCannonSkinId, isOutfitId, sanitizeCannonSkin, sanitizeOutfit,
+  unlockedCannonSkins, unlockedOutfits, type CannonSkinId, type CosmeticContext, type OutfitId,
 } from './cosmetics';
 
 export const HAT_ORDER = ['boater', 'bowler', 'fez', 'party', 'propeller', 'chef', 'viking', 'crown'] as const;
@@ -34,10 +34,17 @@ export interface Progress {
   selectedCannon: CannonSkinId;
   /** Jonh's outfit (rules/cosmetics.ts). */
   selectedOutfit: OutfitId;
+  /**
+   * Everything ever unlocked. An earned item stays earned even when a rule later asks for more
+   * (new gardens raise "every star" and "three stars on every garden"). [DECIDED by owner 2026-11-25]
+   */
+  earnedHats: HatName[];
+  earnedCannons: CannonSkinId[];
+  earnedOutfits: OutfitId[];
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT, earnedHats: [], earnedCannons: [], earnedOutfits: [] };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
@@ -94,8 +101,36 @@ export const HAT_RULES: Record<HatName, HatRule> = {
   crown: { name: 'Crown', hint: 'Three stars on every garden.', unlocked: (p, maps) => maps.length > 0 && maps.every(m => p.threeStarMaps.includes(m)) },
 };
 
+/** A hat is worn-able once earned, even if its rule now asks for more (see `Progress.earnedHats`). */
+export function hatUnlocked(p: Progress, id: HatName, mapIds: readonly string[]): boolean {
+  return p.earnedHats.includes(id) || HAT_RULES[id].unlocked(p, mapIds);
+}
+
 export function unlockedHats(p: Progress, mapIds: readonly string[]): HatName[] {
-  return HAT_ORDER.filter(id => HAT_RULES[id].unlocked(p, mapIds));
+  return HAT_ORDER.filter(id => hatUnlocked(p, id, mapIds));
+}
+
+/**
+ * The eight gardens of the first release (`main` before the campaign). Its Crown asked for three
+ * stars on each of them; a save from then that has them keeps the Crown (see `sanitizeProgress`).
+ */
+export const FIRST_RELEASE_MAPS: readonly string[] = ['backyard', 'fence', 'rooftop', 'rubber', 'bankshot', 'trampoline', 'moon', 'valley'];
+
+/**
+ * Records every hat, cannon skin and outfit unlocked right now as earned, so it stays unlocked
+ * when a rule later asks for more. Returns `p` itself when nothing new was earned.
+ */
+export function recordEarned(p: Progress, mapIds: readonly string[], ctx: CosmeticContext): Progress {
+  const hats = unlockedHats(p, mapIds).filter(id => !p.earnedHats.includes(id));
+  const cannons = unlockedCannonSkins(p, ctx).filter(id => !p.earnedCannons.includes(id));
+  const outfits = unlockedOutfits(p, ctx).filter(id => !p.earnedOutfits.includes(id));
+  if (hats.length + cannons.length + outfits.length === 0) return p;
+  return {
+    ...p,
+    earnedHats: HAT_ORDER.filter(id => p.earnedHats.includes(id) || hats.includes(id)),
+    earnedCannons: [...p.earnedCannons, ...cannons],
+    earnedOutfits: [...p.earnedOutfits, ...outfits],
+  };
 }
 
 export function newlyUnlocked(before: Progress, after: Progress, mapIds: readonly string[]): HatName[] {
@@ -161,7 +196,9 @@ export function dailyStreak(p: Progress, today: Date): number {
 /**
  * Validates untrusted saved data, falling back field by field. `ctx` (campaign stars and gardens
  * cleared, from the saved solo bests) is needed to tell whether a selected cannon skin or outfit
- * is really unlocked; without it only feat-gated items can be kept.
+ * is really unlocked; without it only feat-gated and already-earned items can be kept. Whatever is
+ * unlocked is recorded as earned. A save from before earned items were recorded keeps the
+ * first release's Crown (three stars on its eight gardens).
  */
 export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: CosmeticContext = NO_COSMETIC_CONTEXT): Progress {
   const p = freshProgress();
@@ -188,11 +225,16 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: C
       if (k in p.daily && pattern) p.dailyShots[k] = pattern;
     }
   }
-  if (typeof r.selectedHat === 'string' && (HAT_ORDER as readonly string[]).includes(r.selectedHat)) {
-    const hat = r.selectedHat as HatName;
-    p.selectedHat = HAT_RULES[hat].unlocked(p, mapIds) ? hat : 'boater';
+  const isHat = (v: unknown): v is HatName => typeof v === 'string' && (HAT_ORDER as readonly string[]).includes(v);
+  const ids = <T extends string>(v: unknown, is: (x: unknown) => x is T): T[] => (Array.isArray(v) ? [...new Set(v.filter(is))] : []);
+  p.earnedHats = HAT_ORDER.filter(id => ids(r.earnedHats, isHat).includes(id));
+  p.earnedCannons = ids(r.earnedCannons, isCannonSkinId);
+  p.earnedOutfits = ids(r.earnedOutfits, isOutfitId);
+  if (!Array.isArray(r.earnedHats) && FIRST_RELEASE_MAPS.every(m => p.threeStarMaps.includes(m)) && !p.earnedHats.includes('crown')) {
+    p.earnedHats = [...p.earnedHats, 'crown'];
   }
+  if (isHat(r.selectedHat)) p.selectedHat = hatUnlocked(p, r.selectedHat, mapIds) ? r.selectedHat : 'boater';
   p.selectedCannon = sanitizeCannonSkin(r.selectedCannon, p, ctx);
   p.selectedOutfit = sanitizeOutfit(r.selectedOutfit, p, ctx);
-  return p;
+  return recordEarned(p, mapIds, ctx);
 }

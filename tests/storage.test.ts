@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { defaultPlayerSetups, loadSaveData, recordSoloResult, sanitizePlayerName, saveMultiplayerSetup, saveSettings, saveSoloAim } from '../src/storage/storage';
+import { defaultPlayerSetups, loadSaveData, recordSoloResult, sanitizePlayerName, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../src/storage/storage';
+import { freshProgress } from '../src/rules/progression';
 
 
 const localStorageMock = (function () {
@@ -233,5 +234,14 @@ describe('Progress persistence (polish pass)', () => {
     expect(loadProgress()).toMatchObject({ totalHits: 1, currentStreak: 1 });
     localStorage.setItem('hitJonh.v1', JSON.stringify({ version: 'hitJonh.v1', progress: [1, 2] }));
     expect(loadProgress()).toEqual(freshProgress());
+  });
+
+  it('writes star-gated cosmetics as earned when a solo result brings the stars', () => {
+    saveProgress(freshProgress());
+    recordSoloResult('backyard', 1, false, 45, 50);
+    recordSoloResult('fence', 1, false, 45, 50);
+    // Six stars unlock the Admiral cannon; it is in the stored save itself, not only derived on load.
+    const stored = JSON.parse(localStorage.getItem('hitJonh.v1') ?? '{}') as { progress?: { earnedCannons?: string[] } };
+    expect(stored.progress?.earnedCannons).toContain('admiral');
   });
 });

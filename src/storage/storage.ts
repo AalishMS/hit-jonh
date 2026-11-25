@@ -2,7 +2,7 @@ import { DEFAULT_KEYS, sanitizeKeys, type KeyBindings } from '../input/keyBindin
 import { MAPS } from '../levels';
 import { AIM, MULTIPLAYER } from '../config/tuning';
 import { cosmeticContext } from '../rules/cosmetics';
-import { freshProgress, sanitizeProgress, type Progress } from '../rules/progression';
+import { freshProgress, recordEarned, sanitizeProgress, type Progress } from '../rules/progression';
 import { sanitizePlayerName } from '../rules/playerName';
 export { sanitizePlayerName };
 
@@ -237,6 +237,11 @@ export function recordSoloResult(mapId: string, shots: number, isRicochet: boole
     existing.hasStyle = existing.hasStyle || isRicochet;
     existing.lastAngle = angle;
     existing.lastPower = power;
+  }
+  // New stars can unlock star-gated cosmetics: record them as earned now (rules/progression.ts).
+  if (data.progress) {
+    const mapIds = MAPS.map(m => m.id);
+    data.progress = recordEarned(data.progress, mapIds, cosmeticContext(mapIds, data.solo));
   }
   writeSaveData(data);
 }

@@ -3,7 +3,8 @@
  * no DOM). Persisted as ids in `Progress`; the art for each id is registered by `art/cosmeticArt.ts`.
  * Nothing here affects physics, colliders or scoring.
  *
- * Unlock thresholds are [PROPOSED]. Star gates use the campaign star total (3 per garden).
+ * Unlock thresholds are [PROPOSED]. Star gates use the campaign star total (3 per garden). Once
+ * unlocked, an item stays unlocked (`Progress.earned*`), even when new gardens raise a gate.
  */
 import { CAMPAIGN_ORDER, campaignStatus, campaignTotals, type MapRecord } from './campaign';
 import type { Progress } from './progression';
@@ -79,12 +80,22 @@ export function isOutfitId(v: unknown): v is OutfitId {
   return typeof v === 'string' && (OUTFIT_ORDER as readonly string[]).includes(v);
 }
 
+/** Unlocked once earned, even if the rule now asks for more (`Progress.earnedCannons`). */
+export function cannonSkinUnlocked(p: Progress, id: CannonSkinId, ctx: CosmeticContext): boolean {
+  return p.earnedCannons.includes(id) || CANNON_SKIN_RULES[id].unlocked(p, ctx);
+}
+
+/** Unlocked once earned, even if the rule now asks for more (`Progress.earnedOutfits`). */
+export function outfitUnlocked(p: Progress, id: OutfitId, ctx: CosmeticContext): boolean {
+  return p.earnedOutfits.includes(id) || OUTFIT_RULES[id].unlocked(p, ctx);
+}
+
 export function unlockedCannonSkins(p: Progress, ctx: CosmeticContext): CannonSkinId[] {
-  return CANNON_SKIN_ORDER.filter(id => CANNON_SKIN_RULES[id].unlocked(p, ctx));
+  return CANNON_SKIN_ORDER.filter(id => cannonSkinUnlocked(p, id, ctx));
 }
 
 export function unlockedOutfits(p: Progress, ctx: CosmeticContext): OutfitId[] {
-  return OUTFIT_ORDER.filter(id => OUTFIT_RULES[id].unlocked(p, ctx));
+  return OUTFIT_ORDER.filter(id => outfitUnlocked(p, id, ctx));
 }
 
 /** Skins unlocked by the step from `before` to `after` (a shot, a solo finish or a daily result). */
@@ -100,9 +111,9 @@ export function newlyUnlockedOutfits(before: Progress, after: Progress, beforeCt
 
 /** A saved skin id, falling back to the default when unknown or still locked. */
 export function sanitizeCannonSkin(id: unknown, p: Progress, ctx: CosmeticContext): CannonSkinId {
-  return isCannonSkinId(id) && CANNON_SKIN_RULES[id].unlocked(p, ctx) ? id : DEFAULT_CANNON_SKIN;
+  return isCannonSkinId(id) && cannonSkinUnlocked(p, id, ctx) ? id : DEFAULT_CANNON_SKIN;
 }
 
 export function sanitizeOutfit(id: unknown, p: Progress, ctx: CosmeticContext): OutfitId {
-  return isOutfitId(id) && OUTFIT_RULES[id].unlocked(p, ctx) ? id : DEFAULT_OUTFIT;
+  return isOutfitId(id) && outfitUnlocked(p, id, ctx) ? id : DEFAULT_OUTFIT;
 }

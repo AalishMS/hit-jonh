@@ -2194,13 +2194,17 @@ export class PrototypeScene extends Phaser.Scene {
 
   /** Jonh's long-term goal list: every feat with its progress and the cosmetics it earns. */
   private showFeats(): void {
-    const statuses = featStatuses(this.featInput(this.progress, loadSaveData().solo));
+    const input = this.featInput(this.progress, loadSaveData().solo);
+    const statuses = featStatuses(input);
+    // A reward stays earned even when its feat now asks for more (new gardens raise "every star").
+    const earned = (r: Unlock): boolean => r.kind === 'hat' ? unlockedHats(input.progress, MAP_IDS).includes(r.id)
+      : r.kind === 'outfit' ? unlockedOutfits(input.progress, input.ctx).includes(r.id) : unlockedCannonSkins(input.progress, input.ctx).includes(r.id);
     this.menuOverlay.showCustom('feats', (content, signal) => buildFeats(content, signal, {
       groups: FEAT_GROUPS.map(group => ({
         title: group.title,
         rows: statuses.filter(s => s.def.group === group.id).map(s => ({
           id: s.def.id, name: s.def.name, hint: s.def.hint, current: s.current, target: s.target, done: s.done,
-          rewards: s.def.rewards.map(r => ({ name: this.unlockName(r), art: this.unlockArt(r), kind: r.kind })),
+          rewards: s.def.rewards.map(r => ({ name: this.unlockName(r), art: this.unlockArt(r), kind: r.kind, earned: earned(r) })),
         })),
       })),
       onBack: () => this.menuOverlay.showHome(),

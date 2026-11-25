@@ -8,6 +8,8 @@ export interface FeatRewardView {
   art: string;
   /** "hat", "outfit" or "cannon", for the caption. */
   kind: string;
+  /** Already earned (it stays earned even if the feat now asks for more, e.g. after new gardens). */
+  earned: boolean;
 }
 
 export interface FeatRowView {
@@ -69,7 +71,7 @@ export function buildFeats(content: HTMLElement, signal: AbortSignal, options: F
       const rewards = el('div', 'feat-rewards');
       if (row.rewards.length === 0) rewards.appendChild(el('span', 'feat-badge', 'Bragging rights'));
       for (const reward of row.rewards) {
-        const chip = el('span', `feat-reward feat-reward-${reward.kind}`);
+        const chip = el('span', `feat-reward feat-reward-${reward.kind}${reward.earned ? ' earned' : ''}`);
         const art = el('span', 'feat-reward-art');
         art.innerHTML = reward.art;
         chip.append(art, el('small', '', reward.name));
