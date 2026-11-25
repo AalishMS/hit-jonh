@@ -254,9 +254,44 @@ export function mergeSave(target: SaveData, incoming: DecodedSave): SaveData {
 }
 
 /** Headline numbers for a save, to say what a code holds and what this device has after loading it. */
-export function saveSummary(data: Pick<SaveData, 'solo' | 'progress'>): { stars: number; maxStars: number; hits: number } {
+export function saveSummary(data: Pick<SaveData, 'progress'> & { solo: DecodedSave['solo'] }): { stars: number; maxStars: number; hits: number } {
   const totals = campaignTotals(campaignStatus(mapIds(), data.solo));
   return { stars: totals.stars, maxStars: totals.maxStars, hits: data.progress?.totalHits ?? 0 };
+}
+
+/**
+ * A save code as a link [PROPOSED 2026-11-25]: the code rides in the fragment (`#save=…`), which browsers never
+ * send to the server, so it stays out of logs. Opening the link asks before merging (Home).
+ */
+export const SAVE_LINK_PREFIX = '#save=';
+
+export function saveLink(code: string, href: string): string {
+  const url = new URL(href);
+  url.search = '';
+  url.hash = '';
+  return `${url.toString()}${SAVE_LINK_PREFIX}${code}`;
+}
+
+/** The save code in a link's fragment, or null when there is none. Spaces and stray encoding are tolerated. */
+export function saveCodeFromHash(hash: string): string | null {
+  if (!hash.startsWith(SAVE_LINK_PREFIX)) return null;
+  let code = hash.slice(SAVE_LINK_PREFIX.length);
+  try { code = decodeURIComponent(code); } catch { /* keep it raw: the decoder reports what is wrong */ }
+  code = code.trim();
+  return code ? code : null;
+}
+
+/** A code pasted on its own or as a whole save link (only the part after `#save=` counts). */
+export function saveCodeFromPaste(text: string): string | null {
+  const at = text.indexOf(SAVE_LINK_PREFIX);
+  return at >= 0 ? saveCodeFromHash(text.slice(at).trim()) : (text.trim() || null);
+}
+
+/** What a code holds, to show before loading it (null with the reason when it can't be read). */
+export async function previewSaveCode(code: string): Promise<{ ok: true; stars: number; maxStars: number; hits: number } | { ok: false; message: string }> {
+  const decoded = await decodeSaveCode(code);
+  if ('error' in decoded) return { ok: false, message: SAVE_CODE_ERRORS[decoded.error] };
+  return { ok: true, ...saveSummary(decoded) };
 }
 
 /** This device's save code. */

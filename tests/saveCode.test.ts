@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_KEYS } from '../src/input/keyBindings';
 import { freshProgress, type Progress } from '../src/rules/progression';
-import { decodeSaveCode, encodeSaveCode, importSaveCode, mergeSave, saveSummary, type DecodedSave } from '../src/storage/saveCode';
+import { decodeSaveCode, encodeSaveCode, importSaveCode, mergeSave, previewSaveCode, saveCodeFromHash, saveCodeFromPaste, saveLink, saveSummary, type DecodedSave } from '../src/storage/saveCode';
 import type { SaveData } from '../src/storage/storage';
 
 const score = (bestShots: number | null, hasStyle = false) => ({ bestShots, hasStyle, lastAngle: 40, lastPower: 60 });
@@ -147,3 +147,32 @@ describe('save codes (next 10, item 6)', () => {
   });
 });
 
+
+describe('save links', () => {
+  const code = 'HJ1-ab12-QUJDREVG_-x';
+
+  it('puts the code in the fragment of the game address, dropping any query or old fragment', () => {
+    expect(saveLink(code, 'https://hit-jonh.vercel.app/?room=K7QPX#old')).toBe(`https://hit-jonh.vercel.app/#save=${code}`);
+    expect(saveLink(code, 'http://localhost:5173/sub/index.html')).toBe(`http://localhost:5173/sub/index.html#save=${code}`);
+  });
+
+  it('reads the code back from a fragment, a pasted link or a bare code', () => {
+    expect(saveCodeFromHash(`#save=${code}`)).toBe(code);
+    expect(saveCodeFromHash(`#save=${encodeURIComponent(code)}%20`)).toBe(code);
+    expect(saveCodeFromHash('#save=')).toBeNull();
+    expect(saveCodeFromHash('#room=K7QPX')).toBeNull();
+    expect(saveCodeFromHash('')).toBeNull();
+    expect(saveCodeFromPaste(`  https://hit-jonh.vercel.app/#save=${code}\n`)).toBe(code);
+    expect(saveCodeFromPaste(` ${code} `)).toBe(code);
+    expect(saveCodeFromPaste('   ')).toBeNull();
+  });
+
+  it('round-trips a real save through a link', async () => {
+    const data = save({ backyard: score(1) }, { totalHits: 4 });
+    const real = await encodeSaveCode(data);
+    const fromLink = saveCodeFromPaste(saveLink(real, 'https://hit-jonh.vercel.app/'))!;
+    const preview = await previewSaveCode(fromLink);
+    expect(preview).toEqual({ ok: true, stars: 3, maxStars: expect.any(Number), hits: 4 });
+    expect(await previewSaveCode(fromLink.slice(0, -6))).toMatchObject({ ok: false });
+  });
+});

@@ -403,6 +403,9 @@
 .save-code-status.is-error { color: var(--pow) !important; }
 .save-code-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .save-code-actions .btn { flex: 1 1 140px; }
+.save-code-qr { margin-top: 10px; text-align: center; }
+.save-code-qr[hidden] { display: none; }
+.qr-code { display: block; width: min(280px, 72vw); height: auto; margin: 0 auto 6px; border-radius: 6px; box-shadow: 0 0 0 2px var(--ink); }
 .keys-reset { min-height: 44px; }
 
 /* ---------- Campaign chapters (groups of three gardens) ---------- */

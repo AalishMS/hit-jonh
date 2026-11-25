@@ -6,7 +6,8 @@ import { cssColor, playerDisplayColor, setPlayerPalette } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
 import { shareBlock, shareOrCopy } from './share';
-import { exportSaveCode, importSaveCode } from '../storage/saveCode';
+import { exportSaveCode, importSaveCode, previewSaveCode, saveCodeFromPaste, saveLink, saveSummary } from '../storage/saveCode';
+import { qrFigure } from './qrFigure';
 import { clipControl } from './clipButton';
 import type { ClipOffer } from '../share/clipTypes';
 import { announce, sentence } from './announcer';
@@ -87,7 +88,7 @@ export interface HandoverParty {
   autoSeconds: number;
 }
 
-export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'feats' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'feats' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice' | 'save_link';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
@@ -381,16 +382,51 @@ export class MenuOverlay {
       })).catch(() => say("Couldn't make a save code on this device.", true));
     }, signal, actions);
     copy.id = 'save-code-copy';
+    const linkBtn = this.button('Copy link', '', () => {
+      void exportSaveCode().then(code => {
+        const link = saveLink(code, window.location.href);
+        return shareOrCopy(link).then(outcome => {
+          if (outcome === 'copied') say('Link copied. Open it on your other device: it asks before loading.');
+          else if (outcome === 'shared') say('Shared. Open the link on your other device: it asks before loading.');
+          else if (outcome === 'failed' && !signal.aborted) { input.value = link; input.focus(); input.select(); say('Copy the link from the box.'); }
+        });
+      }).catch(() => say("Couldn't make a save code on this device.", true));
+    }, signal, actions);
+    linkBtn.id = 'save-code-link';
+    const qrBox = el('div', 'save-code-qr');
+    qrBox.id = 'save-code-qr-box';
+    qrBox.hidden = true;
+    const qrBtn = this.button('Show QR code', '', () => {
+      const showing = !qrBox.hidden;
+      qrBox.hidden = true;
+      qrBox.replaceChildren();
+      qrBtn.textContent = 'Show QR code';
+      qrBtn.setAttribute('aria-expanded', 'false');
+      if (showing) return;
+      void exportSaveCode().then(code => {
+        if (signal.aborted) return;
+        const figure = qrFigure(saveLink(code, window.location.href), 'QR code of a link to your progress');
+        if (!figure) { say('Your progress is too big for a QR code. Copy the link instead.', true); return; }
+        qrBox.append(figure, el('p', 'home-note', "Scan it with your other phone's camera. Hit Jonh opens there and asks before loading."));
+        qrBox.hidden = false;
+        qrBtn.textContent = 'Hide QR code';
+        qrBtn.setAttribute('aria-expanded', 'true');
+      }).catch(() => say("Couldn't make a save code on this device.", true));
+    }, signal, actions);
+    qrBtn.id = 'save-code-qr';
+    qrBtn.setAttribute('aria-expanded', 'false');
+    qrBtn.setAttribute('aria-controls', qrBox.id);
+    const loadRow = el('div', 'save-code-actions');
     const label = el('label', 'visually-hidden', 'Save code from another device');
     label.htmlFor = 'save-code-input';
     const input = el('textarea', 'online-input save-code-input');
     input.id = 'save-code-input';
     input.rows = 2;
-    input.placeholder = 'Paste a code from another device (HJ1-…)';
+    input.placeholder = 'Paste a code or link from another device (HJ1-…)';
     input.spellcheck = false;
     input.autocomplete = 'off';
     const load = this.button('Load code', '', () => {
-      const code = input.value.trim();
+      const code = saveCodeFromPaste(input.value);
       if (!code) { say('Paste a save code into the box first.', true); input.focus(); return; }
       load.disabled = true;
       void importSaveCode(code).then(result => {
@@ -399,11 +435,59 @@ export class MenuOverlay {
         say(`Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${result.hits} hit${result.hits === 1 ? '' : 's'}.`);
         this.callbacks.onSaveImported?.();
       }).catch(() => say("That code couldn't be loaded.", true)).finally(() => { load.disabled = false; });
-    }, signal, actions);
+    }, signal, loadRow);
     load.id = 'save-code-load';
     section.append(title, el('p', 'home-note', 'Move your stars, tricks and unlocks to another device. Loading a code keeps the best of both.'),
-      label, input, actions, status);
+      actions, qrBox, label, input, loadRow, status);
     return section;
+  }
+
+  /**
+   * Opened a save link (`#save=…`, storage/saveCode.ts): says what it holds and asks before merging it into this
+   * device's save. Loading keeps the best of both, so "Load" can never lose anything; "Not now" changes nothing.
+   */
+  showSaveLink(code: string): void {
+    this.showCustom('save_link', (content, signal) => {
+      content.appendChild(el('h2', '', 'Progress from another device'));
+      const note = el('p', 'home-note save-link-note', 'Reading the link…');
+      note.setAttribute('role', 'status');
+      const actions = el('div', 'result-actions');
+      content.append(note, actions);
+      const done = () => this.showHome();
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      void previewSaveCode(code).then(preview => {
+        if (signal.aborted) return;
+        if (!preview.ok) {
+          note.textContent = `${preview.message} Nothing was loaded.`;
+          this.button('OK', 'btn-primary', done, signal, actions).focus();
+          return;
+        }
+        const here = saveSummary(loadSaveData());
+        note.textContent = `The link holds ${preview.stars} / ${preview.maxStars} stars and ${plural(preview.hits, 'hit')}. `
+          + `This device has ${here.stars} / ${here.maxStars} stars and ${plural(here.hits, 'hit')}. `
+          + 'Loading keeps the best of both, so nothing here is lost.';
+        const load = this.button('Load progress', 'btn-primary', () => {
+          load.disabled = true;
+          void importSaveCode(code).then(result => {
+            if (signal.aborted) return;
+            actions.replaceChildren();
+            if (result.ok) {
+              note.textContent = `Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${plural(result.hits, 'hit')}.`;
+              this.callbacks.onSaveImported?.();
+            } else {
+              note.textContent = result.message;
+            }
+            this.button('OK', 'btn-primary', done, signal, actions).focus();
+          }).catch(() => { if (!signal.aborted) { note.textContent = "That link couldn't be loaded."; load.disabled = false; } });
+        }, signal, actions);
+        this.button('Not now', '', done, signal, actions);
+        load.focus();
+      }).catch(() => {
+        if (signal.aborted) return;
+        note.textContent = "That link couldn't be read. Nothing was loaded.";
+        this.button('OK', 'btn-primary', done, signal, actions).focus();
+      });
+    });
   }
 
   /** Settings → Keys: rebind each gameplay key. Escape cancels a change; a key already in use swaps. */

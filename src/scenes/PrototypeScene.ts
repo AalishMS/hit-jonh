@@ -66,6 +66,7 @@ import {
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { HTMLControls } from '../ui/htmlControls';
 import { MenuOverlay, type SoloResultExtras } from '../ui/menuOverlay';
+import { saveCodeFromHash } from '../storage/saveCode';
 import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, saveProgress, saveSettings, saveSoloAim } from '../storage/storage';
 import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
@@ -477,6 +478,9 @@ export class PrototypeScene extends Phaser.Scene {
     window.addEventListener('keyup', onKeyUp);
     this.cleanupHandlers.push(() => window.removeEventListener('keydown', onKeyDown));
     this.cleanupHandlers.push(() => window.removeEventListener('keyup', onKeyUp));
+    const onHashChange = () => { this.takeSaveLink(); };
+    window.addEventListener('hashchange', onHashChange);
+    this.cleanupHandlers.push(() => window.removeEventListener('hashchange', onHashChange));
 
     const onHidden = () => { this.stepper.reset(); this.skipPresentationFrame = true; };
     const onVisible = () => { this.stepper.reset(); this.skipPresentationFrame = true; };
@@ -506,6 +510,7 @@ export class PrototypeScene extends Phaser.Scene {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
     if (roomParam && this.online) void this.online.openFromLink(roomParam);
+    else if (this.takeSaveLink()) { /* asking about a save link from another device */ }
     else if (params.has(DAILY_LINK_PARAM)) {
       // A shared Daily Bonk result links here: open today's challenge (once; a reload starts at Home).
       const url = new URL(window.location.href);
@@ -513,6 +518,21 @@ export class PrototypeScene extends Phaser.Scene {
       window.history.replaceState(null, '', url);
       this.showDaily();
     }
+  }
+
+  /**
+   * A save link (`#save=…`) from another device: clears the fragment (so a reload doesn't ask again) and, at
+   * Home, asks before loading it. Also runs when such a link is opened in a tab that is already open.
+   */
+  private takeSaveLink(): boolean {
+    const code = saveCodeFromHash(window.location.hash);
+    if (!code) return false;
+    const url = new URL(window.location.href);
+    url.hash = '';
+    window.history.replaceState(null, '', url);
+    if (this.activeMode !== 'none' || this.online?.inRoom) return false; // never interrupt a game
+    this.menuOverlay.showSaveLink(code);
+    return true;
   }
 
   /** True while the active player may adjust aim (drives drag input and the aim aids). */
