@@ -394,3 +394,9 @@
 .menu-content .key-change.capturing { background: var(--zap); }
 .keys-status { min-height: 1.3em; margin: 8px 0 !important; font-size: 13px !important; color: var(--pow) !important; }
 .keys-reset { min-height: 44px; }
+
+/* ---------- Shareable clip: the Save clip action and its status line ---------- */
+.clip-status { text-align: center; margin: 6px 0 0; }
+.clip-status:empty { margin: 0; }
+/* The card steps aside while a clip of its replay is recorded; the canvas is what the clip shows. */
+body.clip-on .menu-overlay { visibility: hidden; }

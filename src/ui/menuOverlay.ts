@@ -5,6 +5,8 @@ import { cssColor, playerDisplayColor } from '../art/palette';
 import { difficultyPips, mapDescription, mapPreview } from './mapPreview';
 import { mapSetPicker } from './mapSetPicker';
 import { shareBlock } from './share';
+import { clipControl } from './clipButton';
+import type { ClipOffer } from '../share/clipTypes';
 import { announce, sentence } from './announcer';
 import { DEFAULT_KEYS, KEY_ACTIONS, KEY_ACTION_LABELS, actionFor, isBindableCode, keyLabel, rebind, type KeyAction, type KeyBindings } from '../input/keyBindings';
 import { defaultPlayerSetups, loadSaveData, sanitizePlayerName, saveMultiplayerSetup, saveSettings } from '../storage/storage';
@@ -63,6 +65,8 @@ export interface SoloResultExtras {
   practiceMapId?: string | null;
   /** Daily Bonk: the text Share puts on the clipboard (the day's counted run) and an optional note. */
   share?: { text: string; note?: string | undefined } | undefined;
+  /** After a body hit: record the replay as a shareable clip (share/clipDirector.ts). */
+  clip?: ClipOffer | undefined;
 }
 
 
@@ -619,7 +623,7 @@ export class MenuOverlay {
   }
 
   /** `note` explains how it was decided (e.g. "Won in sudden death!"). */
-  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras, note?: string): void {
+  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras, note?: string, clip?: ClipOffer): void {
     const firstRender = this.currentView !== 'match_result';
     // Online re-renders this every rematch-countdown second; keep keyboard focus where it was (as the lobby does).
     const active = document.activeElement;
@@ -645,6 +649,8 @@ export class MenuOverlay {
       if (online.countdown !== null) this.content.appendChild(el('p', 'auto-note', `Rematch starts in ${online.countdown} s`));
       if (online.note) this.content.appendChild(el('p', 'online-error', online.note));
     }
+    const clipUi = clip ? clipControl(clip, signal) : null;
+    if (clipUi) this.content.appendChild(clipUi.status);
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
     const rematch = this.button(online && !online.canRematch ? 'Ready ✓' : 'Rematch', 'btn-primary', () => {
@@ -659,6 +665,7 @@ export class MenuOverlay {
       if (!online) this.showMainMenu();
     }, signal, actions);
     leave.id = 'mp-leave';
+    if (clipUi) actions.insertBefore(clipUi.button, leave);
     const again = focusedId === rematch.id ? rematch : focusedId === leave.id ? leave : null;
     if (again && !again.disabled) again.focus();
     else if (firstRender || again) (rematch.disabled ? leave : rematch).focus();
@@ -715,9 +722,12 @@ export class MenuOverlay {
       this.content.appendChild(share.block);
       shareBtn = share.button;
     }
+    const clipUi = extras.clip ? clipControl(extras.clip, signal) : null;
+    if (clipUi) this.content.appendChild(clipUi.status);
     const actions = el('div', 'result-actions');
     this.content.appendChild(actions);
     if (shareBtn) actions.appendChild(shareBtn);
+    if (clipUi) actions.appendChild(clipUi.button);
     const retry = () => { this.hide(); this.callbacks.onRetry(); };
     const next = success && extras.nextMapId ? extras.nextMapId : null;
     let nextBtn: HTMLButtonElement | null = null;

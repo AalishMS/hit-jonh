@@ -51,6 +51,7 @@ export class AudioManager {
   private readonly notes = loopNotes();
   private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   private analyser: AnalyserNode | null = null;
+  private clipTap: MediaStreamAudioDestinationNode | null = null;
   private nextChirp = 0;
 
   constructor(private readonly rng: () => number = Math.random) {
@@ -709,6 +710,25 @@ export class AudioManager {
     }
   }
 
+  /**
+   * Shareable clip: a stream of exactly what the master output plays (so Mute and volume apply), or
+   * null before the first gesture or without MediaStream support. Call `releaseCaptureStream` when done.
+   */
+  captureStream(): MediaStream | null {
+    if (!this.ctx || !this.masterGain || typeof this.ctx.createMediaStreamDestination !== 'function') return null;
+    if (!this.clipTap) {
+      this.clipTap = this.ctx.createMediaStreamDestination();
+      this.masterGain.connect(this.clipTap);
+    }
+    return this.clipTap.stream;
+  }
+
+  releaseCaptureStream(): void {
+    if (!this.clipTap) return;
+    try { this.masterGain?.disconnect(this.clipTap); } catch { /* already gone */ }
+    this.clipTap = null;
+  }
+
   destroy(): void {
     this.setFlightWhoosh(null);
     if (this.musicTimer) clearInterval(this.musicTimer);
@@ -717,6 +737,7 @@ export class AudioManager {
       void this.ctx.close();
       this.ctx = null;
       this.masterGain = null;
+      this.clipTap = null;
       this.sfxBus = null;
       this.musicBus = null;
     }
