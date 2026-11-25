@@ -14,6 +14,7 @@ import type { LevelData } from './types';
  */
 export const STROLL_LEVEL: LevelData = {
   id: 'stroll',
+  mechanic: 'walking',
   name: 'The Afternoon Stroll',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

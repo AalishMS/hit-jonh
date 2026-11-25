@@ -12,6 +12,7 @@ const GLASS: BreakableData = { minImpactSpeedMs: 6.5, speedKept: 0.35 };
  */
 export const GREENHOUSE_LEVEL: LevelData = {
   id: 'greenhouse',
+  mechanic: 'glass',
   name: 'The Greenhouse',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

@@ -9,6 +9,7 @@ import type { LevelData } from './types';
  */
 export const WASHDAY_LEVEL: LevelData = {
   id: 'washday',
+  mechanic: 'wind',
   name: 'Windy Washday',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

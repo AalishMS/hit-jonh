@@ -8,6 +8,7 @@ import type { LevelData } from './types';
  */
 export const VALLEY_LEVEL: LevelData = {
   id: 'valley',
+  mechanic: 'longShot',
   name: 'Across the Valley',
   difficulty: 3,
   launchSpeedScale: 1.6,

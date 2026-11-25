@@ -4,6 +4,7 @@
  */
 
 import { sanitizeDailyShots } from './dailyShare';
+import { isMechanicId } from './mechanicTips';
 import {
   DEFAULT_CANNON_SKIN, DEFAULT_OUTFIT, NO_COSMETIC_CONTEXT, isCannonSkinId, isOutfitId, sanitizeCannonSkin, sanitizeOutfit,
   unlockedCannonSkins, unlockedOutfits, type CannonSkinId, type CosmeticContext, type OutfitId,
@@ -41,10 +42,12 @@ export interface Progress {
   earnedHats: HatName[];
   earnedCannons: CannonSkinId[];
   earnedOutfits: OutfitId[];
+  /** Garden mechanics whose first-meeting tip has been shown (rules/mechanicTips.ts). */
+  seenTips: string[];
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT, earnedHats: [], earnedCannons: [], earnedOutfits: [] };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT, earnedHats: [], earnedCannons: [], earnedOutfits: [], seenTips: [] };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
@@ -230,6 +233,7 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: C
   p.earnedHats = HAT_ORDER.filter(id => ids(r.earnedHats, isHat).includes(id));
   p.earnedCannons = ids(r.earnedCannons, isCannonSkinId);
   p.earnedOutfits = ids(r.earnedOutfits, isOutfitId);
+  p.seenTips = ids(r.seenTips, isMechanicId);
   if (!Array.isArray(r.earnedHats) && FIRST_RELEASE_MAPS.every(m => p.threeStarMaps.includes(m)) && !p.earnedHats.includes('crown')) {
     p.earnedHats = [...p.earnedHats, 'crown'];
   }

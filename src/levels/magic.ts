@@ -10,6 +10,7 @@ import type { LevelData } from './types';
  */
 export const MAGIC_LEVEL: LevelData = {
   id: 'magic',
+  mechanic: 'portal',
   name: 'The Magic Act',
   difficulty: 2,
   bounds: GARDEN_BOUNDS,

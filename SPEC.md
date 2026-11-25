@@ -48,6 +48,8 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 - After each solo miss, the aiming caption becomes a tip that names one fix and stays up while re-aiming: "Short. Add power." (or "Aim nearer 45°" near full power), "Too far. Take off some power.", "Over his head. Less power.", "Blocked. Aim higher." A ball that lands short and rolls into an obstacle counts as short.
 - A brand-new player's **Play** starts the first garden in one tap; **All modes** opens mode selection.
 
+**First-meeting tips [DECIDED request 2026-11-25; rules and wording PROPOSED]** (`rules/mechanicTips.ts`). Each mechanic garden names its mechanic in level data (`LevelData.mechanic`: glass, wind, rubber, bank, portal, walking, lowGravity, trampoline, longShot). The first time a player arrives at a garden whose mechanic they have not met (solo or Daily, never practice), the aiming caption is a one-line tip, such as "Wind blows the ball back. Watch the windsock and aim long.", with the shots left after a miss. It stays until the first hit there or leaving the garden; a coach miss tip takes priority. Tips shown are saved in `progress.seenTips`; a garden already cleared counts as met, so returning players are not tipped about what they already know.
+
 ### 3.2 Controls
 
 | Action | Pointer / touch | Keyboard [PROPOSED] |

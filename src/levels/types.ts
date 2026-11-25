@@ -94,9 +94,14 @@ export interface MultiplayerPosition {
   referenceSolutions: ReferenceSolution[];
 }
 
+/** The one new thing a garden introduces, for its first-meeting tip (rules/mechanicTips.ts). */
+export type MechanicId = 'glass' | 'wind' | 'rubber' | 'bank' | 'portal' | 'walking' | 'lowGravity' | 'trampoline' | 'longShot';
+
 export interface LevelData {
   id: string;
   name: string;
+  /** The garden's new mechanic, explained once by a first-meeting tip; none for the basic gardens. */
+  mechanic?: MechanicId;
   bounds: Box2D;
   ground: Box2D & { material: string };
   cannonSpawn: Point2D;

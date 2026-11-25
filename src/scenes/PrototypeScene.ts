@@ -70,6 +70,7 @@ import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgre
 import { shareBlock } from '../ui/share';
 import { DEFAULT_KEYS, keyLabel, type KeyBindings } from '../input/keyBindings';
 import { coachActive, missHint, showGhostHand } from '../rules/coach';
+import { mechanicTip } from '../rules/mechanicTips';
 import { FEATS, FEAT_GROUPS, featStatuses, featsDone, newlyCompletedFeats, type FeatInput } from '../rules/feats';
 import { buildFeats } from '../ui/feats';
 import { CoachRenderer } from '../render/coachRenderer';
@@ -151,6 +152,8 @@ export class PrototypeScene extends Phaser.Scene {
   private coachHand: CoachRenderer | null = null;
   /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
   private coachHint: string | null = null;
+  /** This garden's first-meeting tip (rules/mechanicTips.ts): the aiming caption until the first hit here. */
+  private mechanicTip: string | null = null;
   private readonly hatImages = new Map<string, string>();
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
@@ -534,6 +537,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.practice = false;
     this.dismissCoachHand();
     this.coachHint = null;
+    this.mechanicTip = null;
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.cancel();
@@ -674,6 +678,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.practice = practice && !daily;
     this.dailyRun = '';
     this.coachHint = null;
+    this.mechanicTip = this.firstMeetingTip(level);
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
     this.lastMissQuote = null;
 
@@ -770,6 +775,19 @@ export class PrototypeScene extends Phaser.Scene {
     const opened = daily || this.practice ? null : chapterOpenedBy(campaignStatus(MAP_IDS, data.solo), level.id);
     playTitleCard(level.name, daily ? 'Daily Bonk' : this.practice ? `Practice · Garden ${number}` : `Garden ${number}`, data.settings.reducedMotion, opened ? chapterLabel(opened) : null);
     this.startCoachHand();
+  }
+
+  /**
+   * The first time a player meets a garden's mechanic (rules/mechanicTips.ts): its one-line tip, saved
+   * as seen at once. Gardens cleared before tips existed count as met. Practice never tips.
+   */
+  private firstMeetingTip(level: LevelData): string | null {
+    const cleared = Object.entries(loadSaveData().solo).filter(([, r]) => r?.bestShots != null).map(([id]) => MAPS.find(m => m.id === id)?.mechanic);
+    const tip = mechanicTip({ mechanic: level.mechanic, seen: this.progress.seenTips, cleared, practice: this.practice });
+    if (!tip) return null;
+    this.progress = { ...this.progress, seenTips: [...this.progress.seenTips, tip.id] };
+    saveProgress(this.progress);
+    return tip.text;
   }
 
   /** The ball touched the ground before reaching the nearest obstacle it hit (it rolled into it). */
@@ -944,6 +962,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setAttempts(left);
       const shotsLeft = `${left} shot${left === 1 ? '' : 's'} left`;
       if (this.coachHint) this.htmlControls.setFeedback(`${this.coachHint} ${shotsLeft}.`, 'coach');
+      else if (this.mechanicTip) this.htmlControls.setFeedback(left === 3 ? this.mechanicTip : `${this.mechanicTip} ${shotsLeft}.`, 'coach');
       else this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${shotsLeft}. Adjust and fire again`, 'info');
     }
   }
@@ -1194,6 +1213,7 @@ export class PrototypeScene extends Phaser.Scene {
     );
 
     this.missStreak = isBodyHit ? 0 : this.missStreak + 1;
+    if (isBodyHit) this.mechanicTip = null; // met and mastered
     // Coach (rules/coach.ts): until the first hit ever, a solo miss names one fix for the next shot.
     if (this.activeMode === 'solo') {
       this.coachHint = !isBodyHit && coachActive(this.progress.totalHits)
