@@ -1,5 +1,6 @@
 import type { LevelData, ObstacleData } from '../levels/types';
 import { mechanicArt, mechanicObstacleBody } from './mechanicArt';
+import { pondObstacleBody } from './pondArt';
 import { PAL } from './palette';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
 
@@ -23,6 +24,8 @@ export interface Theme {
   space?: boolean;
   /** No garden fence along the back (open country). */
   noFence?: boolean;
+  /** Winter: no flowers or grass tufts on the snow, and a gentle snowfall. */
+  winter?: boolean;
 }
 
 export const THEMES: Record<string, Theme> = {
@@ -46,6 +49,11 @@ export const THEMES: Record<string, Theme> = {
   /** Late afternoon, long shadows: Jonh's daily stroll. */
   stroll: { id: 'stroll', skyTop: '#62B4E6', skyLow: '#FFD7A0', far: '#B0D8B6', farDetail: '#94C59E', mid: '#8ACB70', midDark: '#5FA352', sunY: 150, sun: '#FFC54A', skyline: 'village' },
   magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
+  /** A still, bright winter morning: snow on the ground, frost-blue hills, low pink sun. */
+  pond: {
+    id: 'pond', skyTop: '#86B6E4', skyLow: '#FBE3E6', far: '#D3E2EE', farDetail: '#B9CDDF', mid: '#E6EFF6', midDark: '#AFC5D8', sunY: 150, sun: '#FFE6B0',
+    skyline: 'village', groundTop: PAL.snow, groundDark: PAL.snowShade, groundEarth: '#DCE7F0', winter: true,
+  },
   /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
   washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },
 };
@@ -185,6 +193,8 @@ export const props: ArtDef[] = [
     <g ${ink(1.4)}><circle cx="8" cy="6" r="3.2" fill="${PAL.paper}"/><circle cx="3.5" cy="9" r="3.2" fill="${PAL.paper}"/><circle cx="12.5" cy="9" r="3.2" fill="${PAL.paper}"/><circle cx="5" cy="13" r="3.2" fill="${PAL.paper}"/><circle cx="11" cy="13" r="3.2" fill="${PAL.paper}"/><circle cx="8" cy="10" r="2.6" fill="${PAL.zap}"/></g>`, 8, 29, 2),
   bg('flower-b', 16, 30, `<path d="M8 29 Q9 20 8 12" stroke="${PAL.grassDark}" stroke-width="2.4" fill="none"/>
     <path d="M3 4 L8 9 L13 4 L13 11 Q8 16 3 11 Z" fill="${PAL.rubber}" ${ink(1.4)}/>`, 8, 29, 2),
+  // Frozen Pond: a soft snowflake for the background snowfall (background: no ink).
+  bg('snowflake', 8, 8, `<circle cx="4" cy="4" r="3" fill="${PAL.snow}"/>`, 4, 4, 2),
   bg('bird', 22, 10, `<path d="M1 8 Q6 1 11 7 Q16 1 21 8" fill="none" stroke="${PAL.ink}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`, 11, 5, 2),
   {
     key: 'tea-table', w: 60, h: 52, ax: 30, ay: 51, scale: 2,
@@ -371,7 +381,7 @@ function hedge(w: number, h: number): string {
 }
 
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
-  const mechanic = mechanicObstacleBody(obs, w, h);
+  const mechanic = mechanicObstacleBody(obs, w, h) ?? pondObstacleBody(obs, w, h);
   if (mechanic !== null) return mechanic;
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.id.includes('trunk')) return trunk(w, h);

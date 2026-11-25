@@ -62,6 +62,11 @@ export const PAL = {
   /** The magician's tent: deep red velvet. */
   velvet: '#B8324A',
   velvetDark: '#7E1F33',
+  /** Frozen Pond: pond ice (paler and whiter than glass, so it never reads as breakable) and snow. */
+  ice: '#DDF4FB',
+  iceDark: '#8CC6DE',
+  snow: '#F6FAFD',
+  snowShade: '#C9DAE8',
 } as const;
 
 export type PaletteKey = keyof typeof PAL;

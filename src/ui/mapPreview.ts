@@ -30,6 +30,9 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   if (obs.id.startsWith('frame-')) return rect(PAL.paper);
   if (obs.id.startsWith('brick-')) return rect(PAL.brick);
   if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
+  // Frozen Pond: a snow-capped hut roof and a striped roll-down door frozen just off the ice.
+  if (obs.id === 'hut-roof') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.55)}" fill="${PAL.snow}"/>`;
+  if (obs.id === 'hut-door') return rect(PAL.pow);
   switch (obs.material) {
     case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
     case 'velvet': return rect(PAL.velvet, ' rx="1.5"');
@@ -49,6 +52,7 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'gravel': return rect('#A9A3B8');
     case 'sand': return rect('#F2D59B');
     case 'rug': return rect(PAL.pow);
+    case 'ice': return `${rect(PAL.ice)}<path d="M${x + 3} ${y + 1.5} H${x + w - 3}" stroke="${PAL.paper}" stroke-width="1.4" class="map-ice"/>`;
     default: return rect(PAL.stone);
   }
 }
@@ -57,7 +61,8 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
 function interiorSvg(level: LevelData, f: Frame): string {
   const box = backdropBox(level);
   if (!box) return '';
-  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"` : `fill="${PAL.glass}" opacity="0.55"`;
+  const fill = level.id === 'magic' ? `fill="${PAL.velvetDark}" opacity="0.9"`
+    : level.id === 'pond' ? `fill="${PAL.woodDark}" opacity="0.8"` : `fill="${PAL.glass}" opacity="0.55"`;
   return `<rect x="${f.x(box.minX)}" y="${f.y(box.maxY)}" width="${(box.maxX - box.minX) * f.s}" height="${(box.maxY - box.minY) * f.s}" ${fill}/>`;
 }
 
@@ -193,6 +198,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   magic: 'Through the floating hoop and out the other. Power decides where it lands.',
   washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
   stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
+  pond: 'Jonh is ice fishing in his hut. Land it short on the ice and let it slide in.',
 };
 
 export function mapDescription(id: string): string {

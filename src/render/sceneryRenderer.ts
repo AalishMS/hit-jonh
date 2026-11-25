@@ -10,7 +10,9 @@ import { WindRenderer } from './windRenderer';
 import { drawRoute } from './routeRenderer';
 
 /** Layer depths: background < playfield < actors. */
-const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
+const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, snow: -65, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
+/** Winter gardens: background snowflakes, their fall speed range (px/s) and sideways sway (px). */
+const SNOW = { count: 36, fallMin: 16, fallMax: 40, swayPx: 12 } as const;
 /** Horizontal extent drawn beyond the visible world (screen px) so camera zoom-outs never show an edge. */
 const OVERDRAW = 700;
 
@@ -26,6 +28,10 @@ export class SceneryRenderer {
   private clouds: Drifter[] = [];
   private birds: Drifter[] = [];
   private flora: Array<{ obj: Phaser.GameObjects.Image; phase: number }> = [];
+  private flakes: Array<{ obj: Phaser.GameObjects.Image; speed: number; phase: number; baseX: number }> = [];
+  /** Where falling snow starts and wraps (world y, px). */
+  private snowTop = 0;
+  private snowBottom = 0;
   private rays: Phaser.GameObjects.Image | null = null;
   private time = 0;
   /** World-x extent of the drawn layers for the current map. */
@@ -81,6 +87,19 @@ export class SceneryRenderer {
       this.clouds.push({ obj, speed: 5 + hash01(i * 5.7) * 9, baseY: y, phase: 0 });
     }
 
+    // Winter: a gentle snowfall behind the playfield (still under reduced motion).
+    if (theme.winter) {
+      this.snowBottom = groundTop - 8;
+      this.snowTop = this.snowBottom - 620 * k;
+      for (let i = 0; i < Math.round(SNOW.count * k); i++) {
+        const x = LEFT + hash01(i * 4.1 + 2) * SPAN;
+        const y = this.snowTop + hash01(i * 2.3 + 1) * (this.snowBottom - this.snowTop);
+        const obj = add(s.add.image(x, y, 'snowflake').setScale(artScale('snowflake') * (0.6 + hash01(i * 5.3) * 0.8))
+          .setScrollFactor(0.9).setAlpha(0.85).setDepth(DEPTH.snow));
+        this.flakes.push({ obj, speed: SNOW.fallMin + hash01(i * 7.7) * (SNOW.fallMax - SNOW.fallMin), phase: hash01(i * 3.9) * Math.PI * 2, baseX: x });
+      }
+    }
+
     // 2. Far hills / skyline and 3. mid hills with trees. Solid fills continue downward
     //    so vertical parallax never opens a gap above the ground.
     const far = artMeta(`far-${theme.id}`);
@@ -130,13 +149,14 @@ export class SceneryRenderer {
     const support = level.obstacles.find(o => Math.abs(o.box.maxY - b.minY) < 1e-6 && o.box.minX <= b.minX && o.box.maxX >= b.maxX);
     const rightEdge = support ? metresToPixels(support.box.maxX, this.ppm) : this.worldWidthPx;
     const tableX = jonhX + 82 + 32 > rightEdge ? jonhX - 82 : jonhX + 82;
-    // Walking Jonh is out on a stroll: no tea table for him to walk through.
-    if (!level.jonhRoute) add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
+    // Walking Jonh is out on a stroll: no tea table for him to walk through. In his fishing hut (Frozen
+    // Pond) it would stand on the ice the ball skids across, looking solid without a collider.
+    if (!level.jonhRoute && !level.obstacles.some(o => o.followsJonh)) add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
 
     // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
     const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
       level.obstacles.some(o => x > metresToPixels(o.box.minX, this.ppm) - 16 && x < metresToPixels(o.box.maxX, this.ppm) + 16 && o.box.minY <= level.ground.maxY + 1e-6);
-    for (let i = 0; i < (theme.space ? 0 : Math.ceil(26 * k)); i++) {
+    for (let i = 0; i < (theme.space || theme.winter ? 0 : Math.ceil(26 * k)); i++) {
       const x = 20 + i * 50 + hash01(i * 2.7 + level.id.length) * 30;
       if (blocked(x) || x > this.worldWidthPx - 10) continue;
       const key = i % 3 === 0 ? 'flower-a' : i % 3 === 1 ? 'tuft' : (i % 2 ? 'flower-b' : 'tuft');
@@ -171,6 +191,11 @@ export class SceneryRenderer {
       b.obj.scaleY = artScale('bird') * (Math.sin((this.time + b.phase) * 12) > 0 ? 1 : -0.7);
     }
     for (const f of this.flora) f.obj.setRotation(Math.sin(this.time * 1.4 + f.phase) * 0.08);
+    for (const f of this.flakes) {
+      f.obj.y += f.speed * dt;
+      if (f.obj.y > this.snowBottom) f.obj.y = this.snowTop;
+      f.obj.x = f.baseX + Math.sin(this.time * 0.8 + f.phase) * SNOW.swayPx;
+    }
   }
 
   private clear(): void {
@@ -179,6 +204,7 @@ export class SceneryRenderer {
     this.clouds = [];
     this.birds = [];
     this.flora = [];
+    this.flakes = [];
     this.rays = null;
     this.mechanics.clear();
     this.wind.clear();
