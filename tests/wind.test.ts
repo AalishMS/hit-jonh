@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import Matter from '@matter-js';
+import Matter, { type Body } from '@matter-js';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WIND, WORLD } from '../src/config/tuning';
 import { MAPS } from '../src/levels';
 import { jonhAt } from '../src/levels/build';
@@ -96,7 +96,7 @@ describe('wind: physics', () => {
       obstacles: [{ id: 'wall', box: { minX: 20, maxX: 20.4, minY: 1.6, maxY: 5 }, material: 'wood', ricochet: false }],
     };
     const w = world(level);
-    const statics = w.engine.world.bodies.map(b => ({ b, x: b.position.x, y: b.position.y }));
+    const statics = w.engine.world.bodies.map((b: Body) => ({ b, x: b.position.x, y: b.position.y }));
     const m = muzzle(level, 40);
     w.adapter.spawnProjectile(metresToPixels(m.x, PPM), simYToWorldY(m.y, H, PPM), R * PPM, launchVelocityToWorld(14, 40, PPM));
     let last: ProjectileState | null = null;
