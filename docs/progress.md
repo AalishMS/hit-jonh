@@ -1105,3 +1105,11 @@ The owner approved the proposed next 10 ("I like the proposal. Continue with the
 
 ### 4. Online emotes — merged
 Built in a parallel worktree (branch `t3/online-room-emotes`, section above) and merged after review. **The Convex functions are not deployed**: online rooms need `npx convex dev --once` (dev) or `npx convex deploy` (production) before the new build can send or show emotes. Until then the emote button stays disabled. Not tested against a live deployment.
+
+### 3. Practice on cleared gardens — done
+- `SoloChallengeMachine` takes `{ practice: true }`: unlimited shots, never a result, hits counted. Challenge rules are unchanged (`tests/practice.test.ts`).
+- In practice the scene records nothing: no progress (hits, streak, unlocks), no solo best or trick badge, no saved aim. Its result window then goes straight back to aiming.
+- Entry: a Challenge/Practice switch on the garden list (shown once a garden is cleared; uncleared gardens say "Clear it to practise here"), and **Practice (P)** on the result card of any cleared garden. Pause offers **End practice**, which returns to the practice list.
+- HUD: "Practice · {garden}", no attempt pips, "Practice: 2 hits in 4 shots". The chapter card says "Practice · Garden N".
+- Rules are [PROPOSED]: only cleared gardens, and nothing counts, including hit totals.
+- Verified in headless Chromium (1280×800): the practice list enabled only the cleared Backyard; four practice shots (hit, miss, hit, miss) gave "Practice: 2 hits in 4 shots"; the save was byte-for-byte unchanged afterwards; End practice returned to the practice list; a challenge win offered Practice (P). Screenshots: `/tmp/claude-1000/-home-aalish-hit-jonh/ed121ce8-c677-4dd3-8876-4f92349f6478/scratchpad/pw/shots/48-sheet.png`.

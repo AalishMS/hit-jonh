@@ -83,7 +83,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; wind/drag/weather; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; ~~unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results)~~ (built 2026-11-25 on cleared gardens, see §5).
 
 ## 5. Solo rules
 
@@ -100,6 +100,7 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
 - Rating **[PROPOSED]**: ★★★ hit on shot 1, ★★ on shot 2, ★ on shot 3. A qualifying ricochet body hit adds a separate "style" marker; it does not change stars.
 - Best result per map stored locally (fewest shots; style marker kept if ever earned) **[PROPOSED]**.
 - Scene reset before every attempt (see §7); settings and last trail persist across attempts.
+- **Practice [DECIDED request 2026-11-25; rules PROPOSED]:** on any garden already cleared, unlimited shots that never end in a result. Nothing is saved: no stars, bests, trick badges, aim, streak, hit totals or unlocks. Entered from the garden list's Challenge/Practice switch or the Practice (P) button on a cleared garden's result card. The HUD shows "Practice · {garden}" and hits so far; pausing offers End practice, which returns to the practice list.
 
 ## 6. Local multiplayer rules
 

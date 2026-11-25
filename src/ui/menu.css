@@ -326,3 +326,11 @@
   font: 800 15px/1.45 var(--ui); color: var(--ink); }
 .share-text { width: min(360px, 100%); resize: none; transform: none; }
 .share-status { min-height: 1.2em; font: 900 13px var(--ui); color: var(--pow); }
+
+/* ---------- Practice (next 10): Challenge / Practice switch on the garden list ---------- */
+.mode-toggle { display: inline-flex; gap: 0; margin: 0 auto 10px; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; box-shadow: 0 3px 0 var(--ink); }
+.menu-content .mode-chip { min-height: 40px; margin: 0; padding: 8px 18px 6px; border: 0; border-radius: 0; box-shadow: none; background: var(--paper);
+  font: 400 17px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.menu-content .mode-chip + .mode-chip { border-left: 3px solid var(--ink); }
+.menu-content .mode-chip.active { background: var(--zap); }
+.menu-content .mode-chip:hover { transform: none; }

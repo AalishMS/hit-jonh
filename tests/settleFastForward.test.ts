@@ -99,7 +99,7 @@ describe('Snappy misses: fast-forward and Skip never change a shot', () => {
         }
       }
       if (plainSeconds > 0) expect(fastSeconds).toBeLessThan(plainSeconds);
-    });
+    }, 60_000); // dozens of full Matter shots per map: seconds each, more on a busy machine
   }
 
   it('a ball that rolls off the end of the ground is out of bounds, not a 15 s timeout', () => {

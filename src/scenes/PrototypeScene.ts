@@ -126,6 +126,8 @@ export class PrototypeScene extends Phaser.Scene {
   private daily: { key: string; positionId: string } | null = null;
   /** This daily run's shots so far (rules/dailyShare.ts codes), saved with the day's first result. */
   private dailyRun = '';
+  /** Practice on a cleared garden: unlimited shots, nothing saved (SPEC §4.2). */
+  private practice = false;
   /** The coach's ghost hand on the first garden while it plays (rules/coach.ts). */
   private coachHand: CoachRenderer | null = null;
   /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
@@ -235,7 +237,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.canvasAim.cancel();
         this.inputCoordinator.setPaused(true);
         this.htmlControls.setControlsInert(true);
-        this.menuOverlay.showPauseMenu(this.online?.inMatch ? 'Leave match' : undefined);
+        this.menuOverlay.showPauseMenu(this.online?.inMatch ? 'Leave match' : this.practice ? 'End practice' : undefined);
       },
       onResume: () => {
         this.inputCoordinator.setPaused(false);
@@ -248,7 +250,10 @@ export class PrototypeScene extends Phaser.Scene {
         this.menuOverlay.hide();
       },
       onQuit: () => {
+        // Ending practice goes back to the gardens (still in practice), not all the way Home.
+        const fromPractice = this.practice;
         this.performQuit();
+        if (fromPractice) this.menuOverlay.showMapSelect(true);
       }
     }, this.stepper);
 
@@ -283,6 +288,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.menuOverlay = new MenuOverlay(gameContainer, {
       onMapSelected: (mapId) => this.loadMap(mapId),
+      onPracticeSelected: (mapId) => this.loadMap(mapId, null, true),
       onRetry: () => {
         this.lastMissQuote = null;
         this.inputCoordinator.setOverlayVisible(false);
@@ -501,6 +507,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.titleCardPending = false;
     this.missStreak = 0;
     this.daily = null;
+    this.practice = false;
     this.dismissCoachHand();
     this.coachHint = null;
     this.autoAdvance.cancel();
@@ -627,7 +634,7 @@ export class PrototypeScene extends Phaser.Scene {
     a.stage.update(dt, reduced);
   }
 
-  private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null): void {
+  private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null, practice = false): void {
     this.hideAttract();
     this.autoAdvance.cancel();
     this.resetEffects();
@@ -635,6 +642,7 @@ export class PrototypeScene extends Phaser.Scene {
     const level = MAPS.find(m => m.id === mapId);
     if (!level) return;
     this.daily = daily;
+    this.practice = practice && !daily;
     this.dailyRun = '';
     this.coachHint = null;
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
@@ -663,12 +671,12 @@ export class PrototypeScene extends Phaser.Scene {
       SHOT.boundsMarginMetres,
       this.currentLevel.bounds.minY,
     );
-    this.soloMachine = new SoloChallengeMachine(mapId);
+    this.soloMachine = new SoloChallengeMachine(mapId, { practice: this.practice });
 
     this.soloCoordinator = new SoloCoordinator(this.attemptMachine, this.soloMachine, {
       onStateChange: () => this.updateUIPerSoloState(),
       onShotFired: (angle, power) => {
-        if (!this.daily) saveSoloAim(this.soloMachine.mapId, angle, power);
+        if (!this.daily && !this.practice) saveSoloAim(this.soloMachine.mapId, angle, power);
         
         const muzzle = this.cannonRenderer.getMuzzlePosition(angle, PROJECTILE.radiusMetres);
         const speed = this.levelPhys.launchSpeed(power);
@@ -729,7 +737,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
     const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
-    playTitleCard(level.name, daily ? 'Daily Bonk' : `Garden ${number}`, data.settings.reducedMotion);
+    playTitleCard(level.name, daily ? 'Daily Bonk' : this.practice ? `Practice · Garden ${number}` : `Garden ${number}`, data.settings.reducedMotion);
     this.startCoachHand();
   }
 
@@ -819,7 +827,8 @@ export class PrototypeScene extends Phaser.Scene {
     }
 
     if (this.activeMode === 'solo') {
-      this.htmlControls.setFeedback(`Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
+      this.htmlControls.setFeedback(this.practice ? `Practice shot ${this.soloMachine.shotsTaken}: Cannonball in flight...`
+        : `Attempt ${3 - this.soloMachine.attemptsLeft}/3: Cannonball in flight...`, 'simulating');
     } else {
       this.shotShooterIndex = this.multiMachine.lastShooterIndex;
       const shooter = this.multiMachine.players[this.shotShooterIndex!]!;
@@ -882,6 +891,15 @@ export class PrototypeScene extends Phaser.Scene {
       this.inputCoordinator.setCanFire(true);
       this.htmlControls.setCanFire(true);
       this.htmlControls.setResetLabel('Aim again ↵');
+      if (this.practice) {
+        const { hits, shotsTaken: shots } = this.soloMachine;
+        this.htmlControls.setMatchStatus(`Practice · ${this.currentLevel.name}`, []);
+        this.htmlControls.setStreak(0);
+        this.htmlControls.setAttempts(null);
+        this.htmlControls.setFeedback(shots === 0 ? 'Practice: as many shots as you like. Nothing is saved.'
+          : `Practice: ${hits} hit${hits === 1 ? '' : 's'} in ${shots} shot${shots === 1 ? '' : 's'}`, 'info');
+        return;
+      }
       this.htmlControls.setMatchStatus(this.daily ? `Daily Bonk · ${this.currentLevel.name}` : this.currentLevel.name, []);
       this.htmlControls.setStreak(this.progress.currentStreak);
       const left = this.soloMachine.attemptsLeft;
@@ -1186,6 +1204,13 @@ export class PrototypeScene extends Phaser.Scene {
       return;
     }
 
+    if (this.practice) {
+      // Practice records nothing: no hits, streak, bests, stars or unlocks (SPEC §4.2).
+      this.htmlControls.setResetLabel('Next now ↵');
+      this.autoAdvance.schedule('shot', this.resultWindowSeconds(isBodyHit));
+      return;
+    }
+
     // Retention: hits, streak, three-star maps, daily results and cosmetic unlocks.
     const before = this.progress;
     let after = recordShot(before, classification.outcome, this.activeMode === 'solo');
@@ -1234,6 +1259,7 @@ export class PrototypeScene extends Phaser.Scene {
         unlockedMapId: wasLocked ? nextMapId : null,
         campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
         newTrick: !this.daily && res.success && res.hasStyle && !hadTrick,
+        practiceMapId: !this.daily && soloAfter[mapId]?.bestShots != null ? mapId : null,
         share: this.dailyResultShare(before, after),
       };
       this.pendingUnlocks = [];

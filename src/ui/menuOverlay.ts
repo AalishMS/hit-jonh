@@ -15,6 +15,8 @@ export interface MenuCallbacks {
   /** Opens online play; undefined when no Convex deployment is configured (the card is then disabled). */
   onOnline?: (() => void) | undefined;
   onMapSelected: (mapId: string) => void;
+  /** Practice on a cleared garden: unlimited shots, nothing saved. */
+  onPracticeSelected?: (mapId: string) => void;
   onRetry: () => void;
   onReturnToMenu: () => void;
   onStartMultiplayer?: (players: MPPlayerSetup[], maps: string[]) => void;
@@ -51,6 +53,8 @@ export interface SoloResultExtras {
   campaignStars?: { stars: number; maxStars: number } | undefined;
   /** First trick-shot badge on this garden. */
   newTrick?: boolean;
+  /** A cleared garden offers Practice (P): unlimited shots that never change stars or bests. */
+  practiceMapId?: string | null;
   /** Daily Bonk: the text Share puts on the clipboard (the day's counted run) and an optional note. */
   share?: { text: string; note?: string | undefined } | undefined;
 }
@@ -316,12 +320,24 @@ export class MenuOverlay {
     this.button('Back', '', () => this.showHome(), signal).focus();
   }
 
-  showMapSelect(): void {
+  /** The campaign gardens; `practice` lists the same cards for practice (cleared gardens only). */
+  showMapSelect(practice = false): void {
     const signal = this.open('map_select');
     const data = loadSaveData();
     const campaign = currentCampaign();
     const totals = campaignTotals(campaign);
-    this.content.appendChild(el('h2', '', 'Choose a garden'));
+    this.content.appendChild(el('h2', '', practice ? 'Practice' : 'Choose a garden'));
+    if (this.callbacks.onPracticeSelected && totals.cleared > 0) {
+      const modes = el('div', 'mode-toggle');
+      modes.setAttribute('role', 'group');
+      modes.setAttribute('aria-label', 'Mode');
+      const challenge = this.button('Challenge', `mode-chip${practice ? '' : ' active'}`, () => { if (practice) this.showMapSelect(false); }, signal, modes);
+      challenge.setAttribute('aria-pressed', String(!practice));
+      const practise = this.button('Practice', `mode-chip${practice ? ' active' : ''}`, () => { if (!practice) this.showMapSelect(true); }, signal, modes);
+      practise.setAttribute('aria-pressed', String(practice));
+      this.content.appendChild(modes);
+    }
+    if (practice) this.content.appendChild(el('p', 'home-note', 'As many shots as you like on gardens you have cleared. Nothing is saved: your stars and bests stay as they are.'));
     const tally = el('div', 'campaign-tally');
     const starTotal = el('span', 'tally-stars', `★ ${totals.stars} / ${totals.maxStars}`);
     starTotal.setAttribute('aria-label', `${totals.stars} of ${totals.maxStars} stars`);
@@ -337,7 +353,8 @@ export class MenuOverlay {
       const map = MAPS.find(m => m.id === entry.mapId);
       if (!map) continue;
       const score = data.solo[map.id];
-      const btn = el('button', `map-btn${entry.unlocked ? '' : ' locked'}`);
+      const available = practice ? entry.cleared : entry.unlocked;
+      const btn = el('button', `map-btn${available ? '' : ' locked'}`);
       btn.type = 'button';
       btn.dataset.map = map.id;
       btn.innerHTML = mapPreview(map.id);
@@ -350,7 +367,12 @@ export class MenuOverlay {
       name.appendChild(pips);
       btn.appendChild(name);
       const scoreDiv = el('div', 'map-score');
-      if (!entry.unlocked) {
+      if (practice && !available) {
+        btn.disabled = true;
+        const why = entry.unlocked ? 'Clear it to practise here' : `Clear ${mapName(entry.lockedBy ?? '')} to unlock`;
+        btn.setAttribute('aria-label', `${map.name}: ${why}.`);
+        btn.appendChild(el('small', 'lock-note', why));
+      } else if (!entry.unlocked) {
         btn.disabled = true;
         btn.setAttribute('aria-label', `${map.name}, locked. Clear ${mapName(entry.lockedBy ?? '')} to unlock.`);
         btn.appendChild(el('small', 'lock-note', `Clear ${mapName(entry.lockedBy ?? '')} to unlock`));
@@ -367,9 +389,13 @@ export class MenuOverlay {
         scoreDiv.appendChild(trickBadge(entry.trick));
       }
       btn.appendChild(scoreDiv);
-      btn.addEventListener('click', () => { if (entry.unlocked) this.startMap(map.id); }, { signal });
+      btn.addEventListener('click', () => {
+        if (!available) return;
+        if (practice) this.startPractice(map.id);
+        else this.startMap(map.id);
+      }, { signal });
       list.appendChild(btn);
-      if (entry.mapId === target || (!focus && entry.unlocked)) focus = btn;
+      if ((!practice && entry.mapId === target) || (!focus && available)) focus = btn;
     }
     this.content.appendChild(list);
     const actions = el('div', 'menu-actions');
@@ -379,6 +405,11 @@ export class MenuOverlay {
   }
 
   /** Opens a garden for solo play, with the iris transition into play. */
+  private startPractice(mapId: string): void {
+    this.hide(true);
+    this.callbacks.onPracticeSelected?.(mapId);
+  }
+
   private startMap(mapId: string): void {
     this.callbacks.onMapSelected(mapId);
     this.hide(true);
@@ -609,6 +640,13 @@ export class MenuOverlay {
     this.shortcut('KeyR', retry, signal);
     if (extras.share) this.button('Home', '', () => { this.callbacks.onReturnToMenu(); this.showHome(); }, signal, actions);
     else this.button('Map select', '', () => { this.callbacks.onReturnToMenu(); this.showMapSelect(); }, signal, actions);
+    const practiceId = extras.practiceMapId;
+    if (practiceId && this.callbacks.onPracticeSelected) {
+      const practise = () => this.startPractice(practiceId);
+      const practiceBtn = this.button('Practice', 'btn-practice', practise, signal, actions);
+      this.keyHint(practiceBtn, 'P');
+      this.shortcut('KeyP', practise, signal);
+    }
     (nextBtn ?? shareBtn ?? retryBtn).focus();
   }
 
