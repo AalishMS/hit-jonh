@@ -96,6 +96,9 @@ export class FriendsBoardController {
   private resync = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryAttempt = 0;
+  private destroyed = false;
+  /** Bumped whenever this browser joins, creates or leaves a board, so an older `myBoards` reply can't undo it. */
+  private membershipEpoch = 0;
   private readonly onOnline = () => { void this.syncPosts(); };
 
   constructor(private readonly menu: MenuOverlay, private readonly hooks: FriendsBoardHooks, deps: Partial<FriendsBoardDeps> = {}) {
@@ -122,6 +125,7 @@ export class FriendsBoardController {
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.stopWatching();
     if (this.retryTimer !== null) this.deps.clearTimer(this.retryTimer);
     this.retryTimer = null;
@@ -172,7 +176,7 @@ export class FriendsBoardController {
   }
 
   private scheduleRetry(): void {
-    if (this.retryTimer !== null) return;
+    if (this.retryTimer !== null || this.destroyed) return;
     const delays = FRIENDS_BOARD.retryDelaysSeconds;
     const seconds = delays[Math.min(this.retryAttempt, delays.length - 1)]!;
     this.retryAttempt++;
@@ -188,12 +192,29 @@ export class FriendsBoardController {
 
   private remember(code: string): void {
     const data = this.deps.store.load();
+    if (data.boards.includes(code) && data.lastBoard === code) return;
     this.deps.store.save({ ...data, boards: data.boards.includes(code) ? data.boards : [...data.boards, code], lastBoard: code });
   }
 
   private forget(code: string): void {
     const data = this.deps.store.load();
     this.deps.store.save({ ...data, boards: data.boards.filter(c => c !== code), lastBoard: data.lastBoard === code ? null : data.lastBoard });
+  }
+
+  /**
+   * I just created or joined `code`. Every "posted" mark is dropped and the runs are posted again: a player who
+   * left their last board was deleted on the server with their results, and a repeat post is free (`stored: false`).
+   */
+  private joined(code: string): void {
+    this.membershipEpoch++;
+    this.remember(code);
+    this.deps.store.save({ ...this.deps.store.load(), posted: [] });
+    void this.syncPosts();
+  }
+
+  private left(code: string): void {
+    this.membershipEpoch++;
+    this.forget(code);
   }
 
   private useName(raw: string): string {
@@ -212,7 +233,10 @@ export class FriendsBoardController {
     this.render();
     const backend = this.ensureBackend();
     if (!backend) return;
+    const epoch = this.membershipEpoch;
     backend.myBoards().then(list => {
+      // A join, create or leave since the request makes this list stale: keep what that change saved.
+      if (epoch !== this.membershipEpoch) return;
       // The server is the truth about membership (a board left in another tab, or cleaned up).
       const data = this.deps.store.load();
       const codes = list.map(b => b.code);
@@ -243,8 +267,7 @@ export class FriendsBoardController {
       this.render();
       return;
     }
-    this.remember(code);
-    void this.syncPosts();
+    this.joined(code);
     if (id === this.screenId) this.openBoard(code);
   }
 
@@ -268,8 +291,7 @@ export class FriendsBoardController {
       this.render();
       return;
     }
-    this.remember(code);
-    void this.syncPosts();
+    this.joined(code);
     if (id === this.screenId) this.openBoard(code);
   }
 
@@ -296,6 +318,9 @@ export class FriendsBoardController {
   private onSnapshot(snapshot: BoardSnapshot | null): void {
     const screen = this.screen;
     if (screen?.kind !== 'board') return;
+    // My own departure shows up here before `leaveBoard` resolves (the board gone, or me no longer in it);
+    // `leave()` moves on to the hub itself, so don't flash "Join this board?" or a "no board" error meanwhile.
+    if (screen.leaving && (snapshot === null || !snapshot.joined)) return;
     if (snapshot === null) {
       this.forget(screen.code);
       this.showHub('No board with that code. It may have been closed after a quiet spell.');
@@ -347,8 +372,7 @@ export class FriendsBoardController {
       this.render();
       return;
     }
-    this.remember(screen.code);
-    void this.syncPosts();
+    this.joined(screen.code);
     // The live snapshot flips to the member view by itself; "Joining…" stays until it does.
   }
 
@@ -370,7 +394,7 @@ export class FriendsBoardController {
       this.render();
       return;
     }
-    this.forget(screen.code);
+    this.left(screen.code);
     if (id === this.screenId) this.showHub();
   }
 
@@ -398,6 +422,8 @@ export class FriendsBoardController {
       screens.hub(this.menu, {
         name: this.name, boards: boards.map(b => ({ code: b.code, memberCount: b.memberCount })), code: screen.code,
         busy: screen.busy, error: screen.error, canCreate: boards.length < FRIENDS_BOARD.maxBoardsPerPlayer,
+        onNameInput: name => { this.name = name; },
+        onCodeInput: code => { if (this.screen === screen) screen.code = code; },
         onCreate: name => void this.create(name),
         onJoin: (name, code) => void this.joinFromHub(name, code),
         onOpen: code => this.openBoard(code),
@@ -410,6 +436,7 @@ export class FriendsBoardController {
       screens.join(this.menu, {
         code: screen.code, memberCount: snapshot.memberCount, full: snapshot.memberCount >= FRIENDS_BOARD.maxMembers,
         name: this.name, busy: screen.joining, error: screen.error,
+        onNameInput: name => { this.name = name; },
         onJoin: name => void this.joinFromLink(name),
         onCancel: () => this.exit(() => this.hooks.back()),
       });

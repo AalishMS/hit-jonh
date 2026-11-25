@@ -393,6 +393,90 @@ describe('invite links', () => {
   });
 });
 
+describe('review fixes', () => {
+  it('posts today again after leaving my last board and joining another (the server dropped my results)', async () => {
+    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE', posted: [TODAY_KEY] }, progress: PLAYED_TODAY });
+    t.ctl.open();
+    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true })]));
+    t.lastOf('board').onLeave();
+    t.lastOf('board').onConfirmLeave();
+    await flush();
+    expect(t.last().kind).toBe('hub');
+    t.lastOf('hub').onJoin('Sam', 'FGHJK');
+    await flush();
+    expect(t.backend.postResult).toHaveBeenCalledWith({ day: TODAY, stars: 2, shots: 'mb', streak: 1 });
+    expect(t.store.data.posted).toEqual([TODAY_KEY]);
+  });
+
+  it('keeps what the player is typing when the hub re-renders under them', async () => {
+    const t = setup();
+    const list = deferred<MyBoardEntry[]>();
+    t.backend.myBoards.mockReturnValueOnce(list.promise);
+    t.ctl.open();
+    t.lastOf('hub').onNameInput('Samantha');
+    t.lastOf('hub').onCodeInput('K7Q');
+    list.resolve([{ code: 'ABCDE', memberCount: 2, joinedAt: 1 }]);
+    await flush();
+    expect(t.lastOf('hub')).toMatchObject({ name: 'Samantha', code: 'K7Q', boards: [{ code: 'ABCDE', memberCount: 2 }] });
+  });
+
+  it('keeps the typed name on the join screen across member-count updates', () => {
+    const t = setup();
+    t.ctl.openFromLink('ABCDE');
+    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 2 });
+    t.lastOf('join').onNameInput('Bo');
+    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 3 });
+    expect(t.lastOf('join')).toMatchObject({ name: 'Bo', memberCount: 3 });
+  });
+
+  it('leaving as the last member goes to the hub without a "no board" error', async () => {
+    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    t.ctl.open();
+    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true })]));
+    const leaving = deferred<void>();
+    t.backend.leaveBoard.mockReturnValueOnce(leaving.promise);
+    t.lastOf('board').onLeave();
+    t.lastOf('board').onConfirmLeave();
+    t.live()[0]!.update(null); // the board is gone before the mutation's reply
+    expect(t.last().kind).toBe('board');
+    leaving.resolve();
+    await flush();
+    expect(t.lastOf('hub').error).toBeNull();
+    // and a non-last leaver never flashes "Join this board?"
+    const u = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    u.ctl.open();
+    u.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true }), member('m1', 'Ann', null)]));
+    u.backend.leaveBoard.mockReturnValueOnce(new Promise<void>(() => undefined));
+    u.lastOf('board').onLeave();
+    u.lastOf('board').onConfirmLeave();
+    u.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 1 });
+    expect(u.last().kind).toBe('board');
+  });
+
+  it('a myBoards reply that started before a join does not undo it', async () => {
+    const t = setup();
+    const list = deferred<MyBoardEntry[]>();
+    t.backend.myBoards.mockReturnValueOnce(list.promise);
+    t.ctl.open();
+    t.lastOf('hub').onJoin('Sam', 'ABCDE');
+    await flush();
+    list.resolve([]);
+    await flush();
+    expect(t.store.data).toMatchObject({ boards: ['ABCDE'], lastBoard: 'ABCDE' });
+  });
+
+  it('schedules no retry once destroyed', async () => {
+    const t = setup({ store: { boards: ['ABCDE'] }, progress: PLAYED_TODAY });
+    const post = deferred<{ stored: boolean }>();
+    t.backend.postResult.mockReturnValueOnce(post.promise);
+    const running = t.ctl.syncPosts();
+    t.ctl.destroy();
+    post.reject(new Error('offline'));
+    await running;
+    expect(t.timers).toEqual([]);
+  });
+});
+
 describe('without a backend', () => {
   it('shows the board as offline instead of throwing, and never posts', async () => {
     const t = setup({ noBackend: true, store: { boards: ['ABCDE'], lastBoard: 'ABCDE' }, progress: PLAYED_TODAY });

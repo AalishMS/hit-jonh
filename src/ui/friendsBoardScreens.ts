@@ -31,7 +31,10 @@ const focusedId = (): string => (document.activeElement instanceof HTMLElement ?
 
 function restoreFocus(content: HTMLElement, id: string, fallback: HTMLElement | null): void {
   const again = id ? content.querySelector<HTMLElement>(`#${CSS.escape(id)}`) : null;
-  (again && !(again as HTMLButtonElement).disabled ? again : fallback)?.focus();
+  const target = again && !(again as HTMLButtonElement).disabled ? again : fallback;
+  target?.focus();
+  // A text box rebuilt under the player's fingers keeps the caret at the end of what they typed.
+  if (target instanceof HTMLInputElement && target === again && !target.readOnly) target.setSelectionRange(target.value.length, target.value.length);
 }
 
 function nameField(value: string, signal: AbortSignal, onInput: (name: string) => void): { field: HTMLElement; input: HTMLInputElement } {
@@ -72,6 +75,9 @@ export interface BoardHubOptions {
   busy: 'create' | 'join' | null;
   error: string | null;
   canCreate: boolean;
+  /** Typing is reported as it happens, so a live re-render (the board list arriving) never wipes it. */
+  onNameInput(name: string): void;
+  onCodeInput(code: string): void;
   onCreate(name: string): void;
   onJoin(name: string, code: string): void;
   onOpen(code: string): void;
@@ -102,7 +108,7 @@ export function showBoardHub(menu: MenuOverlay, o: BoardHubOptions): void {
       }
       content.appendChild(list);
     }
-    const { field, input: nameInput } = nameField(name, signal, value => { name = value; });
+    const { field, input: nameInput } = nameField(name, signal, value => { name = value; o.onNameInput(value); });
     content.appendChild(field);
 
     const actions = el('div', 'online-actions board-hub-actions');
@@ -121,7 +127,7 @@ export function showBoardHub(menu: MenuOverlay, o: BoardHubOptions): void {
     codeInput.spellcheck = false;
     codeInput.maxLength = 12;
     codeInput.value = typed;
-    codeInput.addEventListener('input', () => { typed = codeInput.value; }, { signal });
+    codeInput.addEventListener('input', () => { typed = codeInput.value; o.onCodeInput(typed); }, { signal });
     const problem = error(o.error);
     const tryJoin = (): void => {
       const code = normalizeRoomCode(codeInput.value);
@@ -153,6 +159,8 @@ export interface BoardJoinOptions {
   name: string;
   busy: boolean;
   error: string | null;
+  /** As on the hub: typing survives live re-renders (member count changes). */
+  onNameInput(name: string): void;
   onJoin(name: string): void;
   onCancel(): void;
 }
@@ -169,7 +177,7 @@ export function showBoardJoin(menu: MenuOverlay, o: BoardJoinOptions): void {
     content.appendChild(el('p', '', n === null ? 'Looking up the board…'
       : o.full ? 'This board is full.'
         : `${n} ${n === 1 ? 'friend compares' : 'friends compare'} their Daily Bonk here. Your result shows once you've played today.`));
-    const { field, input } = nameField(name, signal, value => { name = value; });
+    const { field, input } = nameField(name, signal, value => { name = value; o.onNameInput(value); });
     content.appendChild(field);
     input.addEventListener('keydown', e => { if (e.key === 'Enter' && !o.busy && !o.full) o.onJoin(name); }, { signal });
     content.appendChild(error(o.error));

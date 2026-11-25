@@ -29,15 +29,25 @@ describe('board store', () => {
     expect(withPosted(data, '2026-11-20').posted).toHaveLength(8);
   });
 
-  it('creates one identity and keeps it across loads (every tab is the same member)', () => {
+  it('writes nothing until first used, then keeps one identity for every tab and load', () => {
     const storage = memoryStorage();
     const make = vi.fn(() => TOKEN);
     const store = localBoardStore(storage, make);
     expect(store.load().token).toBe(TOKEN);
-    expect(localBoardStore(storage, () => 'b'.repeat(32)).load().token).toBe(TOKEN);
+    expect(store.load().token).toBe(TOKEN);
     expect(make).toHaveBeenCalledTimes(1);
+    expect(storage.map.size).toBe(0); // a player who never uses boards gets no key
     store.save({ ...store.load(), boards: ['ABCDE'] });
     expect(JSON.parse(storage.map.get(BOARD_STORE_KEY)!)).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
+    expect(localBoardStore(storage, () => 'b'.repeat(32)).load()).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
+  });
+
+  it('replaces a damaged stored token once and keeps the replacement', () => {
+    const storage = memoryStorage({ [BOARD_STORE_KEY]: JSON.stringify({ token: 'bad', boards: ['ABCDE'] }) });
+    let n = 0;
+    const store = localBoardStore(storage, () => (n++ === 0 ? TOKEN : 'b'.repeat(32)));
+    expect(store.load()).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
+    expect(store.load().token).toBe(TOKEN);
   });
 
   it('falls back to memory when storage throws, keeping the identity stable for the page', () => {

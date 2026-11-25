@@ -42,8 +42,10 @@ export function withPosted(data: BoardStoreData, key: string): BoardStoreData {
 }
 
 /**
- * The store backed by localStorage. When storage is unavailable (private windows, blocked site data) it keeps the
- * data in memory for this page, so the identity at least stays stable until a reload.
+ * The store backed by localStorage. Nothing is written until the first `save` (creating or joining a board, or
+ * marking a post), so players who never use boards get no key; until then the identity lives in memory for the
+ * page. When storage is unavailable (private windows, blocked site data) everything stays in memory, so the
+ * identity at least stays stable until a reload.
  */
 export function localBoardStore(storage: Pick<Storage, 'getItem' | 'setItem'> | null = typeof localStorage === 'undefined' ? null : localStorage,
   make: () => string = randomToken): BoardStore {
@@ -52,12 +54,10 @@ export function localBoardStore(storage: Pick<Storage, 'getItem' | 'setItem'> | 
     load() {
       try {
         const text = storage?.getItem(BOARD_STORE_KEY);
-        if (text) { memory = sanitizeBoardStore(JSON.parse(text), make); return memory; }
+        // A damaged stored token is replaced once and then kept, not re-rolled on every load.
+        if (text) { memory = sanitizeBoardStore(JSON.parse(text), () => memory?.token ?? make()); return memory; }
       } catch { /* fall through to memory */ }
-      if (!memory) {
-        memory = sanitizeBoardStore(null, make);
-        try { storage?.setItem(BOARD_STORE_KEY, JSON.stringify(memory)); } catch { /* memory only */ }
-      }
+      memory ??= sanitizeBoardStore(null, make);
       return memory;
     },
     save(data) {

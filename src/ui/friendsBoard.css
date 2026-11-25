@@ -24,8 +24,8 @@
 .board-row { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px;
   padding: 8px 14px; border: 3px solid var(--ink); border-left-width: 12px; border-radius: 14px; background: #fff; text-align: left; }
 .board-row.is-me { background: var(--paper-2); border-left-color: var(--pow); }
-.board-row.is-waiting { border-style: dashed; background: transparent; }
-.board-row.is-waiting.is-me { background: transparent; }
+/* Not played yet: a thin dashed outline (a 12 px dashed edge breaks up), padded so names still line up. */
+.board-row.is-waiting { border: 3px dashed var(--ink); padding-left: 23px; background: transparent; }
 .board-rank { font: 400 24px/1 var(--display); text-align: center; }
 .board-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
 .board-name { font: 900 16px/1.25 var(--ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -47,12 +47,14 @@
 
 @media (max-width: 650px), (max-height: 520px) {
   .board-row { padding: 6px 10px; gap: 8px; grid-template-columns: 28px minmax(0, 1fr) auto; }
+  .board-row.is-waiting { padding-left: 19px; }
   .board-rank { font-size: 20px; }
   .board-stars { font-size: 19px; }
   .board-hub-actions .online-join { width: 100%; justify-content: center; }
 }
 @media (max-height: 520px) and (orientation: landscape) {
   .view-board_view h2, .view-board_hub h2, .view-board_join h2 { font-size: 26px; margin-bottom: 8px; }
+  .board-code { font-size: 26px; padding: 6px 12px 3px 18px; }
   .board-tabs { margin-top: 6px; }
   .board-list { max-width: 560px; }
 }
