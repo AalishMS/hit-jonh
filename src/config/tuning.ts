@@ -234,6 +234,8 @@ export const MULTIPLAYER = {
   minPlayers: 2,
   maxPlayers: 4,
   shotsPerRound: 3,
+  /** Hot-seat sudden death [PROPOSED]: shoot-out rounds before a still-level match is shared. */
+  suddenDeathRounds: 3,
   maxNameLength: 16,
   /** Cannon colour palette; the index doubles as the default for that player slot. */
   colors: [0xff4444, 0x4444ff, 0x44ff44, 0xffaa00],

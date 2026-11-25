@@ -163,7 +163,8 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 - **[PROPOSED 2026-11-24]** Smashing through a breakable prop and going through a portal are never ricochet contacts (nor obstacle contacts). A breakable struck too softly to break is an ordinary obstacle and uses its own `ricochet` flag. On the new maps no surface is ricochet-eligible (glass, greenhouse frame and brick, tent velvet, stage), so both score plain body hits.
 - No near-miss points. **[DECIDED]**
 - Idempotency: the first body contact finalises scoring; later collision callbacks cannot change or repeat it. **[DECIDED]**
-- Winner: highest total. Tie-break: more body hits; still tied ⇒ shared win. **[PROPOSED]** (Sudden-death tie-breaker deferred.)
+- Winner: highest total. Tie-break: more body hits; still tied ⇒ shared win. **[PROPOSED]**
+- **Sudden death (hot-seat) [DECIDED request 2026-11-25; rules PROPOSED]** (`MatchOptions.suddenDeath` in `rules/multiplayerMatch.ts`). A hot-seat match still tied after the tie-break goes to a shoot-out on the last garden, with Jonh at a fresh spot. Each tied player takes one shot, and the best outcome wins: trick > hit > hat > miss. Players still level go again from a new spot, with the order rotated. After 3 shoot-out rounds (`MULTIPLAYER.suddenDeathRounds`) the win is shared. Shoot-out shots never change totals or hits. The handover cards say what each shot needs ("Only a trick shot ties it!"), and the result says "Won in sudden death!". Online matches keep the shared win: the server rules are unchanged.
 
 ### 7.2 Scene reset [DECIDED principle]
 

@@ -46,7 +46,7 @@ import { SoloChallengeMachine } from '../rules/soloChallenge';
 import { SoloCoordinator } from '../rules/soloCoordinator';
 import { MultiplayerMatchMachine, OUTCOME_POINTS, type MPPlayerSetup } from '../rules/multiplayerMatch';
 import { MultiCoordinator } from '../rules/multiCoordinator';
-import { matchStakes, shotsLeftPerPlayer, tauntFor, type Stakes } from '../rules/matchStakes';
+import { matchStakes, shotsLeftPerPlayer, suddenDeathStakes, tauntFor, type Stakes } from '../rules/matchStakes';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -1725,7 +1725,8 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private startMultiplayer(players: MPPlayerSetup[], maps: string[]): void {
-    this.beginMatch(new MultiplayerMatchMachine(players, maps));
+    // Hot-seat only: a match still level after the tie-break goes to a sudden-death shoot-out.
+    this.beginMatch(new MultiplayerMatchMachine(players, maps, Math.random, { suddenDeath: true }));
   }
 
   /** Shows a match from its machine: a fresh hot-seat match, or an online match fast-forwarded by replayMatch. */
@@ -1843,7 +1844,8 @@ export class PrototypeScene extends Phaser.Scene {
 
     this.drawCannon();
     const match = this.multiMachine;
-    const kicker = match.roundCount > 1 && match.roundIndex === match.roundCount - 1 ? 'Final round' : `Round ${match.roundIndex + 1} of ${match.roundCount}`;
+    const kicker = match.suddenDeath ? 'Sudden death'
+      : match.roundCount > 1 && match.roundIndex === match.roundCount - 1 ? 'Final round' : `Round ${match.roundIndex + 1} of ${match.roundCount}`;
     playTitleCard(level.name, kicker, data.settings.reducedMotion);
     this.titleCardPending = !data.settings.reducedMotion;
   }
@@ -1853,7 +1855,9 @@ export class PrototypeScene extends Phaser.Scene {
     // A round's chapter card pads only the handover that follows it (an online rebuild may land mid-turn).
     if (match.state !== 'handover') this.titleCardPending = false;
     if (match.state === 'handover') this.applyMultiplayerPosition();
-    this.htmlControls.setMatchStatus(`${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Shot ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
+    const shootOut = match.suddenDeath;
+    this.htmlControls.setMatchStatus(shootOut ? `${this.currentLevel.name} · Sudden death${shootOut.round > 1 ? ` · round ${shootOut.round}` : ''}`
+      : `${this.currentLevel.name} · Round ${Math.min(match.roundIndex + 1, match.roundCount)}/${match.roundCount} · Shot ${match.activeCycleIndex + 1}/${MULTIPLAYER.shotsPerRound}`,
       match.players, match.state === 'result' ? match.lastShooterIndex
         : match.state === 'round_result' || match.state === 'match_result' ? null : match.activePlayerIndex, match.state);
     this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null);
@@ -1876,8 +1880,10 @@ export class PrototypeScene extends Phaser.Scene {
         : undefined;
       // Party: what this shot means, and a word from whoever just scored.
       const left = shotsLeftPerPlayer(match.players.length, match.roundIndex, match.roundCount, match.shotIndexInRound);
-      const stakes = matchStakes(match.players.map((p, i) => ({ name: p.name, score: p.totalScore, bodyHits: p.bodyHits, shotsLeft: left[i] ?? 0 })),
-        match.activePlayerIndex, { finalRound: match.roundCount > 1 && match.roundIndex === match.roundCount - 1, firstShotOfRound: match.shotIndexInRound === 0 });
+      const stakes = shootOut
+        ? suddenDeathStakes(shootOut, match.players.map(p => p.name), match.activePlayerIndex, shootOut.round >= MULTIPLAYER.suddenDeathRounds)
+        : matchStakes(match.players.map((p, i) => ({ name: p.name, score: p.totalScore, bodyHits: p.bodyHits, shotsLeft: left[i] ?? 0 })),
+          match.activePlayerIndex, { finalRound: match.roundCount > 1 && match.roundIndex === match.roundCount - 1, firstShotOfRound: match.shotIndexInRound === 0 });
       this.currentStakes = stakes;
       const prev = this.lastPartyShot;
       const tauntText = prev && prev.shooter !== match.activePlayerIndex ? tauntFor(prev.outcome) : null;
@@ -1887,7 +1893,7 @@ export class PrototypeScene extends Phaser.Scene {
       const handoverSeconds = FLOW.handoverSeconds + (stakes.decisive ? FLOW.decisiveHandoverExtraSeconds : stakes.kicker || taunt ? FLOW.partyHandoverExtraSeconds : 0)
         + (this.titleCardPending ? TITLE_CARD_SECONDS : 0);
       this.titleCardPending = false;
-      this.menuOverlay.showMPHandover(player, this.currentLevel.name, match.activePlayerShotNumber + 1, headline,
+      this.menuOverlay.showMPHandover(player, this.currentLevel.name, shootOut ? 0 : match.activePlayerShotNumber + 1, headline,
         { kicker: stakes.kicker, stakes: stakes.line, decisive: stakes.decisive, taunt, autoSeconds: handoverSeconds });
       if (stakes.decisive) this.audioManager.playDrumroll();
       this.autoAdvance.schedule('handover', handoverSeconds);
@@ -1920,7 +1926,8 @@ export class PrototypeScene extends Phaser.Scene {
       // The winning shot, replayed, before the scores (once per match; skippable).
       if (this.showcaseState === 'none') this.showcaseState = this.startWinningShowcase() ? 'playing' : 'done';
       if (this.showcaseState === 'playing') return;
-      this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined);
+      this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined,
+        shootOut ? (match.getWinners().length > 1 ? `Still level after ${shootOut.round} sudden-death rounds. A shared win!` : 'Won in sudden death!') : undefined);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');

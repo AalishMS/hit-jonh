@@ -503,7 +503,8 @@ export class MenuOverlay {
       taunt.append(el('strong', '', party.taunt.name), el('span', '', `“${party.taunt.text}”`));
       this.content.appendChild(taunt);
     }
-    this.content.appendChild(el('p', '', `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}`));
+    // attemptNum 0: a sudden-death shot (one each), not one of the round's three.
+    this.content.appendChild(el('p', '', attemptNum > 0 ? `${mapName} · Shot ${attemptNum}/${MULTIPLAYER.shotsPerRound}` : `${mapName} · One shot`));
     const btn = this.button('Ready now', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerHandoverContinue?.(); }, signal);
     const bar = el('div', 'auto-bar');
     bar.style.setProperty('--auto-duration', `${party?.autoSeconds ?? FLOW.handoverSeconds}s`);
@@ -542,13 +543,15 @@ export class MenuOverlay {
     btn.focus();
   }
 
-  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras): void {
+  /** `note` explains how it was decided (e.g. "Won in sudden death!"). */
+  showMPMatchResult(winners: readonly MPPlayerView[], players: readonly MPPlayerView[], online?: OnlineResultExtras, note?: string): void {
     const firstRender = this.currentView !== 'match_result';
     // Online re-renders this every rematch-countdown second; keep keyboard focus where it was (as the lobby does).
     const active = document.activeElement;
     const focusedId = !firstRender && active instanceof HTMLElement && this.content.contains(active) ? active.id : '';
     const signal = this.open('match_result');
     this.content.appendChild(el('h1', '', winners.length > 1 ? "It's a tie!" : `${winners[0]?.name ?? 'Nobody'} wins!`));
+    if (note) this.content.appendChild(el('p', 'stakes-line decisive', note));
     const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `${p.bodyHits} hit${p.bodyHits === 1 ? '' : 's'}`, winners));
     this.content.appendChild(el('p', 'quote', '“I want it noted that I was here first.” — Jonh'));

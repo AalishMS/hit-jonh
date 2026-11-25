@@ -114,3 +114,32 @@ export function tauntFor(outcome: ClassifiedOutcome, rng: () => number = Math.ra
   if (!pool) return null;
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))]!;
 }
+
+/** A shoot-out in progress (MultiplayerMatchMachine.suddenDeath). */
+export interface ShootOut {
+  round: number;
+  contenders: readonly number[];
+  outcomes: ReadonlyMap<number, ClassifiedOutcome>;
+}
+
+/**
+ * What a sudden-death shot means for player `me` [PROPOSED 2026-11-25]: one shot each, best outcome
+ * wins (trick > hit > hat > miss), level players go again. `lastRound` is the final shoot-out round.
+ */
+export function suddenDeathStakes(sd: ShootOut, names: readonly string[], me: number, lastRound: boolean): Stakes {
+  const kicker = sd.round > 1 ? `Sudden death · round ${sd.round}` : 'Sudden death';
+  const shot = sd.contenders.filter(id => sd.outcomes.has(id));
+  if (shot.length === 0) {
+    return { kicker, line: lastRound && sd.round > 1 ? 'Last chance: level again and you share it.' : 'One shot each. Best hit wins.', decisive: true };
+  }
+  const points = (id: number) => OUTCOME_POINTS[sd.outcomes.get(id)!];
+  const best = Math.max(...shot.map(points));
+  const leader = names[shot.find(id => points(id) === best)!] ?? 'They';
+  const last = sd.contenders.every(id => id === me || sd.outcomes.has(id));
+  let line: string;
+  if (best >= OUTCOME_POINTS.ricochet_body) line = last ? 'Only a trick shot ties it!' : `${leader} landed a trick shot. Match it!`;
+  else if (best >= OUTCOME_POINTS.body) line = last ? 'A hit ties it. A trick shot wins it!' : `${leader} hit him. Match it!`;
+  else if (best > 0) line = last ? 'Hit him to win! His hat ties.' : `${leader} got the hat. Hit him to lead.`;
+  else line = last ? 'Any hit wins it!' : 'Nobody has hit him yet.';
+  return { kicker, line, decisive: true };
+}
