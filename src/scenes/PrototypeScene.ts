@@ -2103,7 +2103,7 @@ export class PrototypeScene extends Phaser.Scene {
       if (this.showcaseState === 'playing') return;
       this.menuOverlay.showMPMatchResult(match.getWinners(), match.players, this.online?.inMatch ? this.online.resultExtras() : undefined,
         shootOut ? (match.getWinners().length > 1 ? `Still level after ${shootOut.round} sudden-death rounds. A shared win!` : 'Won in sudden death!') : undefined,
-        this.online?.inMatch ? undefined : this.matchClipOffer());
+        this.matchClipOffer());
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
       this.htmlControls.setResetLabel('Continue ↵');
@@ -2224,9 +2224,12 @@ export class PrototypeScene extends Phaser.Scene {
     return { best, level, shot, player: this.multiMachine.players[best.player]! };
   }
 
-  /** Hot-seat match result: "Save clip" for the winning shot (none online, or where the browser cannot record). */
+  /**
+   * Hot-seat and online match result: "Save clip" for the winning shot (none where the browser cannot record).
+   * Online, the card's once-a-second updates refresh only its live parts, so a recording carries on through them.
+   */
   private matchClipOffer(): ClipOffer | undefined {
-    if (this.activeMode !== 'multi' || this.online?.inMatch) return undefined;
+    if (this.activeMode !== 'multi') return undefined;
     const win = this.winningShot();
     if (!win) return undefined;
     const { best, level, shot, player } = win;
@@ -2360,7 +2363,11 @@ export class PrototypeScene extends Phaser.Scene {
       refreshPlayerPresence: () => this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null),
       playEmoteSound: own => this.audioManager.playEmote(own),
       refreshMatchResult: () => {
-        if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
+        if (this.activeMode !== 'multi' || this.multiMachine.state !== 'match_result') return;
+        // Only the ready list, countdown and Rematch change: a clip being recorded on the card must not restart.
+        const extras = this.online?.inMatch ? this.online.resultExtras() : null;
+        if (extras && this.menuOverlay.updateMPMatchOnline(extras)) return;
+        this.updateUIPerMultiState();
       },
       refreshAimingControls: () => {
         // While paused the controls stay inert; onResume re-applies them with the current turn.

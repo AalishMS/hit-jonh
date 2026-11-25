@@ -123,6 +123,8 @@ export class MenuOverlay {
   private content: HTMLElement;
   private clickAbortController: AbortController | null = null;
   private currentView: MenuOverlayView = 'none';
+  /** The online match result's live parts (see updateMPMatchOnline). */
+  private onlineResult: { box: HTMLElement; rematch: HTMLButtonElement; leave: HTMLButtonElement } | null = null;
   /** Scroll offset to restore once a refreshed view has been rebuilt. */
   private refreshScroll = 0;
 
@@ -832,16 +834,10 @@ export class MenuOverlay {
     const sorted = [...players].sort((a, b) => (b.totalScore === a.totalScore) ? b.bodyHits - a.bodyHits : b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `${p.bodyHits} hit${p.bodyHits === 1 ? '' : 's'}`, winners));
     this.content.appendChild(el('p', 'quote', '“I want it noted that I was here first.” — Jonh'));
+    const onlineBox = el('div', 'online-result');
     if (online) {
-      const list = el('div', 'ready-list');
-      for (const row of online.ready) {
-        const item = el('span', `ready-chip${row.ready ? ' on' : ''}`, `${row.name} ${row.ready ? '✓' : '…'}`);
-        item.style.setProperty('--player-color', cssColor(playerDisplayColor(row.color)));
-        list.appendChild(item);
-      }
-      this.content.appendChild(list);
-      if (online.countdown !== null) this.content.appendChild(el('p', 'auto-note', `Rematch starts in ${online.countdown} s`));
-      if (online.note) this.content.appendChild(el('p', 'online-error', online.note));
+      this.renderOnlineResult(onlineBox, online);
+      this.content.appendChild(onlineBox);
     }
     const clipUi = clip ? clipControl(clip, signal) : null;
     if (clipUi) this.content.appendChild(clipUi.status);
@@ -860,10 +856,39 @@ export class MenuOverlay {
     }, signal, actions);
     leave.id = 'mp-leave';
     if (clipUi) actions.insertBefore(clipUi.button, leave);
+    this.onlineResult = online ? { box: onlineBox, rematch, leave } : null;
     const again = focusedId === rematch.id ? rematch : focusedId === leave.id ? leave : null;
     if (again && !again.disabled) again.focus();
     else if (firstRender || again) (rematch.disabled ? leave : rematch).focus();
     this.content.scrollTop = this.refreshScroll;
+  }
+
+  private renderOnlineResult(box: HTMLElement, online: OnlineResultExtras): void {
+    const list = el('div', 'ready-list');
+    for (const row of online.ready) {
+      const item = el('span', `ready-chip${row.ready ? ' on' : ''}`, `${row.name} ${row.ready ? '✓' : '…'}`);
+      item.style.setProperty('--player-color', cssColor(playerDisplayColor(row.color)));
+      list.appendChild(item);
+    }
+    box.replaceChildren(list);
+    if (online.countdown !== null) box.appendChild(el('p', 'auto-note', `Rematch starts in ${online.countdown} s`));
+    if (online.note) box.appendChild(el('p', 'online-error', online.note));
+  }
+
+  /**
+   * Online match result: refreshes only the ready list, the countdown and the Rematch button, so the rest of the
+   * card (a clip being recorded, focus, scroll) is untouched by the once-a-second updates. False when that card
+   * isn't showing.
+   */
+  updateMPMatchOnline(online: OnlineResultExtras): boolean {
+    const r = this.onlineResult;
+    if (this.currentView !== 'match_result' || !r || !r.box.isConnected) return false;
+    this.renderOnlineResult(r.box, online);
+    const hadFocus = document.activeElement === r.rematch;
+    r.rematch.textContent = online.canRematch ? 'Rematch' : 'Ready ✓';
+    r.rematch.disabled = !online.canRematch;
+    if (hadFocus && r.rematch.disabled) r.leave.focus();
+    return true;
   }
 
   showSoloResult(success: boolean, shots: number, stars: number, hasStyle: boolean, extras: SoloResultExtras = {}): void {
