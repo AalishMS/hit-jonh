@@ -276,7 +276,7 @@ export class HTMLControls {
   }
 
   /** Short caption on screen; `spoken` adds detail for screen readers only (e.g. Jonh's quote). */
-  setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' = 'info', spoken = ''): void {
+  setFeedback(message: string, type: 'info' | 'hit' | 'miss' | 'simulating' | 'coach' = 'info', spoken = ''): void {
     this.feedbackBanner.replaceChildren(document.createTextNode(message));
     if (spoken) {
       const sr = document.createElement('span');

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
-import { AIM, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
 import { ReplayOverlay } from '../ui/replayOverlay';
@@ -63,6 +63,8 @@ import { loadProgress, loadSaveData, recordSoloResult, saveMultiplayerSetup, sav
 import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/dailyShare';
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
 import { shareBlock } from '../ui/share';
+import { coachActive, missHint, showGhostHand } from '../rules/coach';
+import { CoachRenderer } from '../render/coachRenderer';
 import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
 import { isOnlineConfigured } from '../net/convexClient';
@@ -124,6 +126,10 @@ export class PrototypeScene extends Phaser.Scene {
   private daily: { key: string; positionId: string } | null = null;
   /** This daily run's shots so far (rules/dailyShare.ts codes), saved with the day's first result. */
   private dailyRun = '';
+  /** The coach's ghost hand on the first garden while it plays (rules/coach.ts). */
+  private coachHand: CoachRenderer | null = null;
+  /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
+  private coachHint: string | null = null;
   private readonly hatImages = new Map<string, string>();
   private readonly replayBuffer = new ReplayBuffer(3);
   private replay: ReplayDirector | null = null;
@@ -495,6 +501,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.titleCardPending = false;
     this.missStreak = 0;
     this.daily = null;
+    this.dismissCoachHand();
+    this.coachHint = null;
     this.autoAdvance.cancel();
     this.resetEffects();
     this.canvasAim.cancel();
@@ -534,6 +542,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer?.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.trailRenderer?.setTextBoost(this.textBoost);
     this.attract?.stage.jonh.setUiScale(this.textBoost);
+    this.coachHand?.setUiScale(this.textBoost / (this.view.zoom ?? 1));
   }
 
   /** The title screen's live backdrop: Jonh reading in one of your gardens while menus are open. */
@@ -627,6 +636,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!level) return;
     this.daily = daily;
     this.dailyRun = '';
+    this.coachHint = null;
     this.currentLevel = daily ? levelAtMultiplayerPosition(level, daily.positionId) : level;
     this.lastMissQuote = null;
 
@@ -720,6 +730,33 @@ export class PrototypeScene extends Phaser.Scene {
     this.updateUIPerSoloState();
     const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
     playTitleCard(level.name, daily ? 'Daily Bonk' : `Garden ${number}`, data.settings.reducedMotion);
+    this.startCoachHand();
+  }
+
+  /** The ball touched the ground before reaching the nearest obstacle it hit (it rolled into it). */
+  private landedBeforeObstacle(state: ProjectileState): boolean {
+    const ground = state.firstGroundContact;
+    if (!ground || state.obstacleContacts.length === 0) return false;
+    const near = Math.min(...state.obstacleContacts.map(c => this.currentLevel.obstacles.find(o => o.id === c.id)?.box.minX ?? Number.POSITIVE_INFINITY));
+    return ground.xSim < near;
+  }
+
+  /** The coach's ghost hand: on the first garden, for a player who has never hit Jonh (rules/coach.ts). */
+  private startCoachHand(): void {
+    this.dismissCoachHand();
+    const show = showGhostHand({ mode: this.activeMode, daily: this.daily !== null, mapId: this.currentLevel.id, firstMapId: campaignOrder(MAP_IDS)[0]!,
+      totalHits: this.progress.totalHits, shotsFired: 0, aimTouched: false });
+    if (!show) return;
+    const { pixelsPerMetre: ppm, designHeightPx: h } = WORLD;
+    const spawn = this.currentLevel.cannonSpawn;
+    const from = { x: metresToPixels(spawn.x, ppm), y: simYToWorldY(spawn.y, h, ppm) };
+    const to = { x: metresToPixels(spawn.x + COACH.dragTo.x, ppm), y: simYToWorldY(spawn.y + COACH.dragTo.y, h, ppm) };
+    this.coachHand = new CoachRenderer(this, from, to, this.textBoost / (this.view.zoom ?? 1));
+  }
+
+  private dismissCoachHand(): void {
+    this.coachHand?.destroy();
+    this.coachHand = null;
   }
 
   private setAngle(angle: number): void {
@@ -727,7 +764,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, angle - this.currentAngleDeg, 0);
     if (res) {
-      if (res.angle !== this.currentAngleDeg) this.heckles.activity();
+      if (res.angle !== this.currentAngleDeg) { this.heckles.activity(); this.dismissCoachHand(); }
       this.currentAngleDeg = res.angle;
       this.drawCannon();
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
@@ -739,7 +776,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!this.canUserAct()) return;
     const res = this.activeCoordinator.adjustAim(this.currentAngleDeg, this.currentPowerPercent, 0, power - this.currentPowerPercent);
     if (res) {
-      if (res.power !== this.currentPowerPercent) this.heckles.activity();
+      if (res.power !== this.currentPowerPercent) { this.heckles.activity(); this.dismissCoachHand(); }
       this.currentPowerPercent = res.power;
       this.htmlControls.setValues(this.currentAngleDeg, this.currentPowerPercent);
     }
@@ -752,6 +789,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.canvasAim.cancel();
     this.autoAdvance.cancel();
     this.resetEffects();
+    this.dismissCoachHand();
+    this.coachHint = null;
     this.outOfCanvasSoundPlayed = false;
     this.audioManager.unlock();
     this.lastMissQuote = null;
@@ -847,7 +886,9 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setStreak(this.progress.currentStreak);
       const left = this.soloMachine.attemptsLeft;
       this.htmlControls.setAttempts(left);
-      this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${left} shot${left === 1 ? '' : 's'} left. Adjust and fire again`, 'info');
+      const shotsLeft = `${left} shot${left === 1 ? '' : 's'} left`;
+      if (this.coachHint) this.htmlControls.setFeedback(`${this.coachHint} ${shotsLeft}.`, 'coach');
+      else this.htmlControls.setFeedback(left === 3 ? 'Drag the cannon (or the field) to aim, then FIRE' : `${shotsLeft}. Adjust and fire again`, 'info');
     }
   }
 
@@ -863,6 +904,7 @@ export class PrototypeScene extends Phaser.Scene {
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
     this.sceneryRenderer.update(dtSeconds, reduced);
+    this.coachHand?.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
     const timelineSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);
     if (this.pendingLaunch && (!this.impactTimeline.isHolding || !wasHolding)) this.releaseLaunch();
@@ -1087,6 +1129,13 @@ export class PrototypeScene extends Phaser.Scene {
     );
 
     this.missStreak = isBodyHit ? 0 : this.missStreak + 1;
+    // Coach (rules/coach.ts): until the first hit ever, a solo miss names one fix for the next shot.
+    if (this.activeMode === 'solo') {
+      this.coachHint = !isBodyHit && coachActive(this.progress.totalHits)
+        ? missHint({ category: feedback.category, angleDeg: this.currentAngleDeg, powerPercent: this.currentPowerPercent, blocked: state.obstacleContacts.length > 0,
+          landedBeforeObstacle: this.landedBeforeObstacle(state) })
+        : null;
+    }
     const talk: ReactionContext = {
       ...this.talkContext(state),
       missStreak: this.missStreak,

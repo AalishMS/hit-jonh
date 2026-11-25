@@ -43,6 +43,11 @@ A humorous 2D browser game. Players adjust a cannon's **angle** and **power** to
 
 The player must be able to tell **short**, **over**, and **obstacle hit** apart. Shot results advance automatically after a short reaction window; a Next now action can skip that wait. Terminal solo/match results stay visible for retry/rematch.
 
+**First-garden coach [DECIDED request 2026-11-25; rules and wording PROPOSED]** (`rules/coach.ts`, `COACH` in tuning). Until a player's first hit ever (`progress.totalHits` is 0):
+- On the first campaign garden, before the first shot, a ghost glove loops the gesture: press on the cannon, drag up and away. It disappears as soon as the aim changes or a shot is fired, and holds still under reduced motion.
+- After each solo miss, the aiming caption becomes a tip that names one fix and stays up while re-aiming: "Short. Add power." (or "Aim nearer 45°" near full power), "Too far. Take off some power.", "Over his head. Less power.", "Blocked. Aim higher." A ball that lands short and rolls into an obstacle counts as short.
+- A brand-new player's **Play** starts the first garden in one tap; **All modes** opens mode selection.
+
 ### 3.2 Controls
 
 | Action | Pointer / touch | Keyboard [PROPOSED] |

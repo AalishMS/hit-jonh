@@ -205,6 +205,13 @@ export class MenuOverlay {
       const tally = el('span', 'home-stars', `★ ${totals.stars} / ${totals.maxStars}`);
       tally.setAttribute('aria-label', `${totals.stars} of ${totals.maxStars} campaign stars`);
       modes.appendChild(tally);
+    } else if (campaign[0]) {
+      // A brand-new player starts the first garden in one tap (the coach takes it from there).
+      const first = campaign[0].mapId;
+      play = this.button('', 'btn-primary btn-play btn-continue', () => this.startMap(first), signal);
+      play.innerHTML = '<span class="continue-word">Play</span><small></small>';
+      play.querySelector('small')!.textContent = `Garden 1 · ${mapName(first)}`;
+      this.button('All modes', 'btn-modes', () => this.showMainMenu(), signal);
     } else {
       play = this.button('Play', 'btn-primary btn-play', () => this.showMainMenu(), signal);
     }

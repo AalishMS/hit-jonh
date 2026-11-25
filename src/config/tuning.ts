@@ -193,6 +193,21 @@ export const JONH_TALK = {
   heckleMaxPerAim: 2,
 } as const;
 
+/**
+ * First-garden coach [PROPOSED][TUNE] (rules/coach.ts). Until a player's first hit ever, a ghost
+ * hand shows the drag on the first campaign garden, and each solo miss names one fix.
+ */
+export const COACH = {
+  /** One loop of the ghost hand (s): fade in, press on the cannon, drag, release, fade out, rest. */
+  handLoopSeconds: 3,
+  /** Where the demonstrated drag ends, from the cannon pivot (m, +y up): about 40° and a medium pull. */
+  dragTo: { x: 2.4, y: 2.0 },
+  /** At or above this power, "short" suggests aiming nearer 45° instead of more power. */
+  nearFullPowerPercent: 92,
+  /** At or below this power, "too far" suggests changing the angle instead of less power. */
+  nearNoPowerPercent: 8,
+} as const;
+
 export const SCORING = {
   ricochetBodyPoints: 125,
   bodyPoints: 100,
