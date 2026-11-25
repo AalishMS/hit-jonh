@@ -24,6 +24,12 @@ export function shotCode(outcome: ClassifiedOutcome): DailyShotCode {
   return CODE[outcome];
 }
 
+/** A run pattern as symbols ("mb" → "⬜💥"); empty for anything that is not a valid pattern. */
+export function dailyShotSymbols(shots: string): string {
+  const valid = sanitizeDailyShots(shots);
+  return valid ? [...valid].map(c => SYMBOL[c as DailyShotCode]).join('') : '';
+}
+
 /** A saved run pattern, or null when it is not one: one to three codes, only the last may be a hit. */
 export function sanitizeDailyShots(raw: unknown): string | null {
   return typeof raw === 'string' && /^[mh]{0,2}[mhbt]$/.test(raw) ? raw : null;
@@ -62,7 +68,7 @@ export function dailyShareText(input: DailyShareInput): string {
   const stars = Math.max(0, Math.min(3, Math.round(input.stars)));
   const headline = `Hit Jonh Daily · ${dailyDateLabel(input.key)} · ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`;
   const shots = sanitizeDailyShots(input.shots);
-  const symbols = shots ? [...shots].map(c => SYMBOL[c as DailyShotCode]).join('') : '';
+  const symbols = dailyShotSymbols(input.shots);
   const verdict = stars === 0 ? 'Jonh wins' : shots?.endsWith('t') ? 'trick shot!' : '';
   const lines = [headline];
   const pattern = [symbols, verdict].filter(Boolean).join(' ');

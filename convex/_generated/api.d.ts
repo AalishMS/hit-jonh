@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as boards from "../boards.js";
 import type * as crons from "../crons.js";
 import type * as emotes from "../emotes.js";
 import type * as model from "../model.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  boards: typeof boards;
   crons: typeof crons;
   emotes: typeof emotes;
   model: typeof model;

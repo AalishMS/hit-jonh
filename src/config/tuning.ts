@@ -459,6 +459,36 @@ export const ONLINE = {
 } as const;
 
 /**
+ * [PROPOSED 2026-11-25][TUNE] Daily Bonk friends boards (SPEC §6.2, `rules/friendsBoard.ts`, `convex/boards.ts`).
+ * Private boards reached only by their code; codes use the room code alphabet and length (`ONLINE`).
+ */
+export const FRIENDS_BOARD = {
+  /** Members per board. */
+  maxMembers: 20,
+  /** Boards one browser may belong to at once. */
+  maxBoardsPerPlayer: 10,
+  /**
+   * A posted day may be this many days before / after the server's UTC date. Every calendar date that is "today"
+   * somewhere (UTC−12 … UTC+14) lies within one day of it; the extra day behind lets a late retry of yesterday land.
+   */
+  acceptDaysBehind: 2,
+  acceptDaysAhead: 1,
+  /** Writes (create, join, post) a browser may make at once, then one more every `actionRefillSeconds`. */
+  actionBurst: 6,
+  actionRefillSeconds: 20,
+  /** A self-reported Daily streak above this is refused (about 27 years). */
+  maxStreak: 10_000,
+  /** Results older than this many days are deleted by the cleanup cron (the board shows today and yesterday). */
+  keepResultsDays: 14,
+  /** A board nobody has joined or posted to for this long is deleted, with its memberships. */
+  idleBoardDays: 60,
+  /** A board's activity clock is bumped by a post at most this often, so members' posts rarely contend. */
+  touchEveryMinutes: 60,
+  /** Retry delays for a result post that failed for a network reason (the last one repeats). */
+  retryDelaysSeconds: [15, 60, 300],
+} as const;
+
+/**
  * Sound levels and the cues added for the gardens [PROPOSED 2026-11-25][TUNE]. Cosmetic only: nothing here
  * touches the simulation. Every cue plays through its own trim bus (`CUE_NAMES`), so balancing is a table of
  * dB offsets rather than gains scattered through the synth code. The values are set from the offline
