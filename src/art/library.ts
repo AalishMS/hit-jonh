@@ -6,6 +6,7 @@ import { outfitArt, outfitKeys } from './outfitArt';
 import { FX_ART } from './fxArt';
 import { HAT_IDS, JONH_ART } from './jonhArt';
 import { MECHANIC_FX_ART, mechanicArt } from './mechanicArt';
+import { rampArt } from './rampArt';
 import { clouds, obstacleArt, obstacleKey, props, sceneryArt, themeArt, themeFor } from './sceneryArt';
 import { WIND_ART } from './windArt';
 import type { ArtDef } from './svgKit';
@@ -65,7 +66,7 @@ function buildGroups(): Map<string, ArtDef[]> {
   put(SCENERY_COMMON_GROUP, [...clouds, ...props, ...MECHANIC_FX_ART].map(def => def.key));
   for (const theme of new Set(MAPS.map(level => themeFor(level.id)))) put(`theme:${theme.id}`, themeArt(theme).map(def => def.key));
   for (const level of MAPS) {
-    const own = [...obstacleArt([level], WORLD.pixelsPerMetre), ...mechanicArt([level], WORLD.pixelsPerMetre, obstacleKey)]
+    const own = [...obstacleArt([level], WORLD.pixelsPerMetre), ...mechanicArt([level], WORLD.pixelsPerMetre, obstacleKey), ...rampArt([level], WORLD.pixelsPerMetre)]
       .map(def => def.key).filter(key => !assigned.has(key));
     put(levelGroup(level.id), own);
   }

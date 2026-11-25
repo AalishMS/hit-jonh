@@ -90,6 +90,8 @@ export class AudioManager {
   private musicNextIndex = 0;
   private readonly notes = loopNotes();
   private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
+  /** Skate ramp: the plywood rumble of a ball rolling along it (on the `surface` cue bus). */
+  private rumble: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   private analyser: AnalyserNode | null = null;
   private clipTap: MediaStreamAudioDestinationNode | null = null;
   private nextChirp = 0;
@@ -669,6 +671,54 @@ export class AudioManager {
     this.whoosh.gain.gain.setTargetAtTime(0.09 * k * k, ctx.currentTime, 0.05);
   }
 
+  /**
+   * A ball rolling along a skate ramp: low, woody rumble from looped noise, louder and a little brighter
+   * the faster it rolls (`speed01` 0..1), or null to fade it out. It plays on the `surface` cue bus, so
+   * the scenery tier's trim holds it, and sits well under a surface impact.
+   */
+  setRampRumble(speed01: number | null): void {
+    const ctx = this.ctx;
+    const bus = this.cueBuses.get('surface');
+    if (!ctx || !bus || !this.noiseBuffer) return;
+    if (speed01 === null || speed01 <= 0 || this._isMuted || this.hiddenTab) {
+      if (this.rumble) {
+        const r = this.rumble;
+        r.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
+        r.src.stop(ctx.currentTime + 0.25);
+        this.rumble = null;
+      }
+      return;
+    }
+    if (!this.rumble) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.Q.value = 3;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(filter).connect(gain).connect(bus);
+      src.start(ctx.currentTime, this.rng());
+      this.rumble = { src, filter, gain };
+    }
+    const k = Math.max(0, Math.min(1, speed01));
+    this.rumble.filter.frequency.setTargetAtTime(160 + 340 * k, ctx.currentTime, 0.05);
+    this.rumble.gain.gain.setTargetAtTime(0.06 + 0.16 * k, ctx.currentTime, 0.05);
+  }
+
+  /** The ball leaves a ramp's lip: a clack off the steel coping (`strength` 0..1 by speed). */
+  playRampLaunch(strength: number): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    this.route('surface');
+    const s = Math.max(0.25, Math.min(1, strength));
+    const v = this.vary(0.08);
+    const now = ctx.currentTime;
+    if (!this.sample('impactPlate_light_000', 0.5 * s, 1.2 * v)) this.tinkle(now, 1900 * v, 0.18 * s, 0.09);
+    this.kick(now, 210 * v, 80, 0.1, 0.4 * s);
+  }
+
   /** Dev/test aid: peak absolute sample level at the master output right now (0..1+). */
   peakLevel(): number {
     if (!this.analyser) return 0;
@@ -1064,6 +1114,7 @@ export class AudioManager {
 
   destroy(): void {
     this.setFlightWhoosh(null);
+    this.setRampRumble(null);
     this.stopWind(true);
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
     if (this.musicTimer) clearInterval(this.musicTimer);

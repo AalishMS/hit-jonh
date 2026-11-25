@@ -119,7 +119,7 @@ export interface MultiplayerPosition {
 }
 
 /** The one new thing a garden introduces, for its first-meeting tip (rules/mechanicTips.ts). */
-export type MechanicId = 'glass' | 'wind' | 'rubber' | 'bank' | 'portal' | 'walking' | 'lowGravity' | 'trampoline' | 'longShot';
+export type MechanicId = 'glass' | 'wind' | 'rubber' | 'bank' | 'portal' | 'walking' | 'lowGravity' | 'trampoline' | 'longShot' | 'ramp';
 
 export interface LevelData {
   id: string;

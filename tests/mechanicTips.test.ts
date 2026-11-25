@@ -9,7 +9,7 @@ const MAP_IDS = MAPS.map(m => m.id);
 describe('first-meeting tips (next 10, item 3)', () => {
   it('every mechanic garden names a known mechanic with a short tip, and the basic gardens have none', () => {
     const named = MAPS.filter(m => m.mechanic !== undefined);
-    expect(named.map(m => m.id).sort()).toEqual(['bankshot', 'greenhouse', 'magic', 'moon', 'rubber', 'stroll', 'trampoline', 'valley', 'washday']);
+    expect(named.map(m => m.id).sort()).toEqual(['bankshot', 'greenhouse', 'magic', 'moon', 'rubber', 'skatepark', 'stroll', 'trampoline', 'valley', 'washday']);
     for (const m of named) expect(isMechanicId(m.mechanic), m.id).toBe(true);
     for (const id of ['backyard', 'fence', 'rooftop']) expect(MAPS.find(m => m.id === id)!.mechanic).toBeUndefined();
     // Every tip is used by a garden, and fits the aiming caption with "2 shots left." after it.

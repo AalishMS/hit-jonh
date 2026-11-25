@@ -83,6 +83,8 @@ export const OBSTACLE_LINES: ReadonlyArray<{ match: { id?: string; material?: st
   { match: { id: 'carport' }, lines: ['Mind the carport.', 'That carport is load-bearing, probably.'] },
   { match: { id: 'garden-wall' }, lines: ['Not the garden wall! It holds up the washing.', 'That wall keeps the breeze off my sandwiches. Mostly.'] },
   { match: { id: 'silo' }, lines: ['You hit a silo. From there. Somehow.'] },
+  { match: { id: 'half-pipe' }, lines: ['That ramp is for the skateboarders.', 'Leave the half-pipe alone. It rattles.'] },
+  { match: { id: 'shelter' }, lines: ['Mind my shelter.', 'Can you not read the sign?'] },
   { match: { material: 'glass' }, lines: ['Mind the glass!', 'That glass was imported.'] },
   { match: { material: 'velvet' }, lines: ['That velvet was hired.', 'Mind the curtains.'] },
   { match: { material: 'trampoline' }, lines: ['That trampoline is for the grandchildren.', 'Boing. Very mature.'] },
@@ -149,6 +151,11 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     arrival: ['Just a quick stroll. Nobody bother me.', 'A man is allowed a walk in his own garden.', 'Same route every day. Lovely and predictable.'],
     miss: ['Moving target. Too much for you?', 'I walk this path every afternoon, you know.', 'Keep up.'],
     hit: ['Mid-stroll! Have you no decency?', 'I was walking. Minding my own business.', 'You timed that, did you?'],
+  },
+  skatepark: {
+    arrival: ['Nothing gets in here. I read the sign.', 'Walls on three sides. Perfectly safe.', 'Skateboarders. Every single afternoon.'],
+    miss: ['The sign is very clear.', 'Do you know how loud that ramp is?', "Can't reach me in here."],
+    hit: ['From behind? Off the ramp?', 'It came back! It actually came back!', 'NO. BALL. GAMES.'],
   },
   valley: {
     arrival: ["They'll never reach me out here.", 'Is that a cannon? From over there?'],

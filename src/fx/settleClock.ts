@@ -16,11 +16,13 @@ export interface SettleInput {
   distanceToJonhMetres: number;
   /** A body contact, hit-stop or wind-up is running: never fast-forward through those. */
   impactActive: boolean;
+  /** Rolling along a skate ramp: it is riding the curve, not rolling to a stop (false when omitted). */
+  onRamp?: boolean;
 }
 
 /** The time scale this frame wants: 1 (real time) or FX.settleFastForward. */
 export function fastForwardTarget(s: SettleInput): number {
-  if (!s.landed || s.impactActive) return 1;
+  if (!s.landed || s.impactActive || s.onRamp) return 1;
   // A crawling ball cannot meaningfully go anywhere; a rolling one only when it is clear of Jonh.
   if (s.speedMs <= FX.settleCrawlSpeedMs) return FX.settleFastForward;
   if (s.speedMs <= FX.settleRollSpeedMs && s.distanceToJonhMetres >= FX.settleClearMetres) return FX.settleFastForward;

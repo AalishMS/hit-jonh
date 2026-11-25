@@ -1,9 +1,11 @@
 import { backdropBox } from '../art/mechanicArt';
 import { PAL } from '../art/palette';
+import { rampOutline } from '../art/rampArt';
 import { THEMES } from '../art/sceneryArt';
 import { WIND } from '../config/tuning';
 import { MAPS } from '../levels';
-import type { Box2D, LevelData, ObstacleData, PortalData } from '../levels/types';
+import type { Box2D, LevelData, ObstacleData, PortalData, RampData } from '../levels/types';
+import { arcShape } from '../sim/arc';
 
 const INK = `stroke="${PAL.ink}" stroke-width="3" stroke-linejoin="round"`;
 const PREVIEW_W = 300;
@@ -28,7 +30,7 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   const h = (b.maxY - b.minY) * f.s;
   const rect = (fill: string, extra = '') => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" ${INK} stroke-width="2"${extra}/>`;
   if (obs.id.startsWith('frame-')) return rect(PAL.paper);
-  if (obs.id.startsWith('brick-')) return rect(PAL.brick);
+  if (obs.id.startsWith('brick-') || obs.id === 'shelter-wall') return rect(PAL.brick);
   if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
   switch (obs.material) {
     case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
@@ -68,6 +70,23 @@ function portalSvg(portal: PortalData, f: Frame): string {
     `<g transform="translate(${cx} ${cy}) rotate(${rot}) scale(${sx} 1)"><circle r="${r}" fill="${PAL.magicDark}"/><circle r="${r * 0.45}" fill="${PAL.magic}"/><circle r="${r}" fill="none" stroke="${PAL.brass}" stroke-width="2.4"/></g>`;
   return hoop(f.x(portal.entry.x), f.y(portal.entry.y), 1, 0) + hoop(f.x(portal.exit.x), f.y(portal.exit.y), 0.5, -portal.exit.angleDeg);
 }
+
+/** A skate ramp: its riding curve (the collider's arc) over a solid plywood side, down to the lawn. */
+function rampSvg(ramp: RampData, level: LevelData, f: Frame): string {
+  const shape = arcShape(ramp);
+  const { corners } = rampOutline(shape, level.ground.maxY);
+  const [startIn, startOut, endIn, endOut] = corners as [Box2DPoint, Box2DPoint, Box2DPoint, Box2DPoint];
+  const p = (q: Box2DPoint) => `${f.x(q.x).toFixed(1)} ${f.y(q.y).toFixed(1)}`;
+  const r = (shape.radius * f.s).toFixed(2);
+  const large = shape.end - shape.start > Math.PI ? 1 : 0;
+  const ground = f.y(level.ground.maxY).toFixed(1);
+  // Counter-clockwise in metres is counter-clockwise on screen too: SVG sweep flag 0.
+  const d = `M${f.x(startOut.x).toFixed(1)} ${ground} L${p(startOut)} L${p(startIn)} A${r} ${r} 0 ${large} 0 ${p(endIn)} L${p(endOut)} L${f.x(endOut.x).toFixed(1)} ${ground} Z`;
+  return `<path d="${d}" fill="${PAL.wood}" ${INK} stroke-width="2"/>` +
+    `<path d="M${p(startIn)} A${r} ${r} 0 ${large} 0 ${p(endIn)}" fill="none" stroke="${PAL.woodLight}" stroke-width="2.5"/>`;
+}
+
+type Box2DPoint = { x: number; y: number };
 
 /** The windsock (pointing downwind) and the wind arrow, so a windy garden reads in its thumbnail. */
 function windSvg(level: LevelData, f: Frame): string {
@@ -144,6 +163,7 @@ export function mapPreview(id: string): string {
     <path d="M0 ${ground + 0.5} H${PREVIEW_W}" stroke="${PAL.ink}" stroke-width="3"/>
     ${interiorSvg(level, f)}
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
+    ${(level.ramps ?? []).map(r => rampSvg(r, level, f)).join('')}
     ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
     ${windSvg(level, f)}
     ${routeSvg(level, f)}
@@ -193,6 +213,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   magic: 'Through the floating hoop and out the other. Power decides where it lands.',
   washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
   stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
+  skatepark: 'Walled off and roofed over. Land it in the half-pipe and it rolls back out at him.',
 };
 
 export function mapDescription(id: string): string {
