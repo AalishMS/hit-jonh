@@ -16,6 +16,10 @@ export interface HeadlessShotResult {
   brokenObstacleIds: string[];
   /** Portals the ball went through before the shot resolved. */
   portalsUsed: string[];
+  /** Ramps the ball launched off (rolled off a lip into the air) before the shot resolved. */
+  rampLaunches: string[];
+  /** Ramps the ball touched at all (rolled on, bounced off) before the shot resolved. */
+  rampsTouched: string[];
 }
 
 /** Runs one shot with real Matter and no rendering, classified exactly as the scene does. */
@@ -56,8 +60,9 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     if (state.passedOverhead) classifier.recordOverhead();
     return {
       outcome: classifier.classify(true).outcome, endXSim: state.xSim, endYSim: state.ySim, steps: step,
-      brokenObstacleIds: state.brokenObstacleIds, portalsUsed: state.portalsUsed,
+      brokenObstacleIds: state.brokenObstacleIds, portalsUsed: state.portalsUsed, rampLaunches: state.rampLaunches,
+      rampsTouched: state.obstacleContacts.filter(c => level.ramps?.some(r => r.id === c.id)).map(c => c.id),
     };
   }
-  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps, brokenObstacleIds: [], portalsUsed: [] };
+  return { outcome: 'miss', endXSim: Number.NaN, endYSim: Number.NaN, steps: maxSteps, brokenObstacleIds: [], portalsUsed: [], rampLaunches: [], rampsTouched: [] };
 }

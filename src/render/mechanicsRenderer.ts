@@ -13,6 +13,8 @@ import { artScale } from './artTextures';
 export interface MechanicSounds {
   playGlassBreak(strength: number): void;
   playPortal(): void;
+  /** The ball launched off a ramp's lip (strength 0..1 by speed). */
+  playRampLaunch?(strength: number): void;
 }
 
 /** Backdrop < fence-free playfield < obstacles < hoops < trails/ball < particles. */
@@ -20,6 +22,8 @@ const DEPTH = { backdrop: -55, pane: 2, swirl: 3, ring: 3.5, arrow: 3.6, sparkle
 const POOL = 48;
 /** Impact speed (m/s) that plays the loudest smash. */
 const LOUDEST_SMASH_MS = 14;
+/** Launch speed (m/s) off a ramp lip that plays the loudest clack. */
+const LOUDEST_LAUNCH_MS = 12;
 
 interface PaneView { image: Phaser.GameObjects.Image; intactKey: string; broken: boolean }
 
@@ -154,6 +158,13 @@ export class MechanicsRenderer {
   }
 
   private onEvent(event: MechanicEvent, state: Pick<ProjectileState, 'vxSim' | 'vySim'>, reduced: boolean, sounds?: MechanicSounds): void {
+    if (event.kind === 'rampLaunch') {
+      // Off the lip: a clack of the coping and a puff of wood dust left behind.
+      sounds?.playRampLaunch?.(clamp01(event.speedMs / LOUDEST_LAUNCH_MS));
+      if (reduced) return;
+      this.burst({ kind: 'fx-dust', count: 4, x: event.xPx, y: event.yPx + 6, angle: Math.atan2(state.vySim, -state.vxSim), spread: 1.2, speed: [20, 70], life: [0.3, 0.55], scale: [0.4, 0.75], endScale: 1.5, gravity: -10, drag: 4 });
+      return;
+    }
     if (event.kind === 'break') {
       const pane = this.panes.get(event.id);
       if (pane && !pane.broken) {

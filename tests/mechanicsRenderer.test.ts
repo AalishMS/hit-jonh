@@ -33,7 +33,7 @@ function makeRenderer() {
 const state = (events: ProjectileState['events']): ProjectileState => ({
   xSim: 14, ySim: 4.4, xPx: 700, yPx: 340, vxSim: 5, vySim: -1, speedMs: 5.1, hitJonh: false, hitHat: false, hitGround: false,
   passedOverhead: false, impactSpeedMs: 0, firstGroundContact: null, obstacleContacts: [], hadRicochetBeforeBody: false,
-  brokenObstacleIds: [], portalsUsed: [], events,
+  brokenObstacleIds: [], portalsUsed: [], events, rampRolling: null, rampLaunches: [],
 });
 
 const flying = (images: ReturnType<typeof mockImage>[]) => images.filter(i => (i.texture.key === 'fx-shard' || i.texture.key === 'fx-magic' || i.texture.key === 'fx-dust') && i.visible && (i.setPosition?.mock.calls.length ?? 0) > 0);

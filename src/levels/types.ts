@@ -39,6 +39,30 @@ export interface PortalData {
 }
 
 /**
+ * A curved skate ramp [PROPOSED 2026-11-25]: a thick circular arc whose inner (concave) face the ball
+ * rides. It is solved exactly by the swept guard (sim/arc.ts): a ball that lands on it bounces with the
+ * material's restitution, a ball moving gently along it rolls (speed changes only by gravity's pull
+ * along the curve and a rolling drag), and a ball that rolls past an end leaves along the tangent
+ * there, so the lip launches it. Angles are degrees about the centre, counter-clockwise from +x
+ * (-90 is straight below the centre): a quarter-pipe that kicks a ball up towards +x runs from -90 to
+ * its lip angle, e.g. -30 launches at 60°.
+ */
+export interface RampData {
+  id: string;
+  centre: Point2D;
+  /** Radius of the riding (inner) face, metres. */
+  radius: number;
+  /** Solid depth behind the riding face (metres); obeys the thickness rule (SPEC §9.2). */
+  thickness: number;
+  /** The arc runs counter-clockwise from startDeg to endDeg, 0 < endDeg − startDeg ≤ 180. */
+  startDeg: number;
+  endDeg: number;
+  material: string;
+  /** Rolling through it counts as a ricochet (a trick shot). [OPEN] per-map ricochet surfaces (SPEC §7.1). */
+  ricochet: boolean;
+}
+
+/**
  * A constant wind [PROPOSED]: a horizontal acceleration on the ball only (never Jonh, obstacles or
  * contacts), applied in the fixed step the same way gravity is. Positive blows towards +x (towards
  * Jonh's side), negative back towards the cannon. Scenery draws a windsock and streaks from it.
@@ -117,6 +141,8 @@ export interface LevelData {
   gravityMs2?: number;
   /** Multiplies the cannon's whole launch-speed range on this map; 1 when omitted. */
   launchSpeedScale?: number;
+  /** Curved skate ramps (see RampData); none when omitted. */
+  ramps?: RampData[];
   /** One-way portals (see PortalData); none when omitted. */
   portals?: PortalData[];
   /** Constant wind on the ball (see WindData); none when omitted, and the map plays exactly as before. */

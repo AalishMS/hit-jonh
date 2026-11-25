@@ -1,4 +1,5 @@
-import { AIM, JONH_WALK, PROJECTILE, WIND } from '../config/tuning';
+import { AIM, JONH_WALK, MATERIALS, PROJECTILE, RAMP, WIND } from '../config/tuning';
+import { arcCorners, arcOverlapsBox, arcPoint, arcShape, closestOnArc, type ArcShape } from '../sim/arc';
 import type { Box2D, Point2D } from '../sim/swept';
 import { routeLegs, routeSweptBoxes } from './jonhRoute';
 import { levelPhysics } from './levelPhysics';
@@ -89,13 +90,21 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     }
   }
 
+  // 5b. Ramps (SPEC §8.9): a real counter-clockwise arc, thick enough, not too tight, a known material,
+  //     inside the world, and never overlapping where Jonh stands.
+  for (const ramp of level.ramps ?? []) errors.push(...validateRamp(level, ramp, requiredThickness));
+
   // 6. Reference solutions
   if (!level.referenceSolutions || level.referenceSolutions.length === 0) {
     errors.push('Level has no reference solutions');
   }
 
-  // 7. Obstacle ids are unique (breakables are tracked by id), breakable values in range.
+  // 7. Obstacle and ramp ids are unique (contacts and breakables are tracked by id), breakable values in range.
   const obstacleIds = new Set<string>();
+  for (const ramp of level.ramps ?? []) {
+    if (obstacleIds.has(ramp.id)) errors.push(`Duplicate ramp id "${ramp.id}"`);
+    obstacleIds.add(ramp.id);
+  }
   for (const obs of level.obstacles) {
     if (obstacleIds.has(obs.id)) errors.push(`Duplicate obstacle id "${obs.id}"`);
     obstacleIds.add(obs.id);
@@ -144,6 +153,11 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
         errors.push(`Portal "${portal.id}" exit overlaps ${solid.name}`);
       }
     }
+    for (const ramp of level.ramps ?? []) {
+      if (closestOnArc(arcShape(ramp), exit).signedDistance < r + PORTAL_EXIT_CLEARANCE_METRES) {
+        errors.push(`Portal "${portal.id}" exit overlaps ramp "${ramp.id}"`);
+      }
+    }
     for (const other of portals) {
       if (Math.hypot(exit.x - other.entry.x, exit.y - other.entry.y) < other.entry.radius + r + PORTAL_EXIT_CLEARANCE_METRES) {
         errors.push(`Portal "${portal.id}" exit is inside the entry of "${other.id}"`);
@@ -188,6 +202,9 @@ function validateRoute(level: LevelData): string[] {
     for (const obs of level.obstacles) {
       if (overlaps(box, obs.box)) errors.push(`Jonh route walks through obstacle "${obs.id}"`);
     }
+    for (const ramp of level.ramps ?? []) {
+      if (arcOverlapsBox(arcShape(ramp), box)) errors.push(`Jonh route walks through ramp "${ramp.id}"`);
+    }
   }
   // Feet on a surface the whole way: one surface whose top is his floor and covers every leg.
   const body = level.jonhSpawn.bodyBox;
@@ -200,4 +217,29 @@ function validateRoute(level: LevelData): string[] {
     }
   }
   return [...new Set(errors)];
+}
+
+/** Ramp rules [PROPOSED 2026-11-25]: see validateLevel step 5b. */
+function validateRamp(level: LevelData, ramp: NonNullable<LevelData['ramps']>[number], requiredThickness: number): string[] {
+  const errors: string[] = [];
+  const span = ramp.endDeg - ramp.startDeg;
+  if (!(span > 0 && span <= 180)) errors.push(`Ramp "${ramp.id}" must run counter-clockwise through more than 0° and at most 180°`);
+  if (!(ramp.thickness >= requiredThickness)) {
+    errors.push(`Ramp "${ramp.id}" thickness (${ramp.thickness.toFixed(3)}m) is less than required minimum (${requiredThickness.toFixed(3)}m)`);
+  }
+  if (!(ramp.radius >= RAMP.minRadiusMetres)) errors.push(`Ramp "${ramp.id}" radius must be at least ${RAMP.minRadiusMetres} m`);
+  if (!(ramp.material in MATERIALS)) errors.push(`Ramp "${ramp.id}" has unknown material "${ramp.material}"`);
+  if (errors.length > 0) return errors;
+  const shape: ArcShape = arcShape(ramp);
+  const b = level.bounds;
+  const inside = (p: Point2D) => p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY;
+  const samples = [...arcCorners(shape)];
+  for (let k = 0; k <= 36; k++) {
+    const a = shape.start + ((shape.end - shape.start) * k) / 36;
+    samples.push(arcPoint(shape, a, shape.radius), arcPoint(shape, a, shape.radius + shape.thickness));
+  }
+  if (!samples.every(inside)) errors.push(`Ramp "${ramp.id}" is outside level bounds`);
+  const jonh = [level.jonhSpawn.bodyBox, ...(level.jonhSpawn.hatBox ? [level.jonhSpawn.hatBox] : [])];
+  if (jonh.some(box => arcOverlapsBox(shape, box))) errors.push(`Ramp "${ramp.id}" overlaps Jonh`);
+  return errors;
 }

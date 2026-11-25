@@ -1,7 +1,8 @@
 import Matter, { type Body, type World } from '@matter-js';
-import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
+import { LOOK, MATERIALS, PHYSICS, RAMP, type MaterialProps } from '../config/tuning';
 import { routePoseAtStep, shiftJonh, type RoutePose } from '../levels/jonhRoute';
-import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, PortalData } from '../levels/types';
+import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, PortalData, RampData } from '../levels/types';
+import { arcPoint, arcShape, clampToArc, closestOnArc, radial, rollOnArc, sweepCircleVsArc, type ArcHit, type ArcShape } from '../sim/arc';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
 import './matterSolver';
@@ -38,12 +39,21 @@ export interface ProjectileState {
   portalsUsed: string[];
   /** Breaks and teleports during this step only, for effects and sound. */
   events: MechanicEvent[];
+  /** The ramp the ball is rolling along at the end of this step (its id), or null (SPEC §8.9). */
+  rampRolling: string | null;
+  /** Ramps the ball has launched off (rolled off a lip into the air) so far this shot, in order. */
+  rampLaunches: string[];
 }
 
 /** Something a level mechanic did to the ball during one fixed step (world pixels). */
 export type MechanicEvent =
   | { kind: 'break'; id: string; xPx: number; yPx: number; impactSpeedMs: number }
-  | { kind: 'portal'; id: string; entryXPx: number; entryYPx: number; exitXPx: number; exitYPx: number };
+  | { kind: 'portal'; id: string; entryXPx: number; entryYPx: number; exitXPx: number; exitYPx: number }
+  /** The ball rolled off the end of a ramp into the air (launched off its lip). */
+  | { kind: 'rampLaunch'; id: string; xPx: number; yPx: number; speedMs: number };
+
+/** A ramp and its exact arc, as the swept guard tests it. */
+interface RampSolid { ramp: RampData; shape: ArcShape }
 
 /** A solid the swept guard tests: ground, Jonh's body or an obstacle that is not broken. */
 interface SolidBox {
@@ -95,6 +105,13 @@ export class MatterAdapter {
   private jonhBody: Body | null = null;
   private jonhHatBody: Body | null = null;
   private obstacleBodies: Body[] = [];
+  /** Ramps as the swept guard sees them, and their Matter sensor pieces. */
+  private ramps: RampSolid[] = [];
+  private rampBodies: Body[] = [];
+  /** The ramp the ball is rolling along after the last step (null in the air or on anything else). */
+  private rampRolling: string | null = null;
+  /** Per-shot: every launch off a ramp's lip, by ramp id (restored by removeProjectile). */
+  private rampLaunches: string[] = [];
 
   private prevPosPx: { x: number; y: number } | null = null;
   private hasHitJonh = false;
@@ -239,7 +256,37 @@ export class MatterAdapter {
       this.obstacleBodies.push(obsBody);
       if (obs.breakable) this.breakables.set(obs.id, { body: obsBody, mask: obsBody.collisionFilter.mask });
     }
+
+    // 5. Ramps: the swept guard solves the exact arc; Matter gets static sensor pieces along it.
+    for (const ramp of level.ramps ?? []) this.addRamp(ramp);
     this.placeJonh(0);
+  }
+
+  /**
+   * A ramp's exact arc for the swept guard, plus a chain of static sensor quads along it in Matter
+   * (debug draw and queries see the ramp; they never push the ball). Matter has no curved bodies,
+   * and its polygon joints would snag a rolling ball and damp every bounce alike, so the guard owns
+   * every ramp contact, as it already owns bounces (SPEC §8.9, §9.2).
+   */
+  private addRamp(ramp: RampData): void {
+    const shape = arcShape(ramp);
+    this.ramps.push({ ramp, shape });
+    const span = shape.end - shape.start;
+    const pieces = Math.max(1, Math.ceil((span * 180) / Math.PI / RAMP.matterSegmentDeg - 1e-9));
+    const outer = shape.radius + shape.thickness;
+    const toPx = (p: Point2D) => ({
+      x: metresToPixels(p.x, this.pixelsPerMetre),
+      y: simYToWorldY(p.y, this.worldHeightPx, this.pixelsPerMetre),
+    });
+    for (let k = 0; k < pieces; k++) {
+      const a0 = shape.start + (span * k) / pieces;
+      const a1 = shape.start + (span * (k + 1)) / pieces;
+      const quad = [arcPoint(shape, a0, shape.radius), arcPoint(shape, a1, shape.radius), arcPoint(shape, a1, outer), arcPoint(shape, a0, outer)].map(toPx);
+      const centre = polygonCentroid(quad);
+      const body = Matter.Bodies.fromVertices(centre.x, centre.y, quad, { isStatic: true, isSensor: true, label: 'ramp' });
+      Matter.World.add(this.matterWorld, body);
+      this.rampBodies.push(body);
+    }
   }
 
   spawnProjectile(
@@ -278,7 +325,7 @@ export class MatterAdapter {
 
   stepProjectile(level: LevelData, radiusMetres: number): ProjectileState | null {
     const state = this.stepSwept(level, radiusMetres);
-    if (state) this.pushWind(this.supportMaterial(level, { x: state.xSim, y: state.ySim }, radiusMetres) !== undefined);
+    if (state) this.pushWind(this.rampRolling !== null || this.supportMaterial(level, { x: state.xSim, y: state.ySim }, radiusMetres) !== undefined);
     return state;
   }
 
@@ -324,11 +371,15 @@ export class MatterAdapter {
     // Solid colliders for sweeping (a prop smashed earlier this shot is gone).
     const boxes = this.solidBoxes(level);
     const earliestHit = earliestSolidHit(prevSim, currSim, radiusMetres, boxes, this.jonhRoute !== null);
+    // Ramps (exact arcs): the earliest one counts only when it comes strictly before every box.
+    const rampHit = this.ramps.length > 0 ? this.earliestRampHit(prevSim, currSim, radiusMetres) : null;
+    const wasRolling = this.rampRolling;
+    this.rampRolling = null;
 
     // Portals: touching an unused entry before any solid sends the ball through (no bounce, no contact).
     if (level.portals && level.portals.length > 0) {
       const entry = this.portalEntry(level.portals, prevSim, currSim, radiusMetres, boxes);
-      if (entry && (!earliestHit || entry.t < earliestHit.hit.t)) {
+      if (entry && (!earliestHit || entry.t < earliestHit.hit.t) && (!rampHit || entry.t < rampHit.hit.t)) {
         return this.teleport(level, radiusMetres, prevSim, currSim, entry.portal, entry.t);
       }
     }
@@ -336,7 +387,12 @@ export class MatterAdapter {
     // Hat sensor and overhead pass over this step's path.
     this.senseJonh(level, radiusMetres, prevSim, currSim);
 
-    if (earliestHit && earliestHit.breakable && earliestHit.id !== undefined &&
+    const rampFirst = rampHit !== null && (!earliestHit || rampHit.hit.t < earliestHit.hit.t);
+    const rolled = rampFirst && this.resolveRamp(rampHit, prevSim, currSim, currPx, radiusMetres);
+    if (wasRolling !== null && this.rampRolling === null) this.noteRampExit(wasRolling, currPx);
+    if (rampFirst) {
+      // The ramp came first: it rolled or bounced the ball this step, nothing else did.
+    } else if (earliestHit && earliestHit.breakable && earliestHit.id !== undefined &&
       this.smash(earliestHit.id, earliestHit.breakable, earliestHit.hit, currSim, currPx)) {
       // Smashed through: the prop is gone, the ball carries on. Not a contact, never a ricochet.
     } else if (earliestHit) {
@@ -371,52 +427,17 @@ export class MatterAdapter {
 
       // Calculate relative velocity into normal (relative to Jonh's walk when he is the surface).
       const wall = earliestHit.boxLabel === 'jonhBody' ? this.jonhVelocityMatter() : null;
-      const matterVx = wall ? this.projectileBody.velocity.x - wall.x : this.projectileBody.velocity.x;
-      const matterVy = wall ? this.projectileBody.velocity.y - wall.y : this.projectileBody.velocity.y;
-      
-      const matterNormalX = earliestHit.hit.normal.x;
-      const matterNormalY = -earliestHit.hit.normal.y; // sim +y is up, matter +y is down
-
-      const dotNow = matterVx * matterNormalX + matterVy * matterNormalY;
-      // Velocity entering this step: Matter may already have resolved (and damped) the impact.
-      const inVx = wall ? this.previousVelocity.x - wall.x : this.previousVelocity.x;
-      const inVy = wall ? this.previousVelocity.y - wall.y : this.previousVelocity.y;
-      const dotIn = inVx * matterNormalX + inVy * matterNormalY;
-      const minBounce = speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre);
-
-      // Still moving into the surface: reflect to prevent tunnelling. Already resolved by Matter
-      // after a real impact: redo the bounce from the incoming velocity with this material.
-      if (dotNow < 0 || dotIn < -minBounce) {
-        const [vx, vy, dot] = dotNow < 0 ? [matterVx, matterVy, dotNow] : [inVx, inVy, dotIn];
-        const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[earliestHit.material] ?? { restitution: 0.2, friction: 0.5 };
-        const projMat = MATERIALS.cannonball;
-        const restitution = Math.max(mat.restitution, projMat.restitution);
-
-        const vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
-        const vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
-
-        // Reposition exactly at time of impact, plus tiny epsilon to avoid sticky re-collision
-        const newSimX = earliestHit.hit.point.x + earliestHit.hit.normal.x * 1e-4;
-        const newSimY = earliestHit.hit.point.y + earliestHit.hit.normal.y * 1e-4;
-
-        const newPxX = metresToPixels(newSimX, this.pixelsPerMetre);
-        const newPxY = simYToWorldY(newSimY, this.worldHeightPx, this.pixelsPerMetre);
-        
-        Matter.Body.setPosition(this.projectileBody, { x: newPxX, y: newPxY });
-        Matter.Body.setVelocity(this.projectileBody, wall
-          ? { x: vNewMatterX + wall.x, y: vNewMatterY + wall.y }
-          : { x: vNewMatterX, y: vNewMatterY });
-
-        currPx.x = newPxX;
-        currPx.y = newPxY;
-        currSim.x = newSimX;
-        currSim.y = newSimY;
-      }
+      this.reflect(earliestHit.hit, earliestHit.material, wall, currSim, currPx);
     }
 
+    // Only one contact is resolved per step, and a ball resting on a box (the ground) always touches it
+    // at t = 0, so a ramp it is also pressing against could be skipped: push it back out of any ramp.
+    if (this.ramps.length > 0 && !rolled) this.depenetrateRamps(currSim, currPx, radiusMetres);
+
     // Rolling resistance on whatever top surface the ball rests on (ground, roofs, decks), so a
-    // ball that lands on a flat top slows to a stop instead of sliding on indefinitely.
-    const support = this.supportMaterial(level, currSim, radiusMetres);
+    // ball that lands on a flat top slows to a stop instead of sliding on indefinitely. A ball rolling
+    // on a ramp gets the ramp's own drag instead (rollOnArc).
+    const support = rolled ? undefined : this.supportMaterial(level, currSim, radiusMetres);
     if (support !== undefined) {
       const mat = (MATERIALS as Record<string, MaterialProps>)[support];
       Matter.Body.setVelocity(this.projectileBody, {
@@ -429,6 +450,151 @@ export class MatterAdapter {
     this.previousVelocity = { ...this.projectileBody.velocity };
     this.advanceJonh();
     return this.snapshot(currSim, currPx);
+  }
+
+  /**
+   * Bounces the ball off a surface the swept guard found (`hit`, sim units, normal pointing out of the
+   * surface), relative to `wall` (Jonh's walk, Matter units) when he is the surface. Still moving into
+   * the surface: reflect to prevent tunnelling. Already resolved by Matter after a real impact: redo
+   * the bounce from the incoming velocity with this material. Moves `currSim`/`currPx` to the contact.
+   */
+  private reflect(hit: SweptHit, material: string, wall: { x: number; y: number } | null, currSim: Point2D, currPx: Point2D): void {
+    const body = this.projectileBody!;
+    const matterVx = wall ? body.velocity.x - wall.x : body.velocity.x;
+    const matterVy = wall ? body.velocity.y - wall.y : body.velocity.y;
+
+    const matterNormalX = hit.normal.x;
+    const matterNormalY = -hit.normal.y; // sim +y is up, matter +y is down
+
+    const dotNow = matterVx * matterNormalX + matterVy * matterNormalY;
+    // Velocity entering this step: Matter may already have resolved (and damped) the impact.
+    const inVx = wall ? this.previousVelocity.x - wall.x : this.previousVelocity.x;
+    const inVy = wall ? this.previousVelocity.y - wall.y : this.previousVelocity.y;
+    const dotIn = inVx * matterNormalX + inVy * matterNormalY;
+    const minBounce = speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre);
+
+    if (dotNow < 0 || dotIn < -minBounce) {
+      const [vx, vy, dot] = dotNow < 0 ? [matterVx, matterVy, dotNow] : [inVx, inVy, dotIn];
+      const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[material] ?? { restitution: 0.2, friction: 0.5 };
+      const projMat = MATERIALS.cannonball;
+      const restitution = Math.max(mat.restitution, projMat.restitution);
+
+      const vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
+      const vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
+
+      // Reposition exactly at time of impact, plus tiny epsilon to avoid sticky re-collision
+      const newSimX = hit.point.x + hit.normal.x * 1e-4;
+      const newSimY = hit.point.y + hit.normal.y * 1e-4;
+
+      const newPxX = metresToPixels(newSimX, this.pixelsPerMetre);
+      const newPxY = simYToWorldY(newSimY, this.worldHeightPx, this.pixelsPerMetre);
+
+      Matter.Body.setPosition(body, { x: newPxX, y: newPxY });
+      Matter.Body.setVelocity(body, wall
+        ? { x: vNewMatterX + wall.x, y: vNewMatterY + wall.y }
+        : { x: vNewMatterX, y: vNewMatterY });
+
+      currPx.x = newPxX;
+      currPx.y = newPxY;
+      currSim.x = newSimX;
+      currSim.y = newSimY;
+    }
+  }
+
+  /**
+   * The ball was rolling on a ramp last step and is not now. Rising off it is a launch (it rolled off a
+   * lip into the air, whether this step's roll carried it past the end or its straight path already
+   * cleared the end of the curve): recorded per shot and sent as an event for the clack and the dust.
+   */
+  private noteRampExit(rampId: string, currPx: Point2D): void {
+    const vy = -matterVelocityToSpeedMs(this.projectileBody!.velocity.y, this.pixelsPerMetre);
+    if (!(vy > PHYSICS.bounceMinNormalSpeedMs)) return;
+    this.rampLaunches.push(rampId);
+    const speedMs = matterVelocityToSpeedMs(vectorLength(this.projectileBody!.velocity.x, this.projectileBody!.velocity.y), this.pixelsPerMetre);
+    this.stepEvents.push({ kind: 'rampLaunch', id: rampId, xPx: currPx.x, yPx: currPx.y, speedMs });
+  }
+
+  /**
+   * Pushes a ball that ended the step overlapping a ramp back out along that ramp's surface normal
+   * and takes away its velocity into the ramp (a resting contact: no bounce). Matter cannot do this
+   * for a ramp (its pieces are sensors), and the swept guard resolves one contact per step.
+   */
+  private depenetrateRamps(currSim: Point2D, currPx: Point2D, radiusMetres: number): void {
+    const body = this.projectileBody!;
+    for (const { ramp, shape } of this.ramps) {
+      const c = closestOnArc(shape, currSim);
+      if (c.signedDistance >= radiusMetres - 1e-6) continue;
+      const push = radiusMetres + 1e-4 - c.signedDistance;
+      currSim.x += c.normal.x * push;
+      currSim.y += c.normal.y * push;
+      currPx.x = metresToPixels(currSim.x, this.pixelsPerMetre);
+      currPx.y = simYToWorldY(currSim.y, this.worldHeightPx, this.pixelsPerMetre);
+      Matter.Body.setPosition(body, { x: currPx.x, y: currPx.y });
+      const nx = c.normal.x;
+      const ny = -c.normal.y; // Matter's y points down
+      const into = body.velocity.x * nx + body.velocity.y * ny;
+      if (into < 0) Matter.Body.setVelocity(body, { x: body.velocity.x - into * nx, y: body.velocity.y - into * ny });
+      if (!this.obstacleContacts.some(o => o.id === ramp.id)) {
+        this.obstacleContacts.push({ id: ramp.id, ricochet: ramp.ricochet, material: ramp.material });
+      }
+      if (ramp.ricochet && !this.hasHitJonh) this.hadRicochetBeforeBody = true;
+    }
+  }
+
+  /** The earliest ramp the ball's swept circle touches between two positions, if any. */
+  private earliestRampHit(prev: Point2D, curr: Point2D, radius: number): (RampSolid & { hit: ArcHit }) | null {
+    let best: (RampSolid & { hit: ArcHit }) | null = null;
+    for (const solid of this.ramps) {
+      const hit = sweepCircleVsArc(prev, curr, radius, solid.shape);
+      if (hit && (!best || hit.t < best.hit.t)) best = { ...solid, hit };
+    }
+    return best;
+  }
+
+  /**
+   * A ramp contact (SPEC §8.9). It is an obstacle contact with the ramp's own ricochet flag. On the
+   * riding face, a ball arriving faster than PHYSICS.bounceMinNormalSpeedMs into it (measured at the
+   * angle it started the step at, so the curve's own turning never counts as an impact) bounces with
+   * the material; a gentler one rolls along the curve for this step (sim/arc.ts rollOnArc) and may
+   * leave off the lip. Any other face (back, ends, corners) bounces like a box. Returns true when the
+   * ball rolled.
+   */
+  private resolveRamp(rampHit: RampSolid & { hit: ArcHit }, prevSim: Point2D, currSim: Point2D, currPx: Point2D, radiusMetres: number): boolean {
+    const body = this.projectileBody!;
+    const { ramp, shape, hit } = rampHit;
+    if (!this.obstacleContacts.some(o => o.id === ramp.id)) {
+      this.obstacleContacts.push({ id: ramp.id, ricochet: ramp.ricochet, material: ramp.material });
+    }
+    if (ramp.ricochet && !this.hasHitJonh) this.hadRicochetBeforeBody = true;
+
+    const ppm = this.pixelsPerMetre;
+    const toSim = (v: { x: number; y: number }) => ({ x: matterVelocityToSpeedMs(v.x, ppm), y: -matterVelocityToSpeedMs(v.y, ppm) });
+    const v0 = toSim(this.previousVelocity);
+    if (hit.feature === 'inner') {
+      const into = radial(clampToArc(shape, Math.atan2(prevSim.y - shape.cy, prevSim.x - shape.cx)));
+      if (v0.x * into.x + v0.y * into.y <= PHYSICS.bounceMinNormalSpeedMs) {
+        const v1 = toSim(body.velocity);
+        const mat = (MATERIALS as Record<string, MaterialProps>)[ramp.material];
+        const roll = rollOnArc({
+          shape, ballRadius: radiusMetres, p0: prevSim, v0, dv: { x: v1.x - v0.x, y: v1.y - v0.y },
+          dt: PHYSICS.fixedStepSeconds, rollingResistance: mat?.rollingResistance ?? RAMP.rollingResistance,
+          trappedDragScale: RAMP.trappedDragScale,
+        });
+        const px = { x: metresToPixels(roll.point.x, ppm), y: simYToWorldY(roll.point.y, this.worldHeightPx, ppm) };
+        Matter.Body.setPosition(body, px);
+        Matter.Body.setVelocity(body, { x: speedMsToMatterVelocity(roll.velocity.x, ppm), y: -speedMsToMatterVelocity(roll.velocity.y, ppm) });
+        body.positionImpulse.x = 0;
+        body.positionImpulse.y = 0;
+        currPx.x = px.x;
+        currPx.y = px.y;
+        currSim.x = roll.point.x;
+        currSim.y = roll.point.y;
+        if (!roll.left) this.rampRolling = ramp.id;
+        return true;
+      }
+    }
+    this.reflect(hit, ramp.material, null, currSim, currPx);
+    return false;
   }
 
   /** Jonh's colliders as they are this step: his spawn moved along the route (the spawn itself otherwise). */
@@ -653,6 +819,8 @@ export class MatterAdapter {
       brokenObstacleIds: [...this.brokenIds],
       portalsUsed: [...this.portalsUsed],
       events: this.stepEvents,
+      rampRolling: this.rampRolling,
+      rampLaunches: [...this.rampLaunches],
     };
   }
 
@@ -678,6 +846,8 @@ export class MatterAdapter {
     this.brokenIds = [];
     this.portalsUsed = [];
     this.stepEvents = [];
+    this.rampRolling = null;
+    this.rampLaunches = [];
     // Jonh walks back to the start of his route (scene reset, SPEC §7.2).
     if (this.jonhRoute) this.placeJonh(0);
   }
@@ -701,5 +871,24 @@ export class MatterAdapter {
     }
     this.obstacleBodies = [];
     this.breakables.clear();
+    for (const piece of this.rampBodies) Matter.World.remove(this.matterWorld, piece);
+    this.rampBodies = [];
+    this.ramps = [];
   }
+}
+
+/** Area centroid of a simple polygon (Matter centres a body's vertices on it). */
+function polygonCentroid(points: ReadonlyArray<{ x: number; y: number }>): { x: number; y: number } {
+  let area = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]!;
+    const b = points[(i + 1) % points.length]!;
+    const cross = a.x * b.y - b.x * a.y;
+    area += cross;
+    cx += (a.x + b.x) * cross;
+    cy += (a.y + b.y) * cross;
+  }
+  return { x: cx / (3 * area), y: cy / (3 * area) };
 }
