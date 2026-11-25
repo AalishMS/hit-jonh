@@ -4,6 +4,7 @@ import type { BreakableData, LevelData, PortalData } from '../levels/types';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
 import {
+  accelerationToMatter,
   metresToPixels,
   matterVelocityToSpeedMs,
   pixelsToMetres,
@@ -105,6 +106,8 @@ export class MatterAdapter {
   private brokenIds: string[] = [];
   private portalsUsed: string[] = [];
   private stepEvents: MechanicEvent[] = [];
+  /** Constant wind as a Matter acceleration (px/ms², + is +x); 0 when the level has none. */
+  private windPxPerMs2 = 0;
 
   constructor(
     private readonly matterWorld: World,
@@ -114,6 +117,7 @@ export class MatterAdapter {
 
   setupLevel(level: LevelData): void {
     this.clear();
+    this.windPxPerMs2 = accelerationToMatter(level.wind?.accelerationMs2 ?? 0, this.pixelsPerMetre);
 
     // 1. Ground body
     const groundWidthPx = metresToPixels(
@@ -245,12 +249,39 @@ export class MatterAdapter {
 
     Matter.World.add(this.matterWorld, this.projectileBody);
     Matter.Body.setVelocity(this.projectileBody, launchVelocityWorld);
+    this.pushWind(false);
 
     this.prevPosPx = { x: startXPx, y: startYPx };
     return this.projectileBody;
   }
 
   stepProjectile(level: LevelData, radiusMetres: number): ProjectileState | null {
+    const state = this.stepSwept(level, radiusMetres);
+    if (state) this.pushWind(this.supportMaterial(level, { x: state.xSim, y: state.ySim }, radiusMetres) !== undefined);
+    return state;
+  }
+
+  /**
+   * Wind [PROPOSED]: a horizontal force on the ball for Matter's *next* update, added exactly the way
+   * Matter adds gravity (so it integrates identically and the swept guard sees the velocity Matter
+   * produced). It acts on the ball only, is not a contact, and is skipped while the ball rests on a
+   * surface so a rolling ball still settles. Matter clears forces at the end of every update, so the
+   * level's wind is re-applied after each step; with no wind nothing is touched at all.
+   */
+  private pushWind(supported: boolean): void {
+    if (this.windPxPerMs2 === 0 || supported || !this.projectileBody) return;
+    this.projectileBody.force.x += this.projectileBody.mass * this.windPxPerMs2;
+  }
+
+  /** The material of the top surface the ball rests on (ground, roofs, decks), if any. */
+  private supportMaterial(level: LevelData, at: Point2D, radiusMetres: number): string | undefined {
+    return this.hasHitGround && at.y <= level.ground.maxY + radiusMetres + 1e-3
+      ? level.ground.material
+      : level.obstacles.find(o => at.x >= o.box.minX && at.x <= o.box.maxX &&
+        Math.abs(at.y - radiusMetres - o.box.maxY) <= 2e-3 && !this.brokenIds.includes(o.id))?.material;
+  }
+
+  private stepSwept(level: LevelData, radiusMetres: number): ProjectileState | null {
     if (!this.projectileBody) return null;
     this.stepEvents = [];
 
@@ -361,10 +392,7 @@ export class MatterAdapter {
 
     // Rolling resistance on whatever top surface the ball rests on (ground, roofs, decks), so a
     // ball that lands on a flat top slows to a stop instead of sliding on indefinitely.
-    const support = this.hasHitGround && currSim.y <= level.ground.maxY + radiusMetres + 1e-3
-      ? level.ground.material
-      : level.obstacles.find(o => currSim.x >= o.box.minX && currSim.x <= o.box.maxX &&
-        Math.abs(currSim.y - radiusMetres - o.box.maxY) <= 2e-3 && !this.brokenIds.includes(o.id))?.material;
+    const support = this.supportMaterial(level, currSim, radiusMetres);
     if (support !== undefined) {
       const mat = (MATERIALS as Record<string, MaterialProps>)[support];
       Matter.Body.setVelocity(this.projectileBody, {

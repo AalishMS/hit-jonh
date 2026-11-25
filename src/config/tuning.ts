@@ -352,6 +352,29 @@ export const MECHANIC_FX = {
 };
 
 /**
+ * Constant per-level wind [PROPOSED 2026-11-25][TUNE]. The physics value lives in level data
+ * (`LevelData.wind`); these are the limits it is validated against and the presentation values.
+ * Wind is a horizontal acceleration on the ball only (SPEC §8.7).
+ */
+export const WIND = {
+  /** Strongest wind a level may declare (m/s²). */
+  maxAccelerationMs2: 8,
+  /** Collider thickness is sized for the extra speed wind can add over this many seconds of flight. */
+  thicknessFlightSeconds: 4,
+  /** The windsock lies flat at this acceleration (m/s²) and droops towards hanging limp at 0. */
+  sockFlatMs2: 5,
+  /** Where the windsock stands (metres) unless the level says otherwise. */
+  defaultSockXMetres: 6.8,
+  /** Drifting streaks: how many, and px/s of drift per m/s² of wind. */
+  streakCount: 16,
+  streakDriftPxPerMs2: 70,
+  /** Streak opacity range. */
+  streakAlpha: 0.55,
+  /** Gust sound: loudness at full wind (0–1). */
+  gustVolume: 0.5,
+} as const;
+
+/**
  * Online multiplayer (spec 2026-10-08). PROPOSED/TUNE except turnLimitSeconds (owner decision).
  * Imported by both the browser and the Convex functions.
  */

@@ -1,4 +1,4 @@
-import { AIM, PROJECTILE } from '../config/tuning';
+import { AIM, PROJECTILE, WIND } from '../config/tuning';
 import type { Box2D, Point2D } from '../sim/swept';
 import { levelPhysics } from './levelPhysics';
 import type { LevelData } from './types';
@@ -39,7 +39,9 @@ function boxThickness(box: Box2D): { width: number; height: number; minThickness
 export function validateLevel(level: LevelData, config: ValidationConfig): ValidationResult {
   const errors: string[] = [];
   // A map that scales the cannon up needs thicker colliders than the global top speed implies.
-  const maxSpeed = Math.max(config.maxSpeedMs, levelPhysics(level).maxSpeedMs);
+  // Wind keeps accelerating the ball in flight, so its speed can exceed the cannon's.
+  const maxSpeed = Math.max(config.maxSpeedMs, levelPhysics(level).maxSpeedMs) +
+    Math.abs(level.wind?.accelerationMs2 ?? 0) * WIND.thicknessFlightSeconds;
   const requiredThickness = Math.max(
     config.minThicknessMetres,
     maxSpeed * config.dtSeconds,
@@ -99,6 +101,16 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     const b = obs.breakable;
     if (b && !(b.minImpactSpeedMs > 0)) errors.push(`Breakable "${obs.id}" needs a positive minImpactSpeedMs`);
     if (b && !(b.speedKept > 0 && b.speedKept <= 1)) errors.push(`Breakable "${obs.id}" speedKept must be in (0, 1]`);
+  }
+
+  // 7b. Wind: a real, bounded, horizontal acceleration, with its windsock inside the world.
+  if (level.wind) {
+    const a = level.wind.accelerationMs2;
+    if (!Number.isFinite(a) || a === 0 || Math.abs(a) > WIND.maxAccelerationMs2) {
+      errors.push(`Wind acceleration ${a} must be non-zero and at most ${WIND.maxAccelerationMs2} m/s²`);
+    }
+    const sockX = level.wind.windsockX ?? WIND.defaultSockXMetres;
+    if (!(sockX > level.bounds.minX && sockX < level.bounds.maxX)) errors.push('Windsock is outside level bounds');
   }
 
   // 8. Portals: the exit never puts the ball inside a collider, Jonh or another entry (no loops), and
