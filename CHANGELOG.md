@@ -1,5 +1,10 @@
 # Changelog
 
+## Mobile performance and install (branch `t3/mobile-performance-pwa`, 25 November 2026)
+
+- **Faster start.** The game used to draw all 228 of its illustrations before showing the title. It now draws only what the title needs and the rest the first time a garden, hat, outfit, cannon or player colour is used, packed into a few texture pages. In headless Chromium the title is interactive in about 4.4 s instead of 10.1 s (8.1 s instead of 13.0 s with the CPU slowed 4×), and the start-up art takes 13 MB of texture memory instead of 44 MB. Pictures and shots are unchanged. Measured on a desktop browser only; the phone was locked, so the real-phone numbers are still to come.
+- **Install and play offline.** The production build is an installable app with an icon, and solo, hot-seat and Daily Bonk work with no connection after the first visit. Online rooms still need one. A new version takes over on the next load with a small "Updated" note. Never active in `npm run dev`.
+
 ## Real game pass (branch `real-game-pass`, 24 November 2026)
 
 The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").

@@ -1033,3 +1033,86 @@ There were also fixes from an independent review.
 9. **Mobile performance and install.** Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone. Today's GPU cost is unknown (headless SwiftShader only).
 10. **A walking-Jonh garden.** A predictable route timed from Fire (a timing challenge). SPEC lists "Jonh moving during shots" as deferred, so it needs owner approval.
 
+
+## Mobile performance and install (2026-11-25, branch `t3/mobile-performance-pwa`)
+
+Owner request (2026-11-25): "Mobile performance and install. Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone."
+
+**The real-phone measurement did not happen.** The OnePlus AC2001 (Android 12) was on its lock screen with a secure keyguard (`isKeyguardShowing=true`, `secure=true`, screen asleep) for the whole session, so Chrome could not be driven. I did not ask for the PIN or unlock it. I opened the device with the T3 device tools, ran `agent-device open com.android.chrome http://localhost:4183/` once, and saw nothing load. The phone's Chrome has the owner's own tabs open (a live chess.com game and others); I never touched them, no tab of mine is open, nothing was installed and no setting changed. The `adb reverse`/`adb forward` ports were removed and the device session closed. All numbers below are headless desktop Chromium (SwiftShader software GL). **GPU cost on a phone is still unknown**; see "Re-running on the phone".
+
+### What the measurements showed
+
+Production build, cold cache, 1280×760, headless Chromium, CDP CPU throttling 4×. The machine was shared with other jobs (load average 6–20), so I interleaved baseline (`ef4bf12`) and new runs and report medians; absolute times are noisy, ratios are the signal.
+
+- **Boot is dominated by rasterizing SVG art, not by Phaser or the network.** Rasterizing all 228 images one after another took 11.2 s unthrottled in a micro-benchmark, about 45–50 ms per image whatever its size. The count matters, not the pixels.
+- **A session needs a fraction of it.** At boot the game rasterized every garden's sky, hills, obstacles, all 8 hats, 7 outfits, 6 cannon skins and 16 painted barrels, although the title shows one garden, one hat, one outfit and one cannon.
+- Phaser renders to a fixed 1280×560 canvas that CSS scales, so device pixel ratio does not change fill rate. A DPR/render-scale cap would change nothing, and I did not add one.
+
+### What changed
+
+1. **Lazy art by group** (`src/art/library.ts` `ART_GROUPS`, `src/render/artTextures.ts` `ensureArt`/`whenArtReady`). Groups: `core` (Jonh's body, faces, effects, ball, classic cannon), one per hat, outfit, cannon skin and player barrel, `scenery-common`, one per theme and one per garden. Sizes and pivots of all art are registered at boot, so only pixels are lazy. Boot loads core, the worn cosmetics and one garden. Solo start, hot-seat start/rematch/next round and wardrobe selections wait for their groups (a `then` continuation on `loadMultiplayerMap`); the cannon renderer requests a missing skin or barrel itself.
+2. **Atlas pages** (`src/art/atlasPack.ts`). Everything one `ensureArt` call needs is shelf-packed into pages of at most 2048 px with a 2 px gutter, rasterized as one SVG document (ids prefixed per cell), and the gutter is filled by copying the cell's edge pixels (what CLAMP_TO_EDGE does for a lone texture). Every art key still has its own Phaser texture, sharing the page's GPU texture, so no renderer changed. Tiled textures (`far-*`, `mid-*`, `stars-*`, `ground-top*`, `earth*`, `fence-back`) keep a texture of their own because an atlas cell cannot wrap.
+3. **Wardrobe hat icons** now come from the hat's SVG as a data URL (`hatImage`), because they used to read the hat texture's canvas.
+4. **Title garden** (`src/scenes/attractLevel.ts`): the title backdrop picks an unlocked garden whose art is already loaded (boot loads one random pick), so the title never waits.
+5. **PWA** (production only): `build/pwa.ts` Vite plugin emits `manifest.webmanifest`, injects the manifest/apple-touch links, and writes `dist/sw.js` from `build/sw.template.js` with the precache list and a content-hash cache name. `src/pwaRegister.ts` registers it (never in `npm run dev`) and shows a small "Updated — reload" note when a new worker takes over a page that already had one. Icons: `public/icons/*.png` from `scripts/make-icons.mjs` (Jonh in his chair beside the cannon on the sky gradient, from `outfitFigureSvg`/`cannonFigureSvg` and the palette).
+6. `@types/node` 22.20.5 (exact, dev only) added so the build plugin type-checks. Without it `node:fs` has no types. It also adds Node's globals to the whole program's types; `tsc` and ESLint stay clean.
+
+### Before / after
+
+| Measure (headless desktop Chromium, production build, cold) | Before (`ef4bf12`) | After |
+| --- | --- | --- |
+| Time to an interactive title screen, 4× CPU throttle, median of 3 | 13.0 s (12.6 / 13.4 / 13.0) | **8.1 s** (8.1 / 7.5 / 8.1) |
+| Same, no throttle, median of 2 | 10.1 s (11.4 / 8.8) | **4.4 s** (4.8 / 4.0) |
+| Same under heavy machine load (load avg ≈ 15, 4×), 3 runs | 39.5 / 50.9 / 42.0 s | 17.9 / 14.3 / 16.9 s |
+| Art rasterizing during boot (new build only has the marks) | not marked; about 9–11 s | 3.7–4.7 s throttled, 2.5–2.9 s unthrottled |
+| Generated textures at title | 228 keys, 228 GPU textures | 72 keys on **17** GPU textures |
+| Generated texture pixels at title | 11.44 MP, **43.6 MB** RGBA | 3.40 MP, **13.0 MB** RGBA |
+| After starting a solo garden | 230 / 43.7 MB | 74 keys, 19 GPU textures / 13.1 MB |
+| JS heap at title / after a solo shot | 7.0 / 9.3 MB | 6.9 / 9.1 MB (JS heap excludes canvas and GPU memory) |
+| Frame time, title demo shot, mean (4×) | 120 / 124 / 138 ms | 138 / 117 / 127 ms |
+| Frame time, solo shot, mean (4×) | 128 / 227 / 137 ms | 177 / 124 / 157 ms |
+| Frame time, unthrottled demo / solo mean | 115, 112 / 132, 133 ms | 338, 92 / 125, 131 ms |
+| `main` chunk | 323.9 kB (97.65 kB gzip) | 329.7 kB (99.88 kB gzip) |
+| `phaser` chunk | 1,431.4 kB (375.6 kB gzip) | 1,432.3 kB (376.1 kB gzip) |
+| `dist/` without source maps | 1,966 kB | 2,096 kB (adds icons, manifest, `sw.js`) |
+
+**Frame time did not improve and I do not claim it did.** Headless Chromium draws with SwiftShader on the CPU, about 8 fps whatever the scene, so frame time here measures the software rasterizer. One unthrottled run's first title demo shot averaged 338 ms per frame (the other 92 ms); I did not find the cause (a first-use texture upload or shader compile is my guess). Fewer, larger textures should help real GPUs (fewer binds and uploads, 30 MB less texture memory), but that is not measured.
+
+### PWA verification (headless Chromium, production build on `vite preview`, port 4183)
+
+- `Page.getInstallabilityErrors`: `[]`. `Page.getAppManifest`: no errors; name "Hit Jonh", `display: standalone`, `theme_color #5EC2EC`, 192/512 and a maskable icon.
+- First visit: the worker installs, precaches 30 files under `hit-jonh-<hash>`, activates and controls the page.
+- **Offline.** Network offline via `Network.emulateNetworkConditions`, then reload: boots to the title with no failed requests, every non-`data:` request served by the worker; a solo shot from Play to "DIRECT HIT +100" played with the network off.
+- `?room=ABCD` offline loads the app shell (the online flow itself needs a connection). With a placeholder `VITE_CONVEX_URL` (an unresolvable host) the `?room=` link opens normally, Convex opens its own WebSocket, none of that traffic touched the worker, and the caches hold no Convex entries.
+- **Update.** After redeploying a different build over the running preview and reloading, the new worker took over about 4.3–4.7 s later, the old cache was deleted (one cache left), the new file was served and the "Updated — reload for the newest Hit Jonh." note appeared.
+- `npm run dev`: no worker registered, no manifest link, no caches.
+
+### Visual equivalence
+
+- **Texture level (exact).** For all 217 art pieces I rasterized the SVG standalone the old way and compared it with the pixels in its atlas cell: **0.017 % of pixels differ by more than 8/255 and 0.13 % by more than 2**, in 10.3 M pixels. The differences are anti-aliasing noise on curved edges (the ball, rings, sun, rays; a few pixels reach 255 on a 1 px edge). Every gutter equals its cell's edge pixel. Rasterizing a page on a software (`willReadFrequently`) canvas gave 1.1 % of pixels off by more than 8, so the page deliberately uses the same GPU-canvas path as the lone textures.
+- **Scene level (by eye, not pixel diff).** Dev-build screenshots of all ten gardens with the full-unlock look and of Backyard with the default look, before and after, with a seeded `Math.random` and a manual 60 Hz clock: gardens, obstacles, panes, hoops, cannon, Jonh and HUD look the same. Pixel diffs there are only the animated and random bits (cloud and bird drift, the swirl phase, Jonh's random quip, flora placement), because lazy loading changes how many random numbers are drawn.
+- Flows (dev server, headless): wardrobe pick of a hat, outfit and cannon (the title shows the new look), solo on never-loaded gardens (Moon, Valley), a four-player hot-seat match (all four painted barrels load). No console errors. This caught one bug in my change: the hot-seat start ran its UI update before the deferred map existed (`Cannot read properties of undefined (reading 'setVisible')`); fixed by passing the UI update as a continuation.
+
+### Re-running on the phone
+
+Unlock the phone and keep the screen awake, then: `npm run build`, `npm run preview -- --port 4183 --host 127.0.0.1`, `adb reverse tcp:4183 tcp:4183`, open Chrome at `http://localhost:4183/` with the device tools, and for traces `adb forward tcp:9235 localabstract:chrome_devtools_remote` (CDP for reading only). Compare against a build of `ef4bf12`. `performance.getEntriesByName('hj-boot-create' | 'hj-art-done' | 'hj-boot-done')` give the art phase. `localhost` counts as a secure context, so the worker and Chrome's install option work there; on a real host it needs HTTPS.
+
+### Decisions [PROPOSED]
+
+- Atlas pages ≤ 2048 px with a 2 px gutter; tiled textures stay lone. Pages are rasterized per `ensureArt` call, so one call is one atlas.
+- Worker: `skipWaiting` + `clients.claim`, so a new build takes over open pages as soon as it is installed (about 4 s after the load that found it); the page gets an "Updated — reload" note and the files are used from the next load. Pages are network-first with a 4 s timeout then the cached shell; assets are cache-first; only same-origin GETs are handled. Precache excludes `*.map` and `licenses/`. Only the current cache is kept; no old-version fallback (nothing is lazy-imported in production apart from `phaser`, already loaded).
+- Manifest: `display: standalone` with `display_override: [fullscreen, standalone]`, `orientation: any` (the portrait "turn your phone" hint stays), `theme_color` = `PAL.skyTop`, `background_color` = `PAL.paper`. Icon art: Jonh and the cannon on the sky; regenerate with `scripts/make-icons.mjs`.
+- The title garden is picked among gardens whose art is already loaded, so a returning player with many gardens unlocked sees the garden loaded at boot plus any played since, not a fresh random one each return to the title.
+- Comic-word textures (9, 1.1 MP, drawn from canvas text at boot) stay eager: they are cheap to draw and must not appear late on the contact frame.
+
+### Not verified
+
+- **The real phone** (locked), so no phone frame times, GPU memory, heap or boot time; **iOS/Safari and Firefox**; the Android "Install app" prompt itself (only CDP's installability check) and a WebAPK; HTTPS on a real host.
+- Real GPU behaviour of the atlas (one texture bind per page) versus lone textures; the first-demo-shot hitch noted above.
+- Online rooms against the real Convex backend with the worker active (only a placeholder host); hot-seat shots played to the end after a lazy load; a full online match; sound.
+- The first-load cost on a slow connection of precaching ~2 MB.
+
+### Next
+
+- Phone run (above). If frame time on the phone is high, the next levers are the shot-time particle pools and fewer simultaneous sprites, not texture count.
+- Optional: warm the next campaign garden's art while the player is aiming (idle time) so "Next garden" never waits.

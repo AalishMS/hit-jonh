@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import type { Plugin } from 'vite';
 import { PAL } from '../src/art/palette.ts';
 
@@ -66,7 +66,7 @@ export function pwaPlugin(): Plugin {
     name: 'hit-jonh-pwa',
     apply: 'build',
     configResolved(config) {
-      outDir = join(config.root, config.build.outDir);
+      outDir = resolve(config.root, config.build.outDir);
       root = config.root;
     },
     transformIndexHtml() {
