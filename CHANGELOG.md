@@ -10,6 +10,10 @@
 - **Readable.** The launch preview dots bend with the wind. A windsock, a "Wind ← 3" caption and drifting streaks show it before the first shot (still under reduced motion), and the map picker thumbnail shows a windsock.
 - **Windy Washday.** An eleventh garden: a 3 m/s² headwind, a 6 m garden wall and a planter. Shots that ignore the wind miss. In the campaign after The Greenhouse and in the Trick shots preset, with its own lines from Jonh.
 
+## Walking-Jonh garden (branch `t3/walking-jonh-garden`, 25 November 2026)
+
+- **The Afternoon Stroll** (owner-approved 2026-11-25): Jonh walks a fixed, learnable route up the garden path from the moment you fire, so the shot is a timing puzzle. His colliders move with him every fixed step (Matter and the swept guard agree); every other map is byte-for-byte unchanged. Walk cycle, painted route, replays in step. Eleven maps in every mode; Online rooms need a Convex redeploy to offer it. Details in `docs/progress.md` and SPEC §8.7.
+
 ## Real game pass (branch `real-game-pass`, 24 November 2026)
 
 The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").

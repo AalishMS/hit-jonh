@@ -1,5 +1,6 @@
-import { AIM, PROJECTILE, WIND } from '../config/tuning';
+import { AIM, JONH_WALK, PROJECTILE, WIND } from '../config/tuning';
 import type { Box2D, Point2D } from '../sim/swept';
+import { routeLegs, routeSweptBoxes } from './jonhRoute';
 import { levelPhysics } from './levelPhysics';
 import type { LevelData } from './types';
 
@@ -121,6 +122,8 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     { name: 'ground', box: level.ground },
     { name: 'Jonh', box: level.jonhSpawn.bodyBox },
     ...(level.jonhSpawn.hatBox ? [{ name: "Jonh's hat", box: level.jonhSpawn.hatBox }] : []),
+    // Walking Jonh: everywhere his body and hat pass along the route.
+    ...(level.jonhRoute ? routeSweptBoxes(level.jonhSpawn, level.jonhRoute).map(box => ({ name: "Jonh's route", box })) : []),
     ...level.obstacles.map(o => ({ name: `obstacle "${o.id}"`, box: o.box })),
   ];
   const portalIds = new Set<string>();
@@ -151,8 +154,50 @@ export function validateLevel(level: LevelData, config: ValidationConfig): Valid
     }
   }
 
+  // 9. Walking Jonh (SPEC §10, 2026-11-25): a sane route that stays inside the level, never walks
+  //    through an obstacle and keeps his feet on one level surface the whole way.
+  if (level.jonhRoute) errors.push(...validateRoute(level));
+
   return {
     valid: errors.length === 0,
     errors,
   };
+}
+
+/** Route rules [PROPOSED 2026-11-25]: see validateLevel step 9. */
+function validateRoute(level: LevelData): string[] {
+  const route = level.jonhRoute!;
+  const errors: string[] = [];
+  const wps = route.waypoints;
+  if (wps.length < 2) return ['Jonh route needs at least two waypoints'];
+  wps.forEach((w, i) => {
+    if (!Number.isFinite(w.dx) || !Number.isFinite(w.dy ?? 0)) errors.push(`Jonh route waypoint ${i} needs a finite offset`);
+    if ((w.dy ?? 0) !== 0) errors.push(`Jonh route waypoint ${i}: routes must stay level (dy 0) [PROPOSED]`);
+    if (!(w.pauseS === undefined || (Number.isFinite(w.pauseS) && w.pauseS >= 0))) errors.push(`Jonh route waypoint ${i} pause must be ≥ 0`);
+    if (i > 0 && !(typeof w.speedMs === 'number' && w.speedMs > 0 && w.speedMs <= JONH_WALK.maxSpeedMs)) {
+      errors.push(`Jonh route waypoint ${i} speed must be in (0, ${JONH_WALK.maxSpeedMs}] m/s`);
+    }
+  });
+  if (errors.length > 0) return errors;
+  const overlaps = (a: Box2D, b: Box2D) => a.minX < b.maxX - 1e-9 && a.maxX > b.minX + 1e-9 && a.minY < b.maxY - 1e-9 && a.maxY > b.minY + 1e-9;
+  const swept = routeSweptBoxes(level.jonhSpawn, route);
+  for (const box of swept) {
+    if (box.minX < level.bounds.minX || box.maxX > level.bounds.maxX || box.minY < level.bounds.minY || box.maxY > level.bounds.maxY) {
+      errors.push('Jonh route leaves the level bounds');
+    }
+    for (const obs of level.obstacles) {
+      if (overlaps(box, obs.box)) errors.push(`Jonh route walks through obstacle "${obs.id}"`);
+    }
+  }
+  // Feet on a surface the whole way: one surface whose top is his floor and covers every leg.
+  const body = level.jonhSpawn.bodyBox;
+  const surfaces = [level.ground, ...level.obstacles.map(o => o.box)];
+  for (const leg of routeLegs(route)) {
+    const minX = body.minX + Math.min(leg.from.dx, leg.to.dx);
+    const maxX = body.maxX + Math.max(leg.from.dx, leg.to.dx);
+    if (!surfaces.some(s => Math.abs(s.maxY - body.minY) < 1e-6 && s.minX <= minX + 1e-9 && s.maxX >= maxX - 1e-9)) {
+      errors.push(`Jonh route leaves his floor between x ${minX.toFixed(2)} and ${maxX.toFixed(2)} m`);
+    }
+  }
+  return [...new Set(errors)];
 }

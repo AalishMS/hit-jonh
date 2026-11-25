@@ -96,6 +96,21 @@ function jonhSvg(body: Box2D, hat: Box2D | undefined, f: Frame): string {
     </g>`;
 }
 
+/** Walking Jonh: a dashed line along his route with an arrow the way he sets off. */
+function routeSvg(level: LevelData, f: Frame): string {
+  const route = level.jonhRoute;
+  if (!route || route.waypoints.length < 2) return '';
+  const b = level.jonhSpawn.bodyBox;
+  const cx = (b.minX + b.maxX) / 2;
+  const xs = route.waypoints.map(w => f.x(cx + w.dx));
+  const y = f.y(b.minY) + 3;
+  const first = xs[0]!;
+  const dir = Math.sign(xs[1]! - first) || 1;
+  const tip = first + dir * Math.min(Math.abs(xs[1]! - first), 18);
+  return `<path d="M${Math.min(...xs)} ${y} H${Math.max(...xs)}" stroke="${PAL.paper}" stroke-width="2.5" stroke-dasharray="4 3"/>` +
+    `<path d="M${tip} ${y} l${-dir * 6} -4 v8 Z" fill="${PAL.paper}" ${INK} stroke-width="1.5"/>`;
+}
+
 function cannonSvg(level: LevelData, f: Frame): string {
   const k = Math.max(0.5, (f.s / (PREVIEW_W / MIN_VIEW_METRES)) * 0.9);
   // Pivot sits 0.6 m above the ground the cannon stands on.
@@ -131,6 +146,7 @@ export function mapPreview(id: string): string {
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
     ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
     ${windSvg(level, f)}
+    ${routeSvg(level, f)}
     ${cannonSvg(level, f)}
     ${jonhSvg(level.jonhSpawn.bodyBox, level.jonhSpawn.hatBox, f)}
   </svg>`;
@@ -176,6 +192,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   greenhouse: 'Glass shrugs off a soft shot. Hit it hard enough and it smashes.',
   magic: 'Through the floating hoop and out the other. Power decides where it lands.',
   washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
+  stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
 };
 
 export function mapDescription(id: string): string {

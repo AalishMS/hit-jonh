@@ -43,6 +43,8 @@ export const THEMES: Record<string, Theme> = {
   /** A bright spring morning in the allotment. */
   greenhouse: { id: 'greenhouse', skyTop: '#58C4F0', skyLow: '#FFF2C6', far: '#ACDBBE', farDetail: '#90C8A6', mid: '#84C86E', midDark: '#5AA44E', sunY: 86, sun: PAL.sun, skyline: 'village' },
   /** A garden party at dusk. */
+  /** Late afternoon, long shadows: Jonh's daily stroll. */
+  stroll: { id: 'stroll', skyTop: '#62B4E6', skyLow: '#FFD7A0', far: '#B0D8B6', farDetail: '#94C59E', mid: '#8ACB70', midDark: '#5FA352', sunY: 150, sun: '#FFC54A', skyline: 'village' },
   magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
   /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
   washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },

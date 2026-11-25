@@ -1151,6 +1151,85 @@ The owner approved item 5 of the "next 10" on 2026-11-25: "A wind garden. A thir
 - Campaign slot (after The Greenhouse) and the Trick shots preset are [PROPOSED].
 - A tailwind garden, or several winds on one map, would be new content on the same mechanic.
 
+## Walking-Jonh garden (2026-11-25, branch t3/walking-jonh-garden)
+
+**Owner request (2026-11-25):** "A walking-Jonh garden. A predictable route timed from Fire (a timing challenge)." It is the one exception to "his collider does not move during a shot" (SPEC §10); every other map behaves exactly as before.
+
+**Done**
+- **The Afternoon Stroll** (`src/levels/stroll.ts`, id `stroll`) [PROPOSED name and layout]. A 4.8 m hedge at x 11.4–12.2 m blocks low shots. A gravel path runs x 12.6–23.4 m, and the gravel kills a ball's roll. A pear-tree canopy (x 16.8–25 m, ricochet surface) sits on a trunk beyond the path. Jonh stands on the lawn end while you aim. After Fire he waits 0.5 s, strolls 5 m into the shade at 1.25 m/s, pauses 0.4 s, then walks 3 m back and stays there (6.7 s in all).
+- **Target positions** shift the route: near −2.1 m (and sets off 1.5 s later, using the new optional `routeDelayS`), middle 0, far +2.0 m. Each has a reference shot that hits only its own position: near 45°/47 % (a bank off the canopy), middle 65°/44 %, far 46°/44 %. Solo uses 65/44 and 65/45.
+- **Route data and clock.** `jonhRoute` in `LevelData` holds waypoints with `dx`, `speedMs` and `pauseS`. `levels/jonhRoute.ts` is pure (no Phaser) and gives his pose as a function of fixed steps since Fire (`routePoseAtStep`). The Matter colliders, the swept guard, the renderer and the replays all read it.
+- **Physics** (`matterAdapter.ts`):
+  - Every fixed step, his body and hat are placed for that step before Matter steps. `stepProjectile` advances him afterwards, so every caller (scene, headless runner, recorder, tests) gets it without changes.
+  - The swept guard and the hat/overhead checks use the same moved boxes.
+  - A bounce off him reflects the ball's velocity relative to his walk.
+  - The first touch on his body or hat stops him for good.
+  - Reset (`removeProjectile`) puts him back at the start of the route.
+  - New: when two surfaces tie on time of impact, Jonh wins, so a ball lying on his path that he walks into counts as a touch. Without this the ground contact won the t = 0 tie and he walked straight through resting balls. Found by a test.
+  - All of this is gated on the level having a route. **Bit-identity check:** about 4,900 shots over a grid on every position of the other ten maps, plus recorded flight paths, gave byte-identical JSON on this branch and on `ef4bf12`.
+- **Validation:**
+  - at least two waypoints;
+  - speeds in (0, `JONH_WALK.maxSpeedMs` = 2] m/s, i.e. at most 1.7 cm per step;
+  - level routes only;
+  - inside the bounds, never through an obstacle, and one floor under every leg;
+  - portal exits stay clear of everywhere he walks.
+- **Presentation:**
+  - He stands without his chair. A distance-driven walk cycle (`standingPose` in `fx/jonhPose.ts`) swings his legs and his free arm while he keeps reading. He mirrors to face the way he walks, eases in and out at stops, and keeps his outfit and hat.
+  - His speech bubble follows him.
+  - `position` follows the route, so impact effects, the incoming-ball flinch and the camera punch land where he is.
+  - The tea table is not drawn on a walking map, so he never walks through it.
+  - The route is painted on the path (`render/routeRenderer.ts`): a chalk line, footprints and an arrow per leg, and rings at the stops (filled where he waits). The map preview draws a dashed route with an arrow.
+- **Replays:**
+  - `recordShot` records his pose per point and `sampleRecordedJonh` reads it back; DemoStage (title demo and the ShowcaseScene winning-shot replay) follows it.
+  - The in-game slow-motion replay asks the adapter for his pose at the replayed simulated time.
+- **Scoring is unchanged.** [PROPOSED] Weak/strong uses the ball's own incoming speed, not the speed relative to Jonh: he walks at most 2 m/s, it matches every other map, and a ball he walks into is a weak hit. A ball he walks into, even one at rest, counts as a contact (SPEC §7.1).
+- **Integration:**
+  - added to `MAPS`, the Trick shots preset and `CAMPAIGN_ORDER` (after The Magic Act);
+  - his own lines in `jonhLines.ts` ("Mid-stroll! Have you no decency?");
+  - map description and theme;
+  - SPEC §4.1, §4.2, §5, §6, §7.1, §8.7 (new), §9.2, §10 and the §11 row.
+
+**Verified**
+- `npm run check`: typecheck, lint and 60 test files (616 passed, 11 skipped). `npm run build` passes (see the report).
+- New tests:
+  - `tests/jonhRoute.test.ts`: the route function and validation.
+  - `tests/walkingJonh.test.ts`:
+    - the Matter body/hat bounds, the adapter's swept box and the route agree on every step of a long shot;
+    - he stops at the first touch, the hit resolves at that very step, and impact speed and position never change afterwards;
+    - reset puts him back;
+    - walking into a resting ball is a weak touch and shoves it;
+    - no tunnelling at 100 % power from every angle, on a ×1.6 cannon rig with Jonh pacing at 2 m/s and on all three garden positions;
+    - identical outcome, steps, end point and stop pose at 30, 60 and 144 Hz;
+    - the recorded route matches `routePoseAtStep` at every point and the adapter's replay pose;
+    - the walk changes which aims hit at every position.
+- The existing suites that iterate `MAPS` cover the reference shots (levels, multiplayer positions, headless, recorder), low-shot blocking, the coarse difficulty cap (5°×5 %: near 3.6 %, middle 5.0 %, far 3.1 %; cap 8 %; the 1° report gives 3.35 / 5.01 / 3.19 %, and a static-Jonh comparison during tuning (2° grid) showed over half of the near and middle hits exist only because he walks) and the 30/60/144 Hz fast-forward and Skip determinism.
+- Headless Chromium (manual 60 Hz clock, ports 5184/9234), 1440×900 and 844×390, at 65°/44 %:
+  - he walks and the hit lands at simulated 2.90 s, 3 m into his walk, the same contact time as the headless runner;
+  - BONK and the camera punch land on him;
+  - no console errors.
+- At 47°/45 % (a trick hit), the slow-motion replay re-walks him from x 790 to 834 px in step with the replayed ball, then plays the reaction at the contact spot.
+
+**Not verified**
+- The title-screen demo and the ShowcaseScene winning-shot replay on this garden were not watched in a browser. Only the recorder/sampler sync is unit-tested.
+- Online play: not tried (it needs a Convex redeploy, below).
+- Real devices and real-time frame rates: only headless SwiftShader.
+
+**Owner decisions / open questions** (reversible defaults, labelled [PROPOSED])
+- The name "The Afternoon Stroll", the layout, the route, the speeds and the 2 m/s cap.
+- Whether a hat touch should stop him like a body hit does (today it does).
+- Whether a ball he walks into while it lies on his path should count as a hit (today it does, as a weak hit).
+- Whether weak/strong should use the ball's own speed (today) or the speed relative to Jonh.
+- The pear-tree canopy is a ricochet surface (as in the Backyard), so trick hits exist here; the near reference is one.
+- The positions are an offset plus, for near, a 1.5 s delayed start (`routeDelayS`), because offsets alone gave the middle position no aims of its own.
+- Routes must be level (dy 0) for now.
+- The campaign slot (after The Magic Act).
+
+**Owner follow-ups (not done here)**
+- **Online rooms need the Convex functions redeployed** before a room can pick `stroll`. `convex/rooms.ts` validates map ids through `src/rules/onlineRules.ts` → `MAP_IDS`, and `mapHasRicochet` is used for outcome checks. No deploy was run.
+- Daily Bonk's date-to-map mapping shifts again (eleven maps).
+- The crown hat ("three stars on every garden") now also needs this garden, so a player who wore the crown loses it until they three-star the Stroll (locked selections fall back to the default).
+- Concurrent edits: the parent session and the wind-garden agent also touch `src/scenes/PrototypeScene.ts`, `MatterAdapter.stepProjectile`, `levels/types.ts`, `levels/index.ts`, `campaign.ts`, `jonhLines.ts` and `mapPreview.ts`. My edits there are additive (new fields, methods and blocks) except for two one-line changes in `stepProjectile`: the `earliestSolidHit` call gains an argument, and the bounce block computes velocity relative to Jonh.
+
 ## Next 10 (2026-11-25)
 
 The owner approved the proposed next 10 ("I like the proposal. Continue with them"), including the two items the spec had deferred (hot-seat sudden death and a walking-Jonh garden). Independent items run in parallel worktrees: the wind garden (5), online emotes (4), mobile performance and install (9) and the walking-Jonh garden (10). Items 1, 2, 3, 6, 7 and 8 are built on `real-game-pass` directly.

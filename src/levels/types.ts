@@ -49,6 +49,30 @@ export interface WindData {
   windsockX?: number;
 }
 
+/**
+ * One stop on Jonh's walking route [PROPOSED 2026-11-25]. Offsets are metres from his spawn, so a
+ * multiplayer target position (which shifts the spawn) shifts the whole route with him.
+ */
+export interface JonhRouteWaypoint {
+  dx: number;
+  /** Vertical offset (m); 0 when omitted. Validation keeps his feet on a surface. */
+  dy?: number;
+  /** Walking speed on the way to this stop (m/s) [TUNE]; ignored on the first stop. */
+  speedMs?: number;
+  /** Seconds he waits here before walking on; the last stop holds for good. 0 when omitted. */
+  pauseS?: number;
+}
+
+/**
+ * A predictable walk timed from Fire [DECIDED by owner 2026-11-25 for one garden only; PROPOSED data].
+ * He stands at the first stop while the player aims; from the moment the ball is fired his offset is
+ * a pure function of simulated time (fixed steps since Fire): see levels/jonhRoute.ts.
+ */
+export interface JonhRouteData {
+  /** At least two stops; the first is where he waits while the player aims (normally dx 0). */
+  waypoints: JonhRouteWaypoint[];
+}
+
 export interface JonhSpawnData {
   bodyBox: Box2D;
   hatBox?: Box2D;
@@ -62,6 +86,11 @@ export interface ReferenceSolution {
 export interface MultiplayerPosition {
   id: string;
   offsetX: number;
+  /**
+   * Walking Jonh only: extra seconds he waits at the start of his route before setting off at this
+   * position (a phase shift of the whole walk) [PROPOSED 2026-11-25]; 0 when omitted.
+   */
+  routeDelayS?: number;
   referenceSolutions: ReferenceSolution[];
 }
 
@@ -87,4 +116,6 @@ export interface LevelData {
   portals?: PortalData[];
   /** Constant wind on the ball (see WindData); none when omitted, and the map plays exactly as before. */
   wind?: WindData;
+  /** Jonh walks this route during the shot (see JonhRouteData); he stands still when omitted. */
+  jonhRoute?: JonhRouteData;
 }

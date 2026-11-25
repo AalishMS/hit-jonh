@@ -187,6 +187,17 @@ export const LOOK = {
 } as const;
 
 /**
+ * Walking Jonh [PROPOSED 2026-11-25, TUNE] (levels/jonhRoute.ts). His collider moves at most
+ * `maxSpeedMs`, i.e. ≤ 1.7 cm per fixed step, well under the ball's radius, so the swept guard can
+ * treat his box as still within one step. The stride only drives the walk cycle (cosmetic).
+ */
+export const JONH_WALK = {
+  maxSpeedMs: 2,
+  /** Metres per full walk cycle (two steps), so his feet do not skate. */
+  strideMetres: 1.1,
+} as const;
+
+/**
  * Jonh's chatter [PROPOSED, cosmetic only]: the odds that a fitting context line (rules/jonhLines.ts)
  * replaces a plain one, and when he starts heckling a slow aimer. Never affects the simulation.
  */

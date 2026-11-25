@@ -6,6 +6,7 @@ import { MAGIC_LEVEL } from './magic';
 import { MOON_LEVEL } from './moon';
 import { ROOFTOP_LEVEL } from './rooftop';
 import { RUBBER_LEVEL } from './rubber';
+import { STROLL_LEVEL } from './stroll';
 import { TRAMPOLINE_LEVEL } from './trampoline';
 import { VALLEY_LEVEL } from './valley';
 import { WASHDAY_LEVEL } from './washday';
@@ -24,6 +25,7 @@ export const MAPS: LevelData[] = [
   GREENHOUSE_LEVEL,
   MAGIC_LEVEL,
   WASHDAY_LEVEL,
+  STROLL_LEVEL,
 ];
 
 export const MAP_IDS: readonly string[] = MAPS.map(m => m.id);
@@ -33,7 +35,7 @@ export interface MapPreset { id: string; name: string; maps: readonly string[] }
 /** Multiplayer map-set shortcuts [PROPOSED]; any distinct subset of MAP_IDS is also allowed. */
 export const MAP_PRESETS: readonly MapPreset[] = [
   { id: 'classic', name: 'Classic tour', maps: ['backyard', 'fence', 'rooftop', 'rubber'] },
-  { id: 'new', name: 'Trick shots', maps: ['bankshot', 'trampoline', 'moon', 'valley', 'greenhouse', 'magic', 'washday'] },
+  { id: 'new', name: 'Trick shots', maps: ['bankshot', 'trampoline', 'moon', 'valley', 'greenhouse', 'magic', 'washday', 'stroll'] },
   { id: 'all', name: 'Every map', maps: MAP_IDS },
 ];
 
@@ -46,4 +48,4 @@ export function inTourOrder(ids: Iterable<string>): string[] {
   return MAP_IDS.filter(id => chosen.has(id));
 }
 
-export { BACKYARD_LEVEL, BANKSHOT_LEVEL, FENCE_LEVEL, GREENHOUSE_LEVEL, MAGIC_LEVEL, MOON_LEVEL, ROOFTOP_LEVEL, RUBBER_LEVEL, TRAMPOLINE_LEVEL, VALLEY_LEVEL, WASHDAY_LEVEL };
+export { BACKYARD_LEVEL, BANKSHOT_LEVEL, FENCE_LEVEL, GREENHOUSE_LEVEL, MAGIC_LEVEL, MOON_LEVEL, ROOFTOP_LEVEL, RUBBER_LEVEL, STROLL_LEVEL, TRAMPOLINE_LEVEL, VALLEY_LEVEL, WASHDAY_LEVEL };

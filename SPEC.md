@@ -76,6 +76,7 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 - **[DECIDED by owner 2026-10-10]** Eight maps, the same in every mode (solo, Daily Bonk, hot-seat, online): the original three plus Rubber Yard, retuned to be clearly harder, and four mechanic maps — a ricochet-only bank shot, a trampoline-only map, a low-gravity Moon map and a very zoomed-out map. See §11.
 - **[DECIDED request by owner 2026-11-24]** "New obstacle types and map mechanics (moving platforms, breakables, portals or wind), all in SI level data with reference solutions that pass the existing tests." Implemented: **breakable props** and **one-way portals** (§8.6), each showcased by one new map (The Greenhouse, The Magic Act; §11), so there are now ten maps in every mode. Moving platforms and wind were not chosen and stay deferred (§4.2). Rules and values are [PROPOSED][TUNE].
 - **[DECIDED by owner 2026-11-25]** "A wind garden. A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match." Implemented as a constant horizontal wind on the ball (§8.7), showcased by one new map, Windy Washday (§11), so there are now eleven maps in every mode. Rules and values are [PROPOSED][TUNE].
+- **[DECIDED by owner 2026-11-25]** "A walking-Jonh garden. A predictable route timed from Fire (a timing challenge)." Implemented as **The Afternoon Stroll** (§8.8, §11), so there are now twelve maps (with Windy Washday) in every mode. The exception to "his collider does not move during a shot" (§10) covers this one garden only; every other map behaves exactly as before. Name, layout, route and rules are [PROPOSED][TUNE].
 - Solo challenges: three attempts per map.
 - Local multiplayer, 2–4 players, one device, turn-based.
 - Saved aiming settings, previous-shot trails, scoring, quick rematch.
@@ -84,13 +85,13 @@ The player must be able to tell **short**, **over**, and **obstacle hit** apart.
 
 ### 4.2 Deferred (not permanent exclusions)
 
-Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; drag and weather, and any wind that changes (gusts, per-shot or random wind) — a **constant per-level wind** is in scope since 2026-11-25, §8.7; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots; upgrades/shops/economy; level editor; global leaderboards; ~~unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results)~~ (built 2026-11-25 on cleared gardens, see §5).
+Accounts, public matchmaking and leaderboards (online play by room code is in scope since 2026-10-08, see §6.1); simultaneous firing; AI opponents; drag and weather, and any wind that changes (gusts, per-shot or random wind) — a **constant per-level wind** is in scope since 2026-11-25, §8.7; moving platforms; extra ammo; articulated ragdolls; destructible terrain and chain reactions (single breakable props that reset every attempt are in scope since 2026-11-24, §8.6); Jonh moving during shots (except the walking-Jonh garden, owner-approved 2026-11-25, §8.8); upgrades/shops/economy; level editor; global leaderboards; ~~unlimited practice mode (**optional** — only if cheap, and must never overwrite challenge results)~~ (built 2026-11-25 on cleared gardens, see §5).
 
 ## 5. Solo rules
 
 - ~~Choose any map (all unlocked).~~ Three attempts. **[DECIDED]**
 - **Campaign [DECIDED by owner 2026-11-24: a campaign through the maps with star ratings and unlockable maps; order and unlock rule PROPOSED]:**
-  - Solo is a campaign through every map in a fixed order: Backyard, Fence, Rooftop, Greenhouse, Rubber Yard, Bank Shot, Magic Act, Lunar Picnic, Bounce House, Valley (`rules/campaign.ts` `CAMPAIGN_ORDER`; maps not listed join at the end).
+  - Solo is a campaign through every map in a fixed order: Backyard, Fence, Rooftop, Greenhouse, Rubber Yard, Bank Shot, Magic Act, Afternoon Stroll [PROPOSED 2026-11-25], Lunar Picnic, Bounce House, Valley (`rules/campaign.ts` `CAMPAIGN_ORDER`; maps not listed join at the end).
   - A garden unlocks when the previous one is cleared (any star). A garden that already has a saved record stays open, so older saves lose nothing.
   - Each garden shows its stars (by shots used, below) and a separate **trick badge**, earned once a ricochet body hit lands there. The map screen and the win screen show the campaign star total.
   - A win offers **Next garden** (N, focused) as well as Retry (R) and Map select. The title offers **Continue** to the first uncleared garden (then the first one short of three stars).
@@ -107,7 +108,7 @@ Accounts, public matchmaking and leaderboards (online play by room code is in sc
 
 - 2–4 players; each has a name (default "Player N", typing never required), a cannon colour **and** pattern (not colour alone), personal angle/power. **[DECIDED]**
 - All players fire from the **same launch position**; inactive cannons are drawn as decorative slots outside the playfield. **[DECIDED]**
-- **Map selection [DECIDED]:** Available in multiplayer setup. **Format [DECIDED by owner 2026-10-10]:** tick any set of maps; all maps may be deselected in setup, but Start match is disabled and gray until at least one is selected [DECIDED by owner 2026-10-10]. Selected maps are played one per round in the shared map order. Preset chips **[PROPOSED]**: Classic tour (Backyard, Fence, Rooftop, Rubber Yard — the default), Trick shots (the mechanic maps, including The Greenhouse and The Magic Act since 2026-11-24), Every map. The online host uses the same picker; guests see the chosen set read-only. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
+- **Map selection [DECIDED]:** Available in multiplayer setup. **Format [DECIDED by owner 2026-10-10]:** tick any set of maps; all maps may be deselected in setup, but Start match is disabled and gray until at least one is selected [DECIDED by owner 2026-10-10]. Selected maps are played one per round in the shared map order. Preset chips **[PROPOSED]**: Classic tour (Backyard, Fence, Rooftop, Rubber Yard — the default), Trick shots (the mechanic maps, including The Greenhouse and The Magic Act since 2026-11-24 and The Afternoon Stroll since 2026-11-25), Every map. The online host uses the same picker; guests see the chosen set read-only. Each player gets **3 shots per round**, fired in rotating order (A, B, C, A, B, C, …), not consecutively [DECIDED]. Rematch retains the chosen maps.
 - Starting player rotates between rounds: round *r* (0-based) starts with player index `r mod N`. **[DECIDED principle, PROPOSED formula]**
 - A round always completes every player's shots, even after an early hit. **[DECIDED]**
 - **Target cycles (owner-approved 4 October 2026) [DECIDED]:** Each round has three shot cycles, one shot per player per cycle. Jonh stays at the same position for every player in that cycle and throughout each shot's result/reaction. At handover into the next cycle he relocates to a different authored position. Each map's three positions are shuffled independently without replacement at match creation and rematch; the schedule is held in match memory, never in save data. Resetting aim and pausing do not change it. Solo remains unchanged.
@@ -161,6 +162,7 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 - Award only the **highest** applicable outcome. Hat-then-body ⇒ body result.
 - **Ground is never ricochet-eligible.** Which surfaces are eligible is per-map data **[OPEN]** (initial proposal: fence faces and the building wall).
 - **[PROPOSED 2026-11-24]** Smashing through a breakable prop and going through a portal are never ricochet contacts (nor obstacle contacts). A breakable struck too softly to break is an ordinary obstacle and uses its own `ricochet` flag. On the new maps no surface is ricochet-eligible (glass, greenhouse frame and brick, tent velvet, stage), so both score plain body hits.
+- **[PROPOSED 2026-11-25]** Walking Jonh (§8.8): classification and points are unchanged. A ball he walks into (even one lying still on his path) touches him, so it counts like any other contact. The weak/strong threshold (10 m/s, §10.1) uses **the ball's own incoming speed**, not the speed relative to Jonh: his walk is at most 2 m/s, the replay and the scoring stay identical to every other map, and a ball he bumps into is a weak hit.
 - No near-miss points. **[DECIDED]**
 - Idempotency: the first body contact finalises scoring; later collision callbacks cannot change or repeat it. **[DECIDED]**
 - Winner: highest total. Tie-break: more body hits; still tied ⇒ shared win. **[PROPOSED]**
@@ -268,6 +270,18 @@ A level may declare `wind: { accelerationMs2, windsockX? }` (`src/levels/types.t
 - **Online.** Room map ids are validated by `validMaps` from the shared level list, so the Convex functions must be redeployed before a room can pick Windy Washday; clients simulate shots deterministically with the same wind.
 - **Not decided.** Whether a shot that uses the wind well (e.g. a hit that needs it) should ever count as a trick shot (§7.1, still [OPEN] for the other mechanics too). Today wind never does.
 
+### 8.8 Walking Jonh [DECIDED by owner 2026-11-25 for one garden; PROPOSED rules; TUNE values]
+
+A level may give Jonh a route: `jonhRoute: { waypoints: [{ dx, dy?, speedMs?, pauseS? }, …] }` in SI level data (`src/levels/types.ts`), offsets in metres from his spawn.
+- **Timing.** He stands at the first waypoint while the player aims. From Fire he waits that stop's pause, walks to each next waypoint at its speed (≤ `JONH_WALK.maxSpeedMs`, 2 m/s), waits its pause, and stays at the last one.
+- **Determinism.** His offset is a pure function of simulated time since Fire counted in fixed steps (`levels/jonhRoute.ts`, `routePoseAtStep`), so a shot's outcome stays a pure function of (map, target position, angle, power): online re-simulation, the winning-shot and title replays, Daily Bonk and the reference-solution tests all still hold. The Matter colliders, the swept guard, the renderer and the replays read that one function.
+- **Physics.** Every fixed step, before Matter steps, the physics adapter moves his body and hat colliders to where the route has him during that step, and the swept guard tests the same moved boxes. A bounce off him uses the ball's velocity relative to his walk. Within one step his box moves ≤ 1.7 cm (well under the ball's 0.15 m radius), so the guard treats it as still for that step; a tie between Jonh and another surface at the same time of impact goes to Jonh (a ball lying on his path that he walks into is a touch). Tested at the top ball speed from every angle (`tests/walkingJonh.test.ts`).
+- **Stopping.** The first touch on his body or his hat stops him for good that shot (he reacts where he is). A hit still resolves on the first contact, exactly once (§7.1). After a miss he holds wherever he was when the shot resolved.
+- **Reset.** Every attempt starts with him back at the start of his route (§7.2).
+- **Target positions.** The three multiplayer positions shift the whole route (`offsetX` on the spawn) and may delay his start (`routeDelayS` [PROPOSED], a phase shift), each with its own reference solutions. Daily Bonk uses the same positions.
+- **Validation.** At least two waypoints; finite offsets; speeds in (0, 2] m/s; routes stay level (dy 0) [PROPOSED limitation]; inside the bounds; never through an obstacle; one surface under his feet for every leg; portal exits keep clear of everywhere he walks.
+- **Presentation.** He stands without his chair and walks with a distance-driven walk cycle (reading his paper), turning to face the way he walks; hat, outfit and speech bubble go with him; impact effects and the camera punch land where he is. The route is painted on the garden path (chalk line, footprints and an arrow per leg, a ring at each stop) and drawn in the map preview. The slow-motion replay, the winning-shot replay and the title demo re-walk the recorded route in step with the ball.
+
 ## 9. Hit detection and fast projectiles
 
 ### 9.1 Colliders
@@ -286,6 +300,7 @@ Matter.js has **no continuous collision detection**; a fast body can tunnel thro
 3. **Automated tunnelling test:** fire at maximum power across the full angle range into the thinnest obstacle and Jonh's collider; assert zero pass-throughs.
 4. **[2026-11-24]** A smashed breakable is removed from the swept guard for the rest of the shot only (§8.6). A teleport restarts the sweep at the portal exit.
 5. **[2026-11-25]** Wind keeps accelerating the ball in flight, so the thickness rule sizes colliders for the top speed plus `|a| × 4 s` of wind (§8.7).
+6. **[2026-11-25]** On the walking-Jonh garden his colliders move every fixed step; Matter and the swept guard see the same boxes (§8.8).
 
 **[ASSUMPTION — verify in M1]** Matter can be driven headlessly in Vitest by importing Phaser's bundled Matter modules. If not, physics integration tests run in the browser (e.g. a `?selftest` route) and results are reported explicitly.
 
@@ -300,7 +315,7 @@ Each shot has an owner. Future props activated by a shot carry that shot's owner
 - Ordinary, stubborn, dry, mildly annoyed; convinced the next spot will be peaceful. Calm reactions out of proportion to what happened. **[DECIDED]**
 - Recognisable silhouette, readable face, distinctive hat. No backstory needed.
 - Slapstick only: tumbles, flying hats, dust, bent props, annoyed looks. **No graphic injury.** **[DECIDED]**
-- Idle movement is cosmetic; his collider does not move during a shot. **[DECIDED]**
+- Idle movement is cosmetic; his collider does not move during a shot. **[DECIDED]** **Exception [DECIDED by owner 2026-11-25]:** on the walking-Jonh garden (The Afternoon Stroll) he walks a predictable route timed from Fire and his colliders move with him (§8.8). Every other map keeps a still collider.
 
 ### 10.1 Reaction catalogue (starting pool)
 
@@ -384,6 +399,7 @@ Each level is a data file (`src/levels/*.ts`) containing: `id`, display name, bo
 | 9 | **The Greenhouse** [PROPOSED 2026-11-24] | Glasshouse x 14–21.75 m: brick walls (front 2.2 m tall), glass front window and four glass roof panes in a white timber frame, gravel floor; Jonh inside on one of three spots under the roof panes. | Breakables: every hit smashes glass first (tested). Soft shots bounce; hard ones smash through and slow down. 1° grid: 7.1 / 5.1 / 3.8 %. |
 | 10 | **The Magic Act** [PROPOSED 2026-11-24] | Sealed velvet tent x 13–24.5 m (roof 8.5 m) with a carpeted stage; a hoop floats over the lawn at (8.5, 6.5) m, r 0.6 m; its exit hoop inside the tent at (14.3, 3.4) m throws the ball up at 65°. | Portals: every hit goes through the hoop (tested). The angle threads the hoop; power decides where it lands. 1° grid: 2.7 / 3.3 / 2.4 %. |
 | 11 | **Windy Washday** [PROPOSED 2026-11-25] | A steady 3 m/s² headwind blows from Jonh's side back towards the cannon (windsock on a pole at x = 7 m, caption "Wind ← 3", drifting streaks). A 6 m stone garden wall at x 10.6–11.1 m stops low shots; a low planter at x 15.4 m stops short rollers; Jonh stands on the lawn at x ≈ 19 m. | Wind: every shot is a high lob that the breeze drags backwards; aim long and let it bring the ball in. Shots that ignore the wind miss (tested: the reference solutions hit with the wind and miss without it; of the aims that hit in calm air, < 15 % still hit). 1° grid: 3.2 / 3.4 / 3.3 %. |
+| 12 | **The Afternoon Stroll** [PROPOSED 2026-11-25] | Hedge x 11.4–12.2 m, 4.8 m tall; gravel garden path x 12.6–23.4 m; pear-tree canopy x 16.8–25 m at 5.2–6.0 m (ricochet surface) on a trunk past the path. Jonh starts on the lawn end of the path (x 15.2 m); from Fire he waits 0.5 s, walks 5 m into the shade at 1.25 m/s, pauses 0.4 s, walks 3 m back and stays. Positions: near −2.1 m (sets off 1.5 s later), middle, far +2.0 m. | Walking Jonh (§8.8): time the shot to meet him before the shade, or slip it under or off the leaves. 1° grid: 3.35 / 5.01 / 3.19 %. |
 
 Each map introduces exactly one new complication.
 

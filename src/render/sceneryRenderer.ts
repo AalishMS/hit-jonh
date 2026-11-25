@@ -7,6 +7,7 @@ import { metresToPixels, simYToWorldY } from '../sim/units';
 import { artImage, artMeta, artScale } from './artTextures';
 import { MechanicsRenderer } from './mechanicsRenderer';
 import { WindRenderer } from './windRenderer';
+import { drawRoute } from './routeRenderer';
 
 /** Layer depths: background < playfield < actors. */
 const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
@@ -129,7 +130,8 @@ export class SceneryRenderer {
     const support = level.obstacles.find(o => Math.abs(o.box.maxY - b.minY) < 1e-6 && o.box.minX <= b.minX && o.box.maxX >= b.maxX);
     const rightEdge = support ? metresToPixels(support.box.maxX, this.ppm) : this.worldWidthPx;
     const tableX = jonhX + 82 + 32 > rightEdge ? jonhX - 82 : jonhX + 82;
-    add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
+    // Walking Jonh is out on a stroll: no tea table for him to walk through.
+    if (!level.jonhRoute) add(artImage(s, tableX, baseY, 'tea-table').setDepth(DEPTH.prop));
 
     // Flowers and tufts on open grass only (never on obstacles, the cannon or Jonh).
     const blocked = (x: number) => x < 230 || Math.abs(x - jonhX) < 90 || Math.abs(x - tableX) < 40 ||
@@ -145,6 +147,8 @@ export class SceneryRenderer {
 
     this.mechanics.draw(level);
     this.wind.draw(level);
+    // Walking Jonh: his route painted on the path (none on other maps).
+    for (const o of drawRoute(s, level, this.ppm, this.worldHeightPx, DEPTH.prop)) add(o);
   }
 
   /** Ambient motion on the real-time clock (not the hit-stop clock). */

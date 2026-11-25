@@ -6,7 +6,8 @@ import { clamp01, easeInOutSine } from '../fx/easing';
 import { impactProfile, type HitQuality } from '../fx/impactProfile';
 import { levelPhysics } from '../levels/levelPhysics';
 import type { LevelData } from '../levels/types';
-import { sampleRecorded, type RecordedShot } from '../physics/shotRecorder';
+import { routePoseAt } from '../levels/jonhRoute';
+import { sampleRecorded, sampleRecordedJonh, type RecordedShot } from '../physics/shotRecorder';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import type { HatId } from '../art/jonhArt';
 import type { CannonSkinId, OutfitId } from '../rules/cosmetics';
@@ -97,6 +98,7 @@ export class DemoStage {
   fire(shot: DemoShot): void {
     if (this.demo) return;
     this.jonh.resetToIdle();
+    this.jonh.followRoute(this.routeStart());
     this.recoverIn = null;
     this.scenery.mechanics.reset(); // every pane whole, every hoop ready (as before any shot)
     this.demo = { ...shot, aimFrom: this.angle, phase: 'aim', t: 0, ball: null, nextEvent: 0 };
@@ -129,6 +131,8 @@ export class DemoStage {
         const end = points[d.shot.contactIndex ?? points.length - 1]!.t;
         const now = Math.min(d.t, end);
         const p = sampleRecorded(points, now);
+        // Walking Jonh walks the recorded route in step with the ball (he stops where it hits him).
+        this.jonh.followRoute(sampleRecordedJonh(d.shot, now));
         const q = sampleRecorded(points, Math.max(0, now - 1 / 60));
         const maxSpeed = levelPhysics(this.level).maxSpeedMs * WORLD.pixelsPerMetre;
         this.ball.draw(p.x, p.y, (p.x - q.x) * 60, (p.y - q.y) * 60, dt, reduced, maxSpeed);
@@ -175,13 +179,18 @@ export class DemoStage {
     }
     if (this.recoverIn !== null) {
       this.recoverIn -= dt;
-      if (this.recoverIn <= 0) { this.recoverIn = null; this.jonh.resetToIdle(); }
+      if (this.recoverIn <= 0) { this.recoverIn = null; this.jonh.resetToIdle(); this.jonh.followRoute(this.routeStart()); }
     }
     this.cannon.update(dt);
     this.cannon.setRecoil(recoil, this.angle);
     this.cannon.draw(this.angle, this.color, this.pattern);
     this.jonh.update(reaction);
     camera.update(dt, aimFrame(this.view), 3.5, reduced);
+  }
+
+  /** Walking Jonh's spot while aiming (null on maps where he stands still). */
+  private routeStart() {
+    return this.level.jonhRoute ? routePoseAt(this.level.jonhRoute, 0) : null;
   }
 
   destroy(): void {
