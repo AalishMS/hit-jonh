@@ -598,6 +598,7 @@ export class PrototypeScene extends Phaser.Scene {
         reducedMotion: loadSaveData().settings.reducedMotion, textBoost: this.textBoost });
     this.view = { width: WORLD.designWidthPx, height: WORLD.designHeightPx };
     this.attract = { stage, timer: FLOW.attractFirstShotSeconds, quipIn: 1.2 };
+    this.warmAttractShots();
   }
 
   /** A garden the player has unlocked (ordinary width, so the title framing fits). */
@@ -623,6 +624,25 @@ export class PrototypeScene extends Phaser.Scene {
       this.recordedShots.set(key, shot);
     }
     return shot;
+  }
+
+  /**
+   * Records the title garden's demo shots in idle time, one per idle slot, so the first demo shot
+   * does not re-simulate on the frame it fires (a 50–70 ms hitch on a phone; phone pass).
+   */
+  private warmAttractShots(): void {
+    const a = this.attract;
+    if (!a || typeof window === 'undefined') return;
+    const pending = a.stage.level.referenceSolutions.slice();
+    // Safari has no requestIdleCallback: a short timer stands in.
+    const idle = (fn: () => void): void => { if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 2000 }); else globalThis.setTimeout(fn, 200); };
+    const next = (): void => {
+      const aim = pending.shift();
+      if (!aim || this.attract !== a) return;
+      this.recordedShot(a.stage.level, aim.angleDeg, aim.powerPercent);
+      idle(next);
+    };
+    idle(next);
   }
 
   /** Title screen: aim at Jonh, wind up and fire a recorded reference shot (tap = right now). */
@@ -2149,14 +2169,28 @@ export class PrototypeScene extends Phaser.Scene {
     return this.clipOffer({ level, shot, angleDeg: best.angle, powerPercent: best.power, headline, paint: { name: player.name, color: player.color, pattern: player.pattern } });
   }
 
-  /** Solo result card after a body hit: "Save clip" for the shot that did it. */
+  /**
+   * Solo result card after a body hit: "Save clip" for the shot that did it. Re-simulating the shot
+   * costs tens of milliseconds on a phone (phone pass), so it runs when the player asks for the clip,
+   * not on the frame the card appears. The game runs the tested physics, so the replay reproduces
+   * the hit; if it ever did not, the press says so instead of recording.
+   */
   private soloClipOffer(trick: boolean): ClipOffer | undefined {
-    if (this.activeMode !== 'solo' || !this.currentLevel) return undefined;
+    if (this.activeMode !== 'solo' || !this.currentLevel || !clipFormat(false)) return undefined;
     const level = this.currentLevel;
-    const shot = this.recordedShot(level, this.currentAngleDeg, this.currentPowerPercent);
-    if (shot.contactIndex === null) return undefined; // the replay would not reproduce the hit: offer nothing
+    const angleDeg = this.currentAngleDeg;
+    const powerPercent = this.currentPowerPercent;
+    const skin = this.progress.selectedCannon;
     const headline = [this.daily ? 'Daily Bonk' : '', trick ? 'Trick shot!' : 'Bullseye!'].filter(Boolean).join(' · ');
-    return this.clipOffer({ level, shot, angleDeg: this.currentAngleDeg, powerPercent: this.currentPowerPercent, headline, skin: this.progress.selectedCannon });
+    let offer: ClipOffer | undefined;
+    return {
+      record: () => {
+        const shot = this.recordedShot(level, angleDeg, powerPercent);
+        offer ??= shot.contactIndex === null ? undefined : this.clipOffer({ level, shot, angleDeg, powerPercent, headline, skin });
+        return offer ? offer.record() : Promise.resolve({ ok: false as const, reason: 'failed' as const, message: "this shot can't be replayed" });
+      },
+      cancel: () => offer?.cancel(),
+    };
   }
 
   /**
