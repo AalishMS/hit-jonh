@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { ONLINE } from '../src/config/tuning';
 import {
-  acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomQuiet, lastLife, mapHasRicochet,
+  acceptWitness, checkInFlightDecision, checkTurnDecision, isRoomQuiet, lastLife, mapHasTrick,
   planTurnStart, quietEnded, validMaps, validateFire, validateReport,
 } from '../src/rules/onlineRules';
 import type { MatchView, PresenceEntry, QuietPeriod, ShotRecord } from '../src/rules/onlineTypes';
@@ -17,7 +17,7 @@ const inFlight = () => makeView(2, ['body', null]);
 const withShot = (view: MatchView, seq: number, patch: Partial<ShotRecord>): MatchView =>
   ({ ...view, shots: view.shots.map(s => (s.seq === seq ? { ...s, ...patch } : s)) });
 
-describe('validMaps / mapHasRicochet', () => {
+describe('validMaps / mapHasTrick', () => {
   it('accepts any distinct subset of the shared map list', () => {
     expect(validMaps(['backyard'])).toBe(true);
     expect(validMaps([...MAP_IDS])).toBe(true);
@@ -26,9 +26,12 @@ describe('validMaps / mapHasRicochet', () => {
     expect(validMaps(['backyard', 'backyard'])).toBe(false);
     expect(validMaps(['nowhere'])).toBe(false);
   });
-  it('reads ricochet surfaces from level data', () => {
-    expect(mapHasRicochet('backyard')).toBe(true);
-    expect(mapHasRicochet('nowhere')).toBe(false);
+  it('reads ricochet surfaces and portal hoops from level data', () => {
+    expect(mapHasTrick('backyard')).toBe(true);
+    expect(mapHasTrick('magic')).toBe(true); // a hoop, no ricochet surface
+    expect(mapHasTrick('greenhouse')).toBe(false); // glass never makes a trick
+    expect(mapHasTrick('washday')).toBe(false); // nor does wind
+    expect(mapHasTrick('nowhere')).toBe(false);
   });
 });
 
@@ -64,6 +67,14 @@ describe('validateReport', () => {
   it('accepts the shooter reporting an in-flight shot', () => {
     expect(validateReport(inFlight(), 1, report)).toEqual({ ok: true, duplicate: false });
     expect(validateReport(inFlight(), 1, { ...report, outcome: 'ricochet_body' })).toEqual({ ok: true, duplicate: false });
+  });
+  it('accepts a trick shot only where one is possible (a ricochet surface or a hoop)', () => {
+    const on = (map: string) => makeView(2, ['body', null], { maps: [map] });
+    const trick = { ...report, outcome: 'ricochet_body' as const };
+    expect(validateReport(on('magic'), 1, trick)).toEqual({ ok: true, duplicate: false });
+    expect(validateReport(on('greenhouse'), 1, trick)).toEqual({ ok: false, code: 'IMPOSSIBLE_OUTCOME' });
+    expect(acceptWitness(on('magic'), 0, trick)).toBe(true);
+    expect(acceptWitness(on('washday'), 0, trick)).toBe(false);
   });
   it('rejects other seats, unknown shots and stale matches', () => {
     expect(validateReport(inFlight(), 0, report)).toEqual({ ok: false, code: 'NOT_YOUR_TURN' });

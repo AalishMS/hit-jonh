@@ -94,7 +94,7 @@ export const HAT_RULES: Record<HatName, HatRule> = {
   boater: { name: 'Straw boater', hint: 'His usual.', unlocked: () => true },
   bowler: { name: 'Bowler', hint: 'Hit Jonh once.', unlocked: p => p.totalHits >= 1 },
   fez: { name: 'Fez', hint: 'Knock his hat off without touching him.', unlocked: p => p.hatHits >= 1 },
-  party: { name: 'Party hat', hint: 'Land a trick shot (ricochet hit).', unlocked: p => p.trickHits >= 1 },
+  party: { name: 'Party hat', hint: 'Land a trick shot (a bank shot or a hoop shot).', unlocked: p => p.trickHits >= 1 },
   propeller: { name: 'Propeller cap', hint: 'Three stars on any garden.', unlocked: p => p.threeStarMaps.length >= 1 },
   chef: { name: "Chef's toque", hint: 'Hit Jonh in a Daily Bonk.', unlocked: p => Object.values(p.daily).some(stars => stars > 0) },
   viking: { name: 'Viking helmet', hint: '25 hits in total.', unlocked: p => p.totalHits >= 25 },

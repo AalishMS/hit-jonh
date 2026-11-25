@@ -1,6 +1,6 @@
 /**
  * The solo campaign: the gardens in a fixed order, each with up to three stars (shots used, SPEC §5)
- * and a separate trick-shot badge (a ricochet body hit ever landed there). A garden unlocks when
+ * and a separate trick-shot badge (a trick hit — a bank shot or a hoop shot — ever landed there). A garden unlocks when
  * the one before it is cleared. Pure: derived entirely from the saved solo bests, no Phaser.
  *
  * [DECIDED by owner 2026-11-24: a campaign with star ratings and unlockable maps; the unlock rule

@@ -57,7 +57,7 @@ export const CANNON_SKIN_RULES: Record<CannonSkinId, CosmeticRule> = {
   classic: { name: 'Classic iron', hint: 'The family cannon.', unlocked: () => true },
   admiral: { name: 'Admiral', hint: `Earn ${G.stars6} stars in the gardens.`, unlocked: (_p, c) => c.stars >= G.stars6 },
   garden: { name: 'Garden Party', hint: `Clear ${G.gardensCleared} gardens.`, unlocked: (_p, c) => c.cleared >= G.gardensCleared },
-  pirate: { name: 'Pirate', hint: `Land ${G.tricks} trick shots (ricochet hits).`, unlocked: p => p.trickHits >= G.tricks },
+  pirate: { name: 'Pirate', hint: `Land ${G.tricks} trick shots (bank shots or hoop shots).`, unlocked: p => p.trickHits >= G.tricks },
   moonshot: { name: 'Moonshot', hint: `Earn ${G.stars12} stars in the gardens.`, unlocked: (_p, c) => c.stars >= G.stars12 },
   golden: { name: 'Golden Bonk', hint: `Earn every star in the gardens (${G.starsAll}).`, unlocked: (_p, c) => c.stars >= G.starsAll },
 };

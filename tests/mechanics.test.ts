@@ -267,9 +267,38 @@ describe('headless runner', () => {
     expect(smash.portalsUsed).toEqual([]);
     const magic = MAPS.find(m => m.id === 'magic')!;
     const hoop = runHeadlessShot(magic, 48, 29);
-    expect(hoop.outcome).toBe('body');
+    // A hit through a hoop is a trick shot (SPEC §7.1, owner decision 2026-11-25); a smash is not.
+    expect(hoop.outcome).toBe('ricochet_body');
     expect(hoop.portalsUsed).toEqual(['hoops']);
     expect(hoop.brokenObstacleIds).toEqual([]);
     expect(runHeadlessShot(magic, 48, 29)).toEqual(hoop);
   });
 });
+
+describe('trick shots on the mechanic maps (SPEC §7.1, owner decision 2026-11-25)', () => {
+  const solutions = (id: string) => {
+    const level = MAPS.find(m => m.id === id)!;
+    return [
+      ...level.referenceSolutions.map(s => ({ where: 'solo', level, s })),
+      ...level.multiplayerPositions.flatMap(p => {
+        const at = levelAtMultiplayerPosition(level, p.id);
+        return at.referenceSolutions.map(s => ({ where: p.id, level: at, s }));
+      }),
+    ];
+  };
+  it('every Magic Act hit goes through the hoop, so every one is a trick shot', () => {
+    for (const { where, level, s } of solutions('magic')) {
+      const shot = runHeadlessShot(level, s.angleDeg, s.powerPercent);
+      expect(shot.portalsUsed, `${where} ${s.angleDeg}/${s.powerPercent}`).toEqual(['hoops']);
+      expect(shot.outcome, `${where} ${s.angleDeg}/${s.powerPercent}`).toBe('ricochet_body');
+    }
+  });
+  it('smashing glass and riding the wind never make a trick shot', () => {
+    for (const id of ['greenhouse', 'washday']) {
+      for (const { where, level, s } of solutions(id)) {
+        expect(runHeadlessShot(level, s.angleDeg, s.powerPercent).outcome, `${id} ${where}`).toBe('body');
+      }
+    }
+  });
+});
+

@@ -52,7 +52,7 @@ export const FEATS: readonly FeatDef[] = [
   { id: 'hits50', group: 'hits', name: 'Menace', hint: `Hit Jonh ${G.totalHits} times.`, target: fixed(G.totalHits), value: i => i.progress.totalHits, rewards: [{ kind: 'outfit', id: 'tracksuit' }] },
   { id: 'hits100', group: 'hits', name: 'Neighbourhood legend', hint: 'Hit Jonh 100 times.', target: fixed(100), value: i => i.progress.totalHits, rewards: [] },
 
-  { id: 'trick', group: 'tricks', name: 'Bank on it', hint: 'Land a trick shot (a ricochet hit).', target: fixed(1), value: i => i.progress.trickHits, rewards: [{ kind: 'hat', id: 'party' }] },
+  { id: 'trick', group: 'tricks', name: 'Bank on it', hint: 'Land a trick shot (a bank shot or a hoop shot).', target: fixed(1), value: i => i.progress.trickHits, rewards: [{ kind: 'hat', id: 'party' }] },
   { id: 'tricks3', group: 'tricks', name: 'Geometry', hint: `Land ${G.tricks} trick shots.`, target: fixed(G.tricks), value: i => i.progress.trickHits, rewards: [{ kind: 'cannon', id: 'pirate' }] },
   { id: 'trick-streak', group: 'tricks', name: 'Hat trick', hint: 'Land 3 trick shots in a row.', target: fixed(3), value: i => i.progress.bestTrickStreak, rewards: [] },
 

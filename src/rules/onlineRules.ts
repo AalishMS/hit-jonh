@@ -19,8 +19,10 @@ export function validMaps(maps: readonly string[]): boolean {
   return maps.length > 0 && maps.length <= allowed.length && new Set(maps).size === maps.length && maps.every(m => allowed.includes(m));
 }
 
-export function mapHasRicochet(mapId: string): boolean {
-  return MAPS.find(m => m.id === mapId)?.obstacles.some(o => o.ricochet) ?? false;
+/** A trick shot is possible on this map: it has a ricochet surface or a portal hoop (SPEC §7.1). */
+export function mapHasTrick(mapId: string): boolean {
+  const map = MAPS.find(m => m.id === mapId);
+  return map !== undefined && (map.obstacles.some(o => o.ricochet) || (map.portals?.length ?? 0) > 0);
 }
 
 function isValidAim(angle: number, power: number): boolean {
@@ -113,7 +115,7 @@ export function validateReport(view: MatchView, callerSeat: number,
   if (shot.outcome !== null) {
     return shot.resolution === 'shooter' && shot.outcome === args.outcome ? { ok: true, duplicate: true } : reject('CONFLICT');
   }
-  if (args.outcome === 'ricochet_body' && !mapHasRicochet(serverReplay(view).machine.currentMapId)) return reject('IMPOSSIBLE_OUTCOME');
+  if (args.outcome === 'ricochet_body' && !mapHasTrick(serverReplay(view).machine.currentMapId)) return reject('IMPOSSIBLE_OUTCOME');
   return { ok: true, duplicate: false };
 }
 
@@ -123,7 +125,7 @@ export function acceptWitness(view: MatchView, callerSeat: number,
   if (args.matchNumber !== view.room.matchNumber) return false;
   const shot = view.shots.find(s => s.seq === args.seq);
   if (!shot || shot.outcome !== null || shot.seat === callerSeat || shot.witnessOutcome !== null) return false;
-  return args.outcome !== 'ricochet_body' || mapHasRicochet(serverReplay(view).machine.currentMapId);
+  return args.outcome !== 'ricochet_body' || mapHasTrick(serverReplay(view).machine.currentMapId);
 }
 
 export type TurnDecision =

@@ -1,7 +1,7 @@
 import { JONH_TALK, SCORING } from '../config/tuning';
 import {
   FIRST_SHOT_LINES, HAT_LINES, HECKLE_AFTER_MISSES, HECKLE_LINES, HIT_STREAK_LINES, MAP_LINES, MISS_STREAK_LINES,
-  OBSTACLE_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES, WINNING_SHOT_LINES,
+  OBSTACLE_LINES, PORTAL_TRICK_LINES, STRONG_HIT_LINES, TITLE_HIT_LINES, TITLE_LINES, TRICK_HIT_LINES, WINNING_SHOT_LINES,
 } from './jonhLines';
 
 export type ReactionCategory = 'hit' | 'hat' | 'overhead' | 'fence' | 'short' | 'over' | 'miss' | 'moved';
@@ -77,6 +77,8 @@ export interface ReactionContext {
   /** This hit came on the first shot of a challenge. */
   firstShot?: boolean;
   strength?: 'weak' | 'strong' | 'trick';
+  /** How a trick hit was earned: a bank shot (default) or a portal hoop. */
+  trickKind?: 'ricochet' | 'portal';
   /** The hat he is wearing. */
   hatId?: string;
   /** Obstacles the ball touched this shot. */
@@ -144,7 +146,7 @@ export class JonhReactionSelector {
     const map = c.mapId ? MAP_LINES[c.mapId] : undefined;
     if (category === 'hit') {
       return [
-        { pool: c.strength === 'trick' ? TRICK_HIT_LINES : [], chance: JONH_TALK.trick },
+        { pool: c.strength !== 'trick' ? [] : c.trickKind === 'portal' ? PORTAL_TRICK_LINES : TRICK_HIT_LINES, chance: JONH_TALK.trick },
         { pool: c.firstShot ? FIRST_SHOT_LINES : [], chance: JONH_TALK.firstShot },
         { pool: (c.hitStreak ?? 0) >= 3 ? HIT_STREAK_LINES : [], chance: JONH_TALK.hitStreak },
         { pool: c.strength === 'strong' || c.strength === 'trick' ? STRONG_HIT_LINES : [], chance: JONH_TALK.strong },
@@ -184,6 +186,8 @@ export class JonhReactionSelector {
 
 export interface ShotOutcomeExtra {
   classifiedOutcome?: 'ricochet_body' | 'body' | 'hat_only' | 'miss';
+  /** How a trick (`ricochet_body`) was earned; a bank shot when omitted. */
+  trick?: 'ricochet' | 'portal' | null;
   passedOverhead?: boolean;
   obstacleContacts?: ReadonlyArray<{ id: string; ricochet: boolean }>;
 }
@@ -206,6 +210,15 @@ export function classifyShotOutcome(
   jonhMaxXSim: number,
   extra?: ShotOutcomeExtra,
 ): ClassifiedShotFeedback {
+  if (extra?.classifiedOutcome === 'ricochet_body' && extra.trick === 'portal') {
+    return {
+      category: 'hit',
+      label: 'HOOP HIT',
+      detail: 'Jonh was struck after the ball went through a magic hoop!',
+      points: SCORING.ricochetBodyPoints,
+    };
+  }
+
   if (extra?.classifiedOutcome === 'ricochet_body') {
     return {
       category: 'hit',

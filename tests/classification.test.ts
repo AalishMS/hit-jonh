@@ -37,6 +37,15 @@ describe('Shot Classification and Scoring', () => {
       expect(result.isHit).toBe(true);
       expect(result.isRicochet).toBe(true);
       expect(result.label).toBe('RICOCHET HIT');
+      expect(result.trick).toBe('ricochet');
+    });
+
+    it('classifies a body hit after a portal hoop as a trick shot (125 points, HOOP HIT)', () => {
+      const result = classifyShot({ hasBodyHit: true, hasHatHit: false, hadRicochetBeforeBody: false, hadPortalBeforeBody: true, shotEnded: true });
+      expect(result.outcome).toBe('ricochet_body');
+      expect(result.points).toBe(125);
+      expect(result.trick).toBe('portal');
+      expect(result.label).toBe('HOOP HIT');
     });
 
     it('classifies hat-then-body as body hit (100 points)', () => {
@@ -189,3 +198,31 @@ describe('Shot Classification and Scoring', () => {
     });
   });
 });
+
+describe('ShotClassifier portals (SPEC §7.1, owner decision 2026-11-25)', () => {
+  it('a hoop then the body is a trick; a hoop alone is a miss; body first stays a plain hit', () => {
+    const c = new ShotClassifier();
+    c.recordContact({ role: 'portal', id: 'hoops' });
+    expect(c.classify(true).outcome).toBe('miss');
+    c.recordContact({ role: 'jonhBody' });
+    expect(c.classify(true)).toMatchObject({ outcome: 'ricochet_body', trick: 'portal' });
+
+    const late = new ShotClassifier();
+    late.recordContact({ role: 'jonhBody' });
+    late.recordContact({ role: 'portal', id: 'hoops' });
+    expect(late.classify(true)).toMatchObject({ outcome: 'body', trick: null });
+
+    // A portal is not a surface: no obstacle contact is recorded for it.
+    expect(c.obstacleContacts).toEqual([]);
+    c.reset();
+    expect(c.hadPortalBeforeBody).toBe(false);
+  });
+  it('a bank shot through a hoop is labelled as the bank shot', () => {
+    const c = new ShotClassifier();
+    c.recordContact({ role: 'portal', id: 'hoops' });
+    c.recordContact({ role: 'obstacle', id: 'billboard', ricochet: true });
+    c.recordContact({ role: 'jonhBody' });
+    expect(c.classify(true)).toMatchObject({ outcome: 'ricochet_body', trick: 'ricochet', label: 'RICOCHET HIT' });
+  });
+});
+

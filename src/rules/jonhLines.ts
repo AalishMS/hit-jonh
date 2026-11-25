@@ -49,6 +49,15 @@ export const TRICK_HIT_LINES: readonly string[] = [
   'Round the houses, was it?',
 ];
 
+/** Trick hits through a portal hoop (§7.1, [DECIDED by owner 2026-11-25]). */
+export const PORTAL_TRICK_LINES: readonly string[] = [
+  "Through the hoop? That's not a trick, that's a loophole.",
+  'Ta-da. Ow.',
+  'Nobody said the hoop was loaded.',
+  'Very theatrical. Very painful.',
+  'I want to speak to the magician.',
+];
+
 /** Hat-only hits, by the hat he was wearing. */
 export const HAT_LINES: Readonly<Record<string, readonly string[]>> = {
   boater: ['Not the boater!', 'That boater was nearly new.'],

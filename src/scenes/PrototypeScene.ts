@@ -78,7 +78,7 @@ import { OnlineController, type OnlineSceneHooks } from './onlineController';
 
 /** Result labels when the official online outcome differs from what this device simulated. */
 const OFFICIAL_LABELS: Record<ClassifiedOutcome, string> = {
-  ricochet_body: 'Ricochet hit', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
+  ricochet_body: 'Trick shot', body: 'Direct hit', hat_only: 'Hat hit', miss: 'Miss',
 };
 
 /** An earned cosmetic: a hat, an outfit or a cannon skin. */
@@ -1138,6 +1138,8 @@ export class PrototypeScene extends Phaser.Scene {
     for (const obs of state.obstacleContacts) {
       this.classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
     }
+    // A hit resolves the shot on first contact, so any hoop the ball went through came before it.
+    for (const id of state.portalsUsed) this.classifier.recordContact({ role: 'portal', id });
     if (state.hitGround) this.classifier.recordContact({ role: 'ground' });
     if (state.hitHat || result.hadHatHit) this.classifier.recordContact({ role: 'jonhHat' });
     if (state.hitJonh) this.classifier.recordContact({ role: 'jonhBody' });
@@ -1176,7 +1178,7 @@ export class PrototypeScene extends Phaser.Scene {
       isBodyHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
       this.physicsAdapter.jonhBodyBox(this.currentLevel).minX,
       this.physicsAdapter.jonhBodyBox(this.currentLevel).maxX,
-      { classifiedOutcome: classification.outcome, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
+      { classifiedOutcome: classification.outcome, trick: classification.trick, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
     );
 
     this.missStreak = isBodyHit ? 0 : this.missStreak + 1;
@@ -1191,6 +1193,7 @@ export class PrototypeScene extends Phaser.Scene {
       ...this.talkContext(state),
       missStreak: this.missStreak,
       strength: quality === 'trick' ? 'trick' : quality === 'strong' ? 'strong' : 'weak',
+      ...(classification.trick ? { trickKind: classification.trick } : {}),
       // Solo/daily only: multiplayer turns are shared, so streaks and "first shot" would mislead.
       ...(this.activeMode === 'solo' ? { firstShot: this.soloMachine.attemptsLeft === 2, hitStreak: this.progress.currentStreak + 1 } : {}),
     };

@@ -55,7 +55,7 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
     if (state.events.length > 0) events.push({ t: step * PHYSICS.fixedStepSeconds, events: [...state.events], vxSim: state.vxSim, vySim: state.vySim });
     if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) dirX = Math.sign(state.vxSim);
     if (state.hitJonh) {
-      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody, events, jonh };
+      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody || state.portalsUsed.length > 0, events, jonh };
     }
   }
   return { points, contactIndex: null, impactSpeedMs: 0, dirX, trick: false, events, jonh };

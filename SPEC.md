@@ -166,7 +166,8 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 
 - Award only the **highest** applicable outcome. Hat-then-body ⇒ body result.
 - **Ground is never ricochet-eligible.** Which surfaces are eligible is per-map data **[OPEN]** (initial proposal: fence faces and the building wall).
-- **[PROPOSED 2026-11-24]** Smashing through a breakable prop and going through a portal are never ricochet contacts (nor obstacle contacts). A breakable struck too softly to break is an ordinary obstacle and uses its own `ricochet` flag. On the new maps no surface is ricochet-eligible (glass, greenhouse frame and brick, tent velvet, stage), so both score plain body hits.
+- **[PROPOSED 2026-11-24]** Smashing through a breakable prop and going through a portal are never ricochet contacts (nor obstacle contacts). A breakable struck too softly to break is an ordinary obstacle and uses its own `ricochet` flag. On the new maps no surface is ricochet-eligible (glass, greenhouse frame and brick, tent velvet, stage).
+- **Trick shots on the new mechanics [DECIDED by owner 2026-11-25].** A body hit after the ball went through a portal hoop is a trick shot: the same outcome and points as a ricochet body hit (`ricochet_body`, 125), labelled "HOOP HIT", with its own Jonh lines. It counts everywhere a trick counts (the garden's trick badge, trick-shot feats and cosmetics, the Daily share's 🎱). Every Magic Act hit goes through the hoop, so every hit there is a trick, as every Billboard Bank Shot hit is. Smashing glass and wind never make a trick. Online, the server accepts a trick outcome on a map with a ricochet surface or a portal (`mapHasTrick`).
 - **[PROPOSED 2026-11-25]** Walking Jonh (§8.8): classification and points are unchanged. A ball he walks into (even one lying still on his path) touches him, so it counts like any other contact. The weak/strong threshold (10 m/s, §10.1) uses **the ball's own incoming speed**, not the speed relative to Jonh: his walk is at most 2 m/s, the replay and the scoring stay identical to every other map, and a ball he bumps into is a weak hit.
 - No near-miss points. **[DECIDED]**
 - Idempotency: the first body contact finalises scoring; later collision callbacks cannot change or repeat it. **[DECIDED]**
@@ -273,7 +274,7 @@ A level may declare `wind: { accelerationMs2, windsockX? }` (`src/levels/types.t
 - **Readability.** Visible before the first shot: a windsock on a pole (`windsockX`, default 6.8 m) that points downwind and lifts from limp to flat as the wind grows to `WIND.sockFlatMs2` (5 m/s²); a caption "Wind ← 3" (arrow = direction, number = m/s²) above it; faint streaks drifting the same way (`WIND.streak*`); a windsock and arrow in the map picker thumbnail. Under reduced motion (saved or OS) the sock hangs still and the streaks are static. The pole stands behind the playfield and does not collide, so there is no solid-looking decoration without collision (§11).
 - **Recorded flights.** The title-screen demo and the winning-shot replay run through the same `MatterAdapter`, so recorded flights include the wind (tested).
 - **Online.** Room map ids are validated by `validMaps` from the shared level list, so the Convex functions must be redeployed before a room can pick Windy Washday; clients simulate shots deterministically with the same wind.
-- **Not decided.** Whether a shot that uses the wind well (e.g. a hit that needs it) should ever count as a trick shot (§7.1, still [OPEN] for the other mechanics too). Today wind never does.
+- **Decided (owner, 2026-11-25).** Wind never makes a trick shot (§7.1); portal hoops do.
 
 ### 8.8 Walking Jonh [DECIDED by owner 2026-11-25 for one garden; PROPOSED rules; TUNE values]
 

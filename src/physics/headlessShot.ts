@@ -49,6 +49,7 @@ export function runHeadlessShot(level: LevelData, angleDeg: number, powerPercent
     });
     if (!result.resolved) continue;
     for (const obs of state.obstacleContacts) classifier.recordContact({ role: 'obstacle', id: obs.id, ricochet: obs.ricochet });
+    for (const id of state.portalsUsed) classifier.recordContact({ role: 'portal', id });
     if (state.hitGround) classifier.recordContact({ role: 'ground' });
     if (state.hitHat || result.hadHatHit) classifier.recordContact({ role: 'jonhHat' });
     if (state.hitJonh) classifier.recordContact({ role: 'jonhBody' });

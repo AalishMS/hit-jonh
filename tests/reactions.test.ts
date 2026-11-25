@@ -4,6 +4,7 @@ import {
   JONH_REACTIONS,
   JonhReactionSelector,
 } from '../src/rules/reactions';
+import { PORTAL_TRICK_LINES, TRICK_HIT_LINES } from '../src/rules/jonhLines';
 
 describe('JonhReactionSelector', () => {
   it('never repeats the same reaction line on consecutive selections', () => {
@@ -82,6 +83,14 @@ describe('classifyShotOutcome', () => {
     expect(res.category).toBe('hit');
     expect(res.label).toBe('RICOCHET HIT');
     expect(res.points).toBe(125);
+    const hoop = classifyShotOutcome(true, 18.0, jonhMinX, jonhMaxX, { classifiedOutcome: 'ricochet_body', trick: 'portal' });
+    expect(hoop).toMatchObject({ category: 'hit', label: 'HOOP HIT', points: 125 });
+  });
+
+  it('picks hoop lines for a hoop trick and bank lines for a bank shot', () => {
+    const always = new JonhReactionSelector(() => 0);
+    expect(PORTAL_TRICK_LINES).toContain(always.selectReaction('hit', { strength: 'trick', trickKind: 'portal' }));
+    expect(TRICK_HIT_LINES).toContain(new JonhReactionSelector(() => 0).selectReaction('hit', { strength: 'trick' }));
   });
 
   it('classifies hat-only hits with 20 points', () => {
