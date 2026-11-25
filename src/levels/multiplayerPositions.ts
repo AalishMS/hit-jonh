@@ -14,5 +14,11 @@ export function levelAtMultiplayerPosition(level: LevelData, positionId: string)
       ...(level.jonhSpawn.hatBox ? { hatBox: shift(level.jonhSpawn.hatBox) } : {}),
     },
     referenceSolutions: position.referenceSolutions,
+    // Walking Jonh: the route moves with the spawn (offsets are relative); a delay shifts its timing.
+    ...(level.jonhRoute && position.routeDelayS ? {
+      jonhRoute: {
+        waypoints: level.jonhRoute.waypoints.map((w, i) => i === 0 ? { ...w, pauseS: (w.pauseS ?? 0) + position.routeDelayS! } : w),
+      },
+    } : {}),
   };
 }
