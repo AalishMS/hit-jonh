@@ -1583,8 +1583,19 @@ Owner request: "Sound for the new gardens and a listening pass. Wind gusts, Jonh
 - Feats and cosmetic hints now say "a bank shot or a hoop shot". SPEC §7.1 records the decision; wind is decided too.
 - **Verified:** classification, reaction, online-rules and headless tests (every Magic Act reference shot is a trick; Greenhouse and Washday shots are not), and the live Magic Act match in item 1.
 
+### Independent review fixes (round 2)
+A fresh reviewer read `d4c5f39..0b8e85e`. It found nothing that breaks the game, loses saved data or makes online play disagree. It found these, all fixed in `c41a503`:
+1. **A hand-made save code could exhaust memory** (verified: a 1.4 MB code inflated to 1 GiB). Codes over 20,000 characters are refused, and inflating stops past 256 KB ("That's far too long to be a Hit Jonh save code.").
+2. **A forged Daily day number made decoding throw** and left Load code disabled. Day numbers outside 2020–2100 are ignored, nothing after the checksum can throw, and both Settings buttons always recover with a message.
+3. A browser with `CompressionStream` but without `deflate-raw` got no code at all. It now gets an uncompressed `HJ0-` code.
+4. Loading said "Loaded" even when the browser refused to store the save. `writeSaveData` now returns whether it stored, and the message says so.
+5. The hot-seat bench barrels could stay plain if their art was not drawn yet. The reviewer reached this through Pause → Settings, but Pause has no Settings, so the UI can't trigger it. The bench now repaints a barrel when its art arrives.
+6. The wind bed during a winning-shot replay or clip followed the last round's garden, not the replayed one. It now follows the replayed garden.
+- Not changed: the first-release migration restores only the Crown. Saves from `main` have no cannons or outfits; only unreleased builds of this branch could have an "every star" cannon or outfit to lose.
+- Verified: 4 new save-code tests (size caps, forged date, compression fallback, refused write), `npm run check` 869 passed, and the two-device browser test re-run.
+
 ### Round-2 summary, owner decisions and the next proposal
-**All ten done.** Final `npm run check`: `Test Files 89 passed (89)`, `Tests 865 passed | 12 skipped (877)`. `npm run build` passes.
+**All ten done.** Final `npm run check` (after the review fixes): `Test Files 89 passed (89)`, `Tests 869 passed | 12 skipped (881)`. `npm run build` passes.
 
 | # | Item | Built | Notes |
 | --- | --- | --- | --- |
