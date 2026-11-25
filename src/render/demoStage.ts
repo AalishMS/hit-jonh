@@ -113,7 +113,7 @@ export class DemoStage {
     if (d) {
       d.t += dt;
       if (d.phase === 'aim') {
-        const k = clamp01(d.t / 0.45);
+        const k = clamp01(d.t / FX.demoAimSeconds);
         this.angle = d.aimFrom + (d.angleDeg - d.aimFrom) * easeInOutSine(k);
         if (k >= 1) { d.phase = 'windup'; d.t = 0; audio.playFuse(); }
       } else if (d.phase === 'windup') {
