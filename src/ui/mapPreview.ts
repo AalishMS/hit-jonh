@@ -32,7 +32,10 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
   if (obs.id === 'stage') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.4)}" fill="${PAL.velvet}"/>`;
   // Frozen Pond: a snow-capped hut roof and a striped roll-down door frozen just off the ice.
   if (obs.id === 'hut-roof') return `${rect(PAL.wood)}<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1.5, h * 0.55)}" fill="${PAL.snow}"/>`;
-  if (obs.id === 'hut-door') return rect(PAL.pow);
+  if (obs.id === 'hut-door') {
+    const dw = Math.max(4, w);
+    return `<rect x="${x + w - dw}" y="${y}" width="${dw}" height="${h}" fill="${PAL.pow}" ${INK} stroke-width="1.5"/>`;
+  }
   switch (obs.material) {
     case 'glass': return rect(PAL.glass, ' fill-opacity="0.8"');
     case 'velvet': return rect(PAL.velvet, ' rx="1.5"');
@@ -52,7 +55,12 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'gravel': return rect('#A9A3B8');
     case 'sand': return rect('#F2D59B');
     case 'rug': return rect(PAL.pow);
-    case 'ice': return `${rect(PAL.ice)}<path d="M${x + 3} ${y + 1.5} H${x + w - 3}" stroke="${PAL.paper}" stroke-width="1.4" class="map-ice"/>`;
+    case 'ice': {
+      // A thin slab at thumbnail scale: drawn at least 6 px deep (down into the snow), its top kept true.
+      const hh = Math.max(h, 6);
+      return `<rect x="${x}" y="${y}" width="${w}" height="${hh}" fill="${PAL.iceDeep}" ${INK} stroke-width="1.5"/>` +
+        `<rect x="${x + 0.75}" y="${y + 0.75}" width="${w - 1.5}" height="${hh * 0.4}" fill="${PAL.ice}" class="map-ice"/>`;
+    }
     default: return rect(PAL.stone);
   }
 }

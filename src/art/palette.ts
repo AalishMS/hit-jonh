@@ -62,9 +62,10 @@ export const PAL = {
   /** The magician's tent: deep red velvet. */
   velvet: '#B8324A',
   velvetDark: '#7E1F33',
-  /** Frozen Pond: pond ice (paler and whiter than glass, so it never reads as breakable) and snow. */
-  ice: '#DDF4FB',
+  /** Frozen Pond: pond ice (paler and whiter than glass, so it never reads as breakable), the dark water under it, and snow. */
+  ice: '#D3F0FA',
   iceDark: '#8CC6DE',
+  iceDeep: '#4F86B0',
   snow: '#F6FAFD',
   snowShade: '#C9DAE8',
 } as const;

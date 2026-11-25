@@ -24,6 +24,8 @@ All tokens below live in code at `src/art/palette.ts` (game) and `src/style.css`
 | `glass` / `glassDark` | `#BDE7F5` / `#7FC4E0` | Window panes and breakable glass (translucent fill, paper shine streaks, `glassDark` cel shadow), glass shards. |
 | `magic` / `magicDark` / `magicLight` | `#9B6BE0` / `#5E3A9E` / `#E2D2FF` | Portal hoops' swirl and sparkles only (the grape player colour family, so it never reads as bouncy pink). |
 | `velvet` / `velvetDark` | `#B8324A` / `#7E1F33` | The magician's tent drapes, stage carpet and the tent's back curtain. |
+| `ice` / `iceDark` / `iceDeep` | `#D3F0FA` / `#8CC6DE` / `#4F86B0` | Frozen Pond: the pond's ice layer (paler and whiter than glass, so it never reads as breakable), its edge line and bubbles, and the dark water under it; ice chips. |
+| `snow` / `snowShade` | `#F6FAFD` / `#C9DAE8` | Frozen Pond: snow ground, snow caps, snow puffs and falling flakes, and their cel shadow. |
 | `iron` / `brass` | `#3A3F63` / `#F2B33D` | Cannon barrel, cannonball / bands, hub. |
 | `jonhShirt` | `#F2643C` | Jonh's cardigan. He is the warmest object in the scene, so he always pops against green and blue. |
 | `jonhTrousers` | `#3B4A7A` | |
@@ -62,7 +64,8 @@ Every filled foreground shape gets **one** flat cel shadow (the dark tone of its
 
 - **Breakable glass** looks fragile and see-through: a translucent pane with two or three diagonal paper shine streaks and a 2.6 px ink outline, set in white-painted timber. Brick and timber parts are separate solid colliders, drawn opaque. When a pane breaks it swaps (on that frame) to its smashed texture: only jagged glass teeth where it met the frame, nothing in the middle. Shards fly along the ball's path and fall. Reduced motion keeps the swap and drops the shards.
 - **Portal hoops** are a brass ring around a turning purple swirl, with slow twinkling sparkles. The entry hoop is face-on (a circle: anything through the middle disappears). The exit hoop is side-on (squashed along its heading) with a brass chevron pointing the way the ball comes out. A used hoop's swirl dims until the next attempt. Hoops float: no stand is drawn, because nothing that looks solid may lack a collider.
-- **Interiors** (greenhouse glass, tent curtain) are flat background with no ink, so they never read as surfaces.
+- **Interiors** (greenhouse glass, tent curtain, fishing hut) are flat background with no ink, so they never read as surfaces.
+- **Pond ice (2026-11-25)** is drawn as the pond in cross-section: a glossy `ice` layer with paper shine streaks on top of dark `iceDeep` water, a stone kerb at each end, so the landing strip reads against the snow. A skidding ball kicks up `ice` chips; landings on snow and ice throw a white puff instead of dust. The fishing hut is a snow-capped timber roof, a plank back wall and a striped canvas roll-down door whose rolled edge stops a hand's width off the ice: the gap the ball skids through is drawn exactly. Winter gardens have no flowers and a slow background snowfall that stops under reduced motion.
 
 ## Typography
 

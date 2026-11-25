@@ -60,9 +60,11 @@ export class ShotEffectsRenderer {
   }
 
   /** Small dust puff where the ball lands or strikes scenery. */
-  dust(x: number, y: number, amount: number, reduced: boolean, kind: 'fx-dust' | 'fx-chip' | 'fx-leaf' = 'fx-dust'): void {
+  dust(x: number, y: number, amount: number, reduced: boolean, kind: 'fx-dust' | 'fx-chip' | 'fx-leaf' | 'fx-ice' | 'fx-snow' = 'fx-dust'): void {
     if (reduced || amount <= 0) return;
-    this.burst({ kind: 'fx-dust', count: Math.round(5 * amount), x, y: y - 3, angle: -Math.PI / 2, spread: 2.4, speed: [30, 110], life: [0.3, 0.6], scale: [0.4, 0.8], endScale: 1.8, gravity: -20, drag: 4 });
+    // Snow and ice throw up a white puff rather than a dusty one.
+    const puff = kind === 'fx-ice' || kind === 'fx-snow' ? 'fx-snow' : 'fx-dust';
+    this.burst({ kind: puff, count: Math.round(5 * amount), x, y: y - 3, angle: -Math.PI / 2, spread: 2.4, speed: [30, 110], life: [0.3, 0.6], scale: [0.4, 0.8], endScale: 1.8, gravity: -20, drag: 4 });
     if (kind !== 'fx-dust') this.burst({ kind, count: Math.round(4 * amount), x, y, angle: -Math.PI / 2, spread: 2.2, speed: [80, 200], life: [0.5, 0.9], scale: [0.8, 1.1], gravity: 520, drag: 1, spin: 10 });
   }
 

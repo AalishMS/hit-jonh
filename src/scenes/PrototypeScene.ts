@@ -1726,8 +1726,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (dv < 1.2) return;
     const surface = this.surfaceAt(state.xSim, state.ySim);
     this.audioManager.playSurface(surface, dv / 14);
+    const snowy = this.currentLevel.ground.material === 'snow';
     this.effects.dust(state.xPx, state.yPx + PROJECTILE.radiusMetres * WORLD.pixelsPerMetre, clamp01(dv / 10) + 0.3, reduced,
-      surface === 'wood' ? 'fx-chip' : surface === 'ground' ? 'fx-leaf' : 'fx-dust');
+      surface === 'wood' ? 'fx-chip' : surface === 'ice' ? 'fx-ice' : surface === 'ground' ? (snowy ? 'fx-snow' : 'fx-leaf') : 'fx-dust');
     if (surface !== 'ground' && dv > 4) this.cameraRig.impact(4 * clamp01(dv / 12), 0.18, FX.shakeHz, -prev.vx, prev.vy, 0, 0);
   }
 
@@ -1768,7 +1769,7 @@ export class PrototypeScene extends Phaser.Scene {
       if (power >= FX.launchDustFrom) {
         // The surface under the wheels (the Valley cannon stands on a cliff).
         const pivot = this.cannonRenderer.pivot;
-        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false);
+        this.effects.dust(pivot.x - 18, this.floorAt(pivot.x - 18, pivot.y), 0.5 + power, false, this.currentLevel.ground.material === 'snow' ? 'fx-snow' : 'fx-dust');
       }
     }
   }

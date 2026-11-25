@@ -8,20 +8,26 @@ import { INK, ink } from './svgKit';
  * exactly on its box; the interior is flat background with no ink.
  */
 
-/** Pond ice seen side-on: pale and glossy, a deeper cel shadow below, shine streaks and a few cracks. */
+/**
+ * The frozen pond in cross-section: a glossy layer of ice on top of dark water, with a stone kerb at each
+ * end. The dark water keeps the pond readable against the snow; the ice layer is what the ball rides.
+ */
 function iceSheet(w: number, h: number): string {
+  const iceH = Math.max(4, h * 0.42);
+  const kerb = Math.min(10, w * 0.05);
   const glints = Array.from({ length: Math.floor(w / 46) }, (_, i) => {
-    const x = 14 + i * 46 + (i % 3) * 7;
-    return `<path d="M${x} ${h - 3} L${x + 7} 3" stroke="${PAL.paper}" stroke-width="2" stroke-linecap="round" opacity="0.9"/>`;
+    const x = 18 + i * 46 + (i % 3) * 7;
+    return `<path d="M${x} ${iceH} L${x + 4} 2.6" stroke="${PAL.paper}" stroke-width="1.8" stroke-linecap="round"/>`;
   }).join('');
-  const cracks = Array.from({ length: Math.floor(w / 110) }, (_, i) => {
-    const x = 40 + i * 110 + (i % 2) * 23;
-    return `<path d="M${x} 3 l5 ${h * 0.35} l-4 ${h * 0.2} l6 ${h * 0.3}" stroke="${PAL.iceDark}" stroke-width="1.2" fill="none" stroke-linejoin="round"/>`;
+  const bubbles = Array.from({ length: Math.floor(w / 38) }, (_, i) => {
+    const x = 22 + i * 38 + (i % 2) * 11;
+    return `<circle cx="${x}" cy="${iceH + (h - iceH) * (i % 3 === 0 ? 0.35 : 0.6)}" r="${i % 2 ? 1.2 : 1.6}" fill="${PAL.iceDark}"/>`;
   }).join('');
-  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="${PAL.ice}"/>
-    <rect x="1.5" y="${h * 0.56}" width="${w - 3}" height="${h * 0.44 - 1.5}" rx="2" fill="${PAL.iceDark}" opacity="0.55"/>
-    ${cracks}${glints}
-    <path d="M5 3.4 H${w - 5}" stroke="${PAL.paper}" stroke-width="1.6" stroke-linecap="round"/>
+  return `<rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="${PAL.iceDeep}"/>${bubbles}
+    <rect x="1.5" y="1.5" width="${w - 3}" height="${iceH}" rx="2" fill="${PAL.ice}"/>
+    <path d="M1.5 ${iceH + 1.5} H${w - 1.5}" stroke="${PAL.iceDark}" stroke-width="1.4"/>${glints}
+    <rect x="1.5" y="1.5" width="${kerb}" height="${h - 3}" rx="2" fill="${PAL.stone}" ${ink(1.6)}/>
+    <rect x="${w - 1.5 - kerb}" y="1.5" width="${kerb}" height="${h - 3}" rx="2" fill="${PAL.stone}" ${ink(1.6)}/>
     <rect x="1.5" y="1.5" width="${w - 3}" height="${h - 3}" rx="3" fill="none" ${ink(2.4)}/>`;
 }
 

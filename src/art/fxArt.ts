@@ -18,7 +18,8 @@ export const FX_ART: ArtDef[] = [
   fx('fx-spark', 22, 8, `<path d="M1 4 L11 1 L21 4 L11 7 Z" fill="${PAL.paper}" ${ink(1.2)}/>`),
   fx('fx-scrap', 12, 14, `<rect x="1.5" y="1.5" width="9" height="11" rx="1" fill="${PAL.paper}" ${ink(1.4)}/><path d="M3.5 5 H8.5 M3.5 8 H8.5" stroke="${PAL.ink}" stroke-width="1" opacity="0.5"/>`),
   fx('fx-leaf', 12, 8, `<path d="M1 4 Q6 -1 11 4 Q6 9 1 4 Z" fill="${PAL.grass}" ${ink(1.2)}/>`),
-  // Ice spray from a skidding ball (Frozen Pond): a pale chip of ice.
+  // Frozen Pond: a white puff of snow (landings on snow and ice) and a pale chip of ice (skids, ice landings).
+  fx('fx-snow', 22, 22, `<circle cx="11" cy="11" r="9" fill="${PAL.snow}"/><path d="M5 15 A9 9 0 0 0 19 13 A8 8 0 0 1 5 15 Z" fill="${PAL.snowShade}" opacity="0.7"/>`),
   fx('fx-ice', 10, 10, `<path d="M5 1 L9 5 L5 9 L1 5 Z" fill="${PAL.glass}" ${ink(1.1)}/><path d="M5 2.6 L6.6 5 L5 5.8 Z" fill="${PAL.paper}"/>`),
   fx('fx-chip', 10, 8, `<path d="M1 2 L8 1 L9 6 L2 7 Z" fill="${PAL.wood}" ${ink(1.2)}/>`),
   fx('fx-smoke', 36, 30, `<path d="M9 22 Q2 22 3 15 Q4 9 10 10 Q11 3 18 3 Q26 3 27 10 Q34 10 33 17 Q32 24 25 23 Q22 28 16 27 Q11 27 9 22 Z" fill="${PAL.smoke}" ${ink(2)}/>
