@@ -333,3 +333,38 @@ export function reactionDuration(kind: ReactionKind): number {
   }
 }
 
+
+/**
+ * Standing and walking (the walking-Jonh garden, 2026-11-25). He is out on a stroll, so there is no
+ * chair: the body is lifted, the legs swing down from the hip, and on a walk the legs and free arm
+ * swing while he keeps reading. Cosmetic only; the collider never depends on it.
+ */
+export const WALK_RIG = {
+  /** Root lift while standing (px), so his shoes stay on the ground with the legs swung down. */
+  lift: -6,
+  /** Leg rotation while standing, and its swing either way on a step (radians). */
+  legs: -1.0,
+  legSwing: 0.42,
+  /** Body bob (px) and free-arm swing (radians) per step. */
+  bob: 3,
+  armSwing: 0.4,
+  /** Slight forward lean while walking (radians). */
+  lean: 0.05,
+} as const;
+
+/**
+ * `pose` (any reaction except a body hit) for a standing Jonh. `walk` 0..1 blends the walk cycle in
+ * (eased by the renderer when he starts or stops); `phase` is radians of the cycle (distance-driven).
+ */
+export function standingPose(pose: JonhPose, walk: number, phase: number): JonhPose {
+  const w = clamp01(walk);
+  const swing = Math.sin(phase);
+  return {
+    ...pose,
+    body: { ...pose.body, y: pose.body.y + WALK_RIG.lift - Math.abs(Math.sin(phase)) * WALK_RIG.bob * w },
+    torso: { ...pose.torso, rot: pose.torso.rot + WALK_RIG.lean * w },
+    legs: pose.legs - RIG.legsRot + WALK_RIG.legs + swing * WALK_RIG.legSwing * w,
+    armBack: pose.armBack + swing * WALK_RIG.armSwing * w,
+    chair: { ...pose.chair, sx: 0, sy: 0 },
+  };
+}

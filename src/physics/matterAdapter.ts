@@ -1,6 +1,7 @@
 import Matter, { type Body, type World } from '@matter-js';
 import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
-import type { BreakableData, LevelData, PortalData } from '../levels/types';
+import { routePoseAtStep, shiftJonh, type RoutePose } from '../levels/jonhRoute';
+import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, PortalData } from '../levels/types';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
 import {
@@ -61,13 +62,17 @@ interface SolidHit {
   breakable?: BreakableData | undefined;
 }
 
-/** The earliest solid the ball's swept circle touches between two positions, if any. */
-function earliestSolidHit(prev: Point2D, curr: Point2D, radius: number, boxes: readonly SolidBox[]): SolidHit | null {
+/**
+ * The earliest solid the ball's swept circle touches between two positions, if any. `jonhWins`
+ * (walking Jonh only): a tie goes to Jonh's body, so a ball lying on the ground that he walks into
+ * is a touch even though it is also touching the ground at t = 0.
+ */
+function earliestSolidHit(prev: Point2D, curr: Point2D, radius: number, boxes: readonly SolidBox[], jonhWins = false): SolidHit | null {
   let earliestHit: SolidHit | null = null;
   for (const b of boxes) {
     const hit = sweepCircleVsBox(prev, curr, radius, b.box);
     if (hit && hit.t <= 1) { // Accept t=0 if it's currently penetrating
-      if (!earliestHit || hit.t < earliestHit.hit.t) {
+      if (!earliestHit || hit.t < earliestHit.hit.t || (jonhWins && b.label === 'jonhBody' && hit.t === earliestHit.hit.t)) {
         earliestHit = {
           hit,
           boxLabel: b.label,
@@ -105,6 +110,16 @@ export class MatterAdapter {
   private brokenIds: string[] = [];
   private portalsUsed: string[] = [];
   private stepEvents: MechanicEvent[] = [];
+  /**
+   * Walking Jonh (levels/jonhRoute.ts): the route, the spawn it is measured from, and the fixed step
+   * his colliders are placed for (0 while aiming, k during the k-th step after Fire). He stops for
+   * good once the ball touches him (body or hat). Null route: he never moves (every other map).
+   */
+  private jonhRoute: JonhRouteData | null = null;
+  private jonhSpawnBase: JonhSpawnData | null = null;
+  private jonhStep = 0;
+  private jonhPose: RoutePose | null = null;
+  private jonhPrevPose: RoutePose | null = null;
 
   constructor(
     private readonly matterWorld: World,
@@ -114,6 +129,8 @@ export class MatterAdapter {
 
   setupLevel(level: LevelData): void {
     this.clear();
+    this.jonhRoute = level.jonhRoute ?? null;
+    this.jonhSpawnBase = level.jonhSpawn;
 
     // 1. Ground body
     const groundWidthPx = metresToPixels(
@@ -217,6 +234,7 @@ export class MatterAdapter {
       this.obstacleBodies.push(obsBody);
       if (obs.breakable) this.breakables.set(obs.id, { body: obsBody, mask: obsBody.collisionFilter.mask });
     }
+    this.placeJonh(0);
   }
 
   spawnProjectile(
@@ -245,6 +263,8 @@ export class MatterAdapter {
 
     Matter.World.add(this.matterWorld, this.projectileBody);
     Matter.Body.setVelocity(this.projectileBody, launchVelocityWorld);
+    // Walking Jonh: his colliders sit where he is during the first fixed step after Fire.
+    this.placeJonh(1);
 
     this.prevPosPx = { x: startXPx, y: startYPx };
     return this.projectileBody;
@@ -271,7 +291,7 @@ export class MatterAdapter {
 
     // Solid colliders for sweeping (a prop smashed earlier this shot is gone).
     const boxes = this.solidBoxes(level);
-    const earliestHit = earliestSolidHit(prevSim, currSim, radiusMetres, boxes);
+    const earliestHit = earliestSolidHit(prevSim, currSim, radiusMetres, boxes, this.jonhRoute !== null);
 
     // Portals: touching an unused entry before any solid sends the ball through (no bounce, no contact).
     if (level.portals && level.portals.length > 0) {
@@ -317,17 +337,18 @@ export class MatterAdapter {
       if (earliestHit.boxLabel === 'jonhBody') this.hasHitJonh = true;
       if (earliestHit.boxLabel === 'ground') this.hasHitGround = true;
 
-      // Calculate relative velocity into normal
-      const matterVx = this.projectileBody.velocity.x;
-      const matterVy = this.projectileBody.velocity.y;
+      // Calculate relative velocity into normal (relative to Jonh's walk when he is the surface).
+      const wall = earliestHit.boxLabel === 'jonhBody' ? this.jonhVelocityMatter() : null;
+      const matterVx = wall ? this.projectileBody.velocity.x - wall.x : this.projectileBody.velocity.x;
+      const matterVy = wall ? this.projectileBody.velocity.y - wall.y : this.projectileBody.velocity.y;
       
       const matterNormalX = earliestHit.hit.normal.x;
       const matterNormalY = -earliestHit.hit.normal.y; // sim +y is up, matter +y is down
 
       const dotNow = matterVx * matterNormalX + matterVy * matterNormalY;
       // Velocity entering this step: Matter may already have resolved (and damped) the impact.
-      const inVx = this.previousVelocity.x;
-      const inVy = this.previousVelocity.y;
+      const inVx = wall ? this.previousVelocity.x - wall.x : this.previousVelocity.x;
+      const inVy = wall ? this.previousVelocity.y - wall.y : this.previousVelocity.y;
       const dotIn = inVx * matterNormalX + inVy * matterNormalY;
       const minBounce = speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre);
 
@@ -350,8 +371,10 @@ export class MatterAdapter {
         const newPxY = simYToWorldY(newSimY, this.worldHeightPx, this.pixelsPerMetre);
         
         Matter.Body.setPosition(this.projectileBody, { x: newPxX, y: newPxY });
-        Matter.Body.setVelocity(this.projectileBody, { x: vNewMatterX, y: vNewMatterY });
-        
+        Matter.Body.setVelocity(this.projectileBody, wall
+          ? { x: vNewMatterX + wall.x, y: vNewMatterY + wall.y }
+          : { x: vNewMatterX, y: vNewMatterY });
+
         currPx.x = newPxX;
         currPx.y = newPxY;
         currSim.x = newSimX;
@@ -375,14 +398,77 @@ export class MatterAdapter {
 
     this.prevPosPx = { ...currPx };
     this.previousVelocity = { ...this.projectileBody.velocity };
+    this.advanceJonh();
     return this.snapshot(currSim, currPx);
+  }
+
+  /** Jonh's colliders as they are this step: his spawn moved along the route (the spawn itself otherwise). */
+  private jonhNow(level: LevelData): JonhSpawnData {
+    const pose = this.jonhPose;
+    return pose ? shiftJonh(level.jonhSpawn, pose.dx, pose.dy) : level.jonhSpawn;
+  }
+
+  /**
+   * Puts Jonh's Matter body and hat where the route has him during fixed step `step` (0 = aiming).
+   * The swept guard reads the same pose through jonhNow, so both see the same boxes every step.
+   */
+  private placeJonh(step: number): void {
+    const route = this.jonhRoute;
+    const base = this.jonhSpawnBase;
+    if (!route || !base) { this.jonhPose = null; this.jonhPrevPose = null; this.jonhStep = 0; return; }
+    this.jonhStep = step;
+    this.jonhPrevPose = step > 0 ? routePoseAtStep(route, step - 1) : null;
+    this.jonhPose = routePoseAtStep(route, step);
+    const moved = shiftJonh(base, this.jonhPose.dx, this.jonhPose.dy);
+    const centre = (b: Box2D) => ({
+      x: metresToPixels((b.minX + b.maxX) / 2, this.pixelsPerMetre),
+      y: simYToWorldY((b.minY + b.maxY) / 2, this.worldHeightPx, this.pixelsPerMetre),
+    });
+    if (this.jonhBody) Matter.Body.setPosition(this.jonhBody, centre(moved.bodyBox));
+    if (this.jonhHatBody && moved.hatBox) Matter.Body.setPosition(this.jonhHatBody, centre(moved.hatBox));
+  }
+
+  /** After a step: Jonh walks on to the next step's spot, unless the ball has touched him (he stops). */
+  private advanceJonh(): void {
+    if (!this.jonhRoute) return;
+    // Stopped: he stands still from now on (later contacts see a still wall).
+    if (this.hasHitJonh || this.hasHitHat) { this.jonhPrevPose = this.jonhPose; return; }
+    this.placeJonh(this.jonhStep + 1);
+  }
+
+  /** Jonh's walking velocity during this step in Matter units (px per 1000/60 ms; y down). */
+  private jonhVelocityMatter(): { x: number; y: number } | null {
+    const now = this.jonhPose;
+    const before = this.jonhPrevPose;
+    if (!now || !before) return null;
+    const dt = PHYSICS.fixedStepSeconds;
+    return {
+      x: speedMsToMatterVelocity((now.dx - before.dx) / dt, this.pixelsPerMetre),
+      y: -speedMsToMatterVelocity((now.dy - before.dy) / dt, this.pixelsPerMetre),
+    };
+  }
+
+  /** Jonh's body box where he is now (his spawn box on maps where he does not walk). */
+  jonhBodyBox(level: LevelData): Box2D { return this.jonhNow(level).bodyBox; }
+
+  /** Where Jonh is on his route now (null on maps where he does not walk). Offsets in metres. */
+  get jonhRoutePose(): RoutePose | null { return this.jonhPose; }
+
+  /**
+   * Jonh's route pose at simulated time `simT` after Fire during the current shot, never past the
+   * step he stopped at (for the slow-motion replay). Null on maps where he does not walk.
+   */
+  jonhRoutePoseAt(simT: number): RoutePose | null {
+    if (!this.jonhRoute) return null;
+    const step = Math.min(this.jonhStep, Math.max(0, Math.round(simT / PHYSICS.fixedStepSeconds)));
+    return routePoseAtStep(this.jonhRoute, step);
   }
 
   /** Ground, Jonh's body and every obstacle not smashed this shot, in level order. */
   private solidBoxes(level: LevelData): SolidBox[] {
     return [
       { box: level.ground, label: 'ground', material: level.ground.material },
-      { box: level.jonhSpawn.bodyBox, label: 'jonhBody', material: 'jonhBody' },
+      { box: this.jonhNow(level).bodyBox, label: 'jonhBody', material: 'jonhBody' },
       ...level.obstacles.filter(o => !this.brokenIds.includes(o.id)).map((o) => ({
         box: o.box,
         label: 'obstacle' as const,
@@ -396,16 +482,17 @@ export class MatterAdapter {
 
   /** Hat sensor (never blocks or reflects) and the overhead-pass check, over one stretch of path. */
   private senseJonh(level: LevelData, radiusMetres: number, from: Point2D, to: Point2D): void {
-    if (level.jonhSpawn.hatBox) {
-      const hatHit = sweepCircleVsBox(from, to, radiusMetres, level.jonhSpawn.hatBox);
+    const jonh = this.jonhNow(level);
+    if (jonh.hatBox) {
+      const hatHit = sweepCircleVsBox(from, to, radiusMetres, jonh.hatBox);
       if (hatHit && hatHit.t <= 1) {
         this.hasHitHat = true;
       }
     }
 
-    const jonhMinX = level.jonhSpawn.bodyBox.minX;
-    const jonhMaxX = level.jonhSpawn.bodyBox.maxX;
-    const jonhTopY = level.jonhSpawn.hatBox?.maxY ?? level.jonhSpawn.bodyBox.maxY;
+    const jonhMinX = jonh.bodyBox.minX;
+    const jonhMaxX = jonh.bodyBox.maxX;
+    const jonhTopY = jonh.hatBox?.maxY ?? jonh.bodyBox.maxY;
     const maxOverheadY = jonhTopY + LOOK.overheadAltitudeMarginMetres;
 
     const minXSeg = Math.min(from.x, to.x);
@@ -506,6 +593,7 @@ export class MatterAdapter {
 
     this.prevPosPx = { ...exitPx };
     this.previousVelocity = { ...body.velocity };
+    this.advanceJonh();
     return this.snapshot({ x: portal.exit.x, y: portal.exit.y }, exitPx);
   }
 
@@ -561,6 +649,8 @@ export class MatterAdapter {
     this.brokenIds = [];
     this.portalsUsed = [];
     this.stepEvents = [];
+    // Jonh walks back to the start of his route (scene reset, SPEC §7.2).
+    if (this.jonhRoute) this.placeJonh(0);
   }
 
   clear(): void {

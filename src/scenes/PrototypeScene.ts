@@ -887,6 +887,9 @@ export class PrototypeScene extends Phaser.Scene {
       if (this.attemptMachine.state === 'simulating' && this.simulateStep(reduced)) break;
     }
 
+    // Walking Jonh follows the physics' route clock; the replay re-walks it in step with the ball.
+    this.jonhRenderer.followRoute(this.physicsAdapter?.jonhRoutePoseAt(
+      replayFrameNow?.phase === 'pre' ? replayFrameNow.simT : this.attemptMachine.simulatedTime) ?? null);
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
@@ -985,7 +988,7 @@ export class PrototypeScene extends Phaser.Scene {
     return fastForwardTarget({
       landed: p.firstGroundContact !== null || p.obstacleContacts.length > 0,
       speedMs: p.speedMs,
-      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.currentLevel.jonhSpawn.bodyBox),
+      distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.physicsAdapter.jonhBodyBox(this.currentLevel)),
       impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
     });
   }
@@ -1066,8 +1069,8 @@ export class PrototypeScene extends Phaser.Scene {
     const feedback = classifyShotOutcome(
       isBodyHit,
       isBodyHit ? state.xSim : state.firstGroundContact?.xSim ?? state.xSim,
-      this.currentLevel.jonhSpawn.bodyBox.minX,
-      this.currentLevel.jonhSpawn.bodyBox.maxX,
+      this.physicsAdapter.jonhBodyBox(this.currentLevel).minX,
+      this.physicsAdapter.jonhBodyBox(this.currentLevel).maxX,
       { classifiedOutcome: classification.outcome, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
     );
 

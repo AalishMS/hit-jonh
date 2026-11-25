@@ -3,7 +3,9 @@ import type { HatId } from '../art/jonhArt';
 import { outfitKeys } from '../art/outfitArt';
 import { DEFAULT_OUTFIT, type OutfitId } from '../rules/cosmetics';
 import { PAL, hex } from '../art/palette';
-import { HIT_TIMING, RIG, jonhPose, type HitStrength, type JonhPose, type ReactionKind } from '../fx/jonhPose';
+import { HIT_TIMING, RIG, jonhPose, standingPose, type HitStrength, type JonhPose, type ReactionKind } from '../fx/jonhPose';
+import { JONH_WALK } from '../config/tuning';
+import type { RoutePose } from '../levels/jonhRoute';
 import { clamp01, easeOutBack } from '../fx/easing';
 import type { JonhSpawnData, LevelData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
@@ -77,7 +79,7 @@ class JonhRig {
     this.armBack.setRotation(pose.armBack);
     setArt(this.face, `jonh-face-${pose.face}`);
     const c = pose.chair;
-    this.chair.setPosition(c.x, c.y).setRotation(c.rot);
+    this.chair.setPosition(c.x, c.y).setRotation(c.rot).setVisible(c.sx !== 0 || c.sy !== 0);
 
     const paper = pose.paper;
     this.paperOn.setVisible(paper.attached);
@@ -151,6 +153,8 @@ class SpeechBubble {
   }
 
   hide(): void { this.shown = false; this.container.setVisible(false); }
+  /** Moves the bubble with Jonh as he walks. */
+  shift(dx: number, dy: number): void { this.anchor = { x: this.anchor.x + dx, y: this.anchor.y + dy }; }
   get visible(): boolean { return this.shown; }
 
   update(dt: number, reduced: boolean): void {
@@ -205,9 +209,23 @@ export class JonhRenderer {
   private aware = false;
   private alarm = 0;
   private lastPose: JonhPose | null = null;
+  /**
+   * Walking Jonh (maps with a `jonhRoute`): he stands (no chair), and the root follows the route
+   * offset the physics reports. `walk` eases the walk cycle in and out as he starts and stops.
+   */
+  private readonly standing: boolean;
+  private offsetX = 0;
+  private offsetY = 0;
+  private routeDistance = 0;
+  private lastRouteDistance = 0;
+  private walk = 0;
+  private facing: -1 | 0 | 1 = 0;
+  private readonly ppm: number;
 
   constructor(private readonly scene: Phaser.Scene, jonhSpawn: JonhSpawnData, ppm: number, worldHeightPx: number, options: JonhRendererOptions = {}) {
     const b = jonhSpawn.bodyBox;
+    this.ppm = ppm;
+    this.standing = Boolean(options.level?.jonhRoute);
     this.originX = metresToPixels((b.minX + b.maxX) / 2, ppm);
     this.originY = simYToWorldY(b.minY, worldHeightPx, ppm);
     const support = options.level?.obstacles.find(o => Math.abs(o.box.maxY - b.minY) < 1e-6 && o.box.minX <= b.minX && o.box.maxX >= b.maxX);
@@ -228,7 +246,24 @@ export class JonhRenderer {
     this.applyPose();
   }
 
-  get position(): { x: number; y: number } { return { x: this.originX, y: this.originY }; }
+  /** Where he stands now (the ground point under his collider's centre), following his route. */
+  get position(): { x: number; y: number } { return { x: this.originX + this.offsetX, y: this.originY + this.offsetY }; }
+
+  /**
+   * Follows the physics' route pose (metres from his spawn; null: back at the spawn). Call once per
+   * frame before update(); the bubble moves with him.
+   */
+  followRoute(pose: RoutePose | null): void {
+    const x = pose ? metresToPixels(pose.dx, this.ppm) : 0;
+    const y = pose ? -metresToPixels(pose.dy, this.ppm) : 0;
+    if (x !== this.offsetX || y !== this.offsetY) this.bubble.shift(x - this.offsetX, y - this.offsetY);
+    this.offsetX = x;
+    this.offsetY = y;
+    this.routeDistance = pose?.distance ?? 0;
+    if (!pose) this.lastRouteDistance = 0;
+    this.facing = pose?.facing ?? 0;
+    if (this.standing) this.applyPose();
+  }
 
   setHat(hatId: HatId): void { this.rig.setHat(hatId); this.ghost.setHat(hatId); }
 
@@ -261,6 +296,12 @@ export class JonhRenderer {
     const reduced = this.isReducedMotionActive();
     if (reduced && this.kind === 'hit') this.t = Math.max(this.t, HIT_TIMING.strongAir + 0.5);
     if (reduced && this.kind === 'hat') this.t = Math.max(this.t, 1.0);
+    if (this.standing) {
+      // Walking while the route moves him; eased so a stop or start never snaps the legs.
+      const moving = Math.abs(this.routeDistance - this.lastRouteDistance) > 1e-6;
+      this.lastRouteDistance = this.routeDistance;
+      this.walk = reduced ? (moving ? 1 : 0) : Math.max(0, Math.min(1, this.walk + (moving ? dt : -dt) / 0.15));
+    }
     this.applyPose();
     // The quote appears once he has landed (or immediately for smaller reactions).
     const quoteAt = this.kind === 'hit' ? HIT_TIMING.starsFrom + 0.05 : this.kind === 'hat' ? 0.4 : 0;
@@ -272,28 +313,44 @@ export class JonhRenderer {
     this.bubble.clampTo(this.scene.cameras.main.worldView);
   }
 
+  /** Standing Jonh (a walking map): no chair; legs down and the walk cycle in any reaction but a body hit. */
+  private stand(pose: JonhPose): JonhPose {
+    if (!this.standing) return pose;
+    // Knocked over mid-stroll: the authored tumble, minus the chair he never brought.
+    if (this.kind === 'hit') return { ...pose, chair: { ...pose.chair, sx: 0, sy: 0 } };
+    // Reduced motion: no leg swing or bob, just the standing pose gliding along.
+    const walk = this.isReducedMotionActive() ? 0 : this.walk;
+    return standingPose(pose, walk, (this.routeDistance / JONH_WALK.strideMetres) * Math.PI * 2);
+  }
+
   private applyPose(): void {
     const reduced = this.isReducedMotionActive();
-    const pose = jonhPose({
+    const pose = this.stand(jonhPose({
       kind: this.kind, t: this.t, idleT: this.idleT, strength: this.strength, dir: this.dir,
       room: this.dir >= 0 ? this.roomRight : this.roomLeft,
       aware: this.aware, alarm: reduced ? 0 : this.alarm,
-    });
+    }));
     this.lastPose = pose;
+    const ox = this.originX + this.offsetX;
+    const oy = this.originY + this.offsetY;
+    // He faces the cannon (left) by default; walking right he turns round, except mid-reaction.
+    const mirrored = this.standing && this.facing > 0 && this.kind !== 'hit' && this.kind !== 'hat';
+    this.rig.root.setPosition(ox, oy).setScale(mirrored ? -1 : 1, 1);
+    this.ghost.root.setPosition(ox, oy).setScale(mirrored ? -1 : 1, 1);
     this.rig.apply(pose);
-    this.shadow.setPosition(this.originX + pose.body.x + 6 * this.dir, this.originY + 1);
+    this.shadow.setPosition(ox + pose.body.x + 6 * this.dir, oy + 1);
     this.shadow.setScale(0.5 * (1.15 + (pose.body.rot !== 0 ? 0.6 : 0)), 0.5 * Math.max(0.4, 1 + pose.body.y / 160));
 
     const smear = reduced ? 0 : pose.smear;
     this.ghost.root.setVisible(smear > 0);
     if (smear > 0) {
-      this.ghost.apply(jonhPose({ kind: this.kind, t: Math.max(0, this.t - 0.045), idleT: this.idleT, strength: this.strength, dir: this.dir, room: this.dir >= 0 ? this.roomRight : this.roomLeft }));
+      this.ghost.apply(this.stand(jonhPose({ kind: this.kind, t: Math.max(0, this.t - 0.045), idleT: this.idleT, strength: this.strength, dir: this.dir, room: this.dir >= 0 ? this.roomRight : this.roomLeft })));
       this.ghost.root.setAlpha(0.4 * smear);
     }
     this.speedLines.forEach((line, i) => {
       line.setVisible(smear > 0);
       if (smear > 0) {
-        line.setPosition(this.originX + pose.body.x - this.dir * (34 + i * 9), this.originY - 70 + i * 22)
+        line.setPosition(ox + pose.body.x - this.dir * (34 + i * 9), oy - 70 + i * 22)
           .setAlpha(0.8 * smear).setScale(0.5 * (0.7 + i * 0.25), 0.5);
       }
     });

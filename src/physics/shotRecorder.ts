@@ -1,6 +1,7 @@
 import Matter from '@matter-js';
 import { AIM, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
 import { levelPhysics } from '../levels/levelPhysics';
+import type { RoutePose } from '../levels/jonhRoute';
 import type { LevelData } from '../levels/types';
 import { launchVelocityToWorld, matterGravityY, metresToPixels, simYToWorldY } from '../sim/units';
 import { MatterAdapter, type MechanicEvent } from './matterAdapter';
@@ -19,6 +20,8 @@ export interface RecordedShot {
   trick: boolean;
   /** Breakable smashes and portal jumps, with the ball's velocity then (to replay their effects). */
   events: Array<{ t: number; events: MechanicEvent[]; vxSim: number; vySim: number }>;
+  /** Walking Jonh: his route pose at every recorded point (same indices as `points`); null if he stands still. */
+  jonh: RoutePose[] | null;
 }
 
 /**
@@ -42,6 +45,8 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
   };
   adapter.spawnProjectile(start.x, start.y, PROJECTILE.radiusMetres * ppm, launchVelocityToWorld(physics.launchSpeed(powerPercent), angleDeg, ppm));
   const points: RecordedPoint[] = [{ t: 0, ...start }];
+  const startPose = adapter.jonhRoutePoseAt(0);
+  const jonh: RoutePose[] | null = startPose ? [startPose] : null;
   const events: RecordedShot['events'] = [];
   const steps = Math.ceil(maxSeconds / PHYSICS.fixedStepSeconds);
   let dirX = 1;
@@ -50,13 +55,22 @@ export function recordShot(level: LevelData, angleDeg: number, powerPercent: num
     const state = adapter.stepProjectile(level, PROJECTILE.radiusMetres);
     if (!state) break;
     points.push({ t: step * PHYSICS.fixedStepSeconds, x: state.xPx, y: state.yPx });
+    if (jonh) jonh.push(adapter.jonhRoutePoseAt(step * PHYSICS.fixedStepSeconds)!);
     if (state.events.length > 0) events.push({ t: step * PHYSICS.fixedStepSeconds, events: [...state.events], vxSim: state.vxSim, vySim: state.vySim });
     if (!state.hitJonh && Math.abs(state.vxSim) > 0.05) dirX = Math.sign(state.vxSim);
     if (state.hitJonh) {
-      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody, events };
+      return { points, contactIndex: points.length - 1, impactSpeedMs: state.impactSpeedMs, dirX, trick: state.hadRicochetBeforeBody, events, jonh };
     }
   }
-  return { points, contactIndex: null, impactSpeedMs: 0, dirX, trick: false, events };
+  return { points, contactIndex: null, impactSpeedMs: 0, dirX, trick: false, events, jonh };
+}
+
+/** Jonh's recorded route pose at simulated time `t` (the nearest earlier step); null if he stands still. */
+export function sampleRecordedJonh(shot: Pick<RecordedShot, 'jonh' | 'points'>, t: number): RoutePose | null {
+  const poses = shot.jonh;
+  if (!poses || poses.length === 0) return null;
+  const i = Math.max(0, Math.min(poses.length - 1, Math.floor(t / PHYSICS.fixedStepSeconds + 1e-9)));
+  return poses[i]!;
 }
 
 /** The recorded ball position at simulated time `t` (linear between steps). */
