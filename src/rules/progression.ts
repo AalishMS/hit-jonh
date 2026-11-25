@@ -18,6 +18,11 @@ export interface Progress {
   trickHits: number;
   currentStreak: number;
   bestStreak: number;
+  /** Trick (ricochet) hits in a row, solo and daily only, like the hit streak; and the best run. */
+  trickStreak: number;
+  bestTrickStreak: number;
+  /** Maps where Jonh has been hit (any local mode except practice), for the garden feats. */
+  hitMaps: string[];
   /** Map ids with a three-star solo result. */
   threeStarMaps: string[];
   /** Daily results by local date key (YYYY-MM-DD): stars (0 = attempted, failed). */
@@ -32,21 +37,27 @@ export interface Progress {
 }
 
 export function freshProgress(): Progress {
-  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
+  return { totalHits: 0, hatHits: 0, trickHits: 0, currentStreak: 0, bestStreak: 0, trickStreak: 0, bestTrickStreak: 0, hitMaps: [], threeStarMaps: [], daily: {}, dailyShots: {}, selectedHat: 'boater', selectedCannon: DEFAULT_CANNON_SKIN, selectedOutfit: DEFAULT_OUTFIT };
 }
 
 export type ShotOutcome = 'ricochet_body' | 'body' | 'hat_only' | 'miss';
 
-/** Every resolved shot. `streak` counts only in solo/daily (multiplayer turns are shared). */
-export function recordShot(p: Progress, outcome: ShotOutcome, countsForStreak: boolean): Progress {
+/**
+ * Every resolved shot. Streaks count only in solo/daily (multiplayer turns are shared). `mapId`
+ * (the garden it was fired in) records where Jonh has been hit, for the garden feats.
+ */
+export function recordShot(p: Progress, outcome: ShotOutcome, countsForStreak: boolean, mapId?: string): Progress {
   const body = outcome === 'body' || outcome === 'ricochet_body';
   const next = { ...p, threeStarMaps: [...p.threeStarMaps], daily: { ...p.daily } };
   if (body) next.totalHits++;
   if (outcome === 'ricochet_body') next.trickHits++;
   if (outcome === 'hat_only') next.hatHits++;
+  if (body && mapId !== undefined && !p.hitMaps.includes(mapId)) next.hitMaps = [...p.hitMaps, mapId];
   if (countsForStreak) {
     next.currentStreak = body ? p.currentStreak + 1 : 0;
     next.bestStreak = Math.max(p.bestStreak, next.currentStreak);
+    next.trickStreak = outcome === 'ricochet_body' ? p.trickStreak + 1 : 0;
+    next.bestTrickStreak = Math.max(p.bestTrickStreak, next.trickStreak);
   }
   return next;
 }
@@ -119,6 +130,22 @@ export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; mu
   return options[hashString(`hit-jonh:${key}`) % options.length]!;
 }
 
+/** The longest run of consecutive days with a recorded daily attempt (ever). */
+export function bestDailyStreak(p: Progress): number {
+  const days = Object.keys(p.daily).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  let best = 0;
+  let run = 0;
+  let previous: number | null = null;
+  for (const key of days) {
+    const [y, m, d] = key.split('-').map(Number) as [number, number, number];
+    const day = Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+    run = previous !== null && day === previous + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+    previous = day;
+  }
+  return best;
+}
+
 /** Consecutive days (ending today or yesterday) with a recorded daily attempt. */
 export function dailyStreak(p: Progress, today: Date): number {
   const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -146,6 +173,9 @@ export function sanitizeProgress(raw: unknown, mapIds: readonly string[], ctx: C
   p.trickHits = count(r.trickHits);
   p.currentStreak = count(r.currentStreak);
   p.bestStreak = Math.max(count(r.bestStreak), p.currentStreak);
+  p.trickStreak = count(r.trickStreak);
+  p.bestTrickStreak = Math.max(count(r.bestTrickStreak), p.trickStreak);
+  if (Array.isArray(r.hitMaps)) p.hitMaps = [...new Set(r.hitMaps.filter((m): m is string => typeof m === 'string' && mapIds.includes(m)))];
   if (Array.isArray(r.threeStarMaps)) p.threeStarMaps = [...new Set(r.threeStarMaps.filter((m): m is string => typeof m === 'string' && mapIds.includes(m)))];
   if (r.daily && typeof r.daily === 'object' && !Array.isArray(r.daily)) {
     for (const [k, v] of Object.entries(r.daily as Record<string, unknown>)) {

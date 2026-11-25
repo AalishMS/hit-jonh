@@ -64,6 +64,8 @@ import { DAILY_LINK_PARAM, dailyLink, dailyShareText, shotCode } from '../rules/
 import { HAT_ORDER, HAT_RULES, dailyChallenge, dailyStreak, dateKey, freshProgress, newlyUnlocked, recordDaily, recordShot, recordSoloFinish, unlockedHats, type HatName, type Progress } from '../rules/progression';
 import { shareBlock } from '../ui/share';
 import { coachActive, missHint, showGhostHand } from '../rules/coach';
+import { FEATS, FEAT_GROUPS, featStatuses, featsDone, newlyCompletedFeats, type FeatInput } from '../rules/feats';
+import { buildFeats } from '../ui/feats';
 import { CoachRenderer } from '../render/coachRenderer';
 import { mapPreview } from '../ui/mapPreview';
 import type { LevelData } from '../levels/types';
@@ -122,6 +124,8 @@ export class PrototypeScene extends Phaser.Scene {
   private progress: Progress = freshProgress();
   /** Cosmetics unlocked since the last solo result screen (shown as one card there). */
   private pendingUnlocks: Unlock[] = [];
+  /** Feats completed during the current solo run, announced on its result card. */
+  private pendingFeats: string[] = [];
   /** Set while playing today's Daily Bonk (never overwrites solo bests). */
   private daily: { key: string; positionId: string } | null = null;
   /** This daily run's shots so far (rules/dailyShare.ts codes), saved with the day's first result. */
@@ -1213,7 +1217,7 @@ export class PrototypeScene extends Phaser.Scene {
 
     // Retention: hits, streak, three-star maps, daily results and cosmetic unlocks.
     const before = this.progress;
-    let after = recordShot(before, classification.outcome, this.activeMode === 'solo');
+    let after = recordShot(before, classification.outcome, this.activeMode === 'solo', this.currentLevel.id);
     const soloFinished = this.activeMode === 'solo' && this.soloMachine.state === 'solo_result';
     if (soloFinished) {
       const res = this.soloMachine.result!;
@@ -1232,6 +1236,8 @@ export class PrototypeScene extends Phaser.Scene {
         hasStyle: Boolean(prior?.hasStyle) || res.hasStyle };
     }
     const unlocks = this.newUnlocks(before, after, soloBefore, soloAfter);
+    const feats = newlyCompletedFeats(this.featInput(before, soloBefore), this.featInput(after, soloAfter));
+    this.pendingFeats.push(...feats.map(f => f.name));
     this.progress = after;
     // Storage writes wait until after the contact frame so the hit-stop starts on time.
     setTimeout(() => saveProgress(after), 0);
@@ -1239,7 +1245,10 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.activeMode === 'solo') this.htmlControls.setStreak(after.currentStreak);
     if (unlocks.length && this.activeMode === 'multi') {
       this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
+    } else if (feats.length && this.activeMode === 'multi') {
+      this.htmlControls.setFeedback(`Feat: ${feats[0]!.name}!`, 'hit');
     }
+    if (this.activeMode === 'multi') this.pendingFeats = [];
 
     if (soloFinished) {
       const res = this.soloMachine.result!;
@@ -1255,6 +1264,7 @@ export class PrototypeScene extends Phaser.Scene {
         quote,
         streak: after.currentStreak,
         unlockHtml: this.unlockHtml(this.pendingUnlocks),
+        feats: [...new Set(this.pendingFeats)],
         nextMapId,
         unlockedMapId: wasLocked ? nextMapId : null,
         campaignStars: this.daily ? undefined : (({ stars, maxStars }) => ({ stars, maxStars }))(campaignTotals(campaignAfter)),
@@ -1263,6 +1273,7 @@ export class PrototypeScene extends Phaser.Scene {
         share: this.dailyResultShare(before, after),
       };
       this.pendingUnlocks = [];
+      this.pendingFeats = [];
       if (res.success && !this.daily) {
         const [mapId, angle, power] = [this.currentLevel.id, this.currentAngleDeg, this.currentPowerPercent];
         setTimeout(() => recordSoloResult(mapId, res.shotsUsed, res.hasStyle, angle, power), 0);
@@ -1348,7 +1359,12 @@ export class PrototypeScene extends Phaser.Scene {
     const owned = unlockedHats(this.progress, MAP_IDS).length + unlockedOutfits(this.progress, ctx).length + unlockedCannonSkins(this.progress, ctx).length;
     hats.textContent = `Wardrobe ${owned}/${HAT_ORDER.length + OUTFIT_ORDER.length + CANNON_SKIN_ORDER.length}`;
     hats.addEventListener('click', () => this.showLocker(), { signal });
-    row.append(daily, hats);
+    const feats = document.createElement('button');
+    feats.type = 'button';
+    feats.className = 'btn';
+    feats.textContent = `Feats ${featsDone(this.featInput(this.progress, loadSaveData().solo))}/${FEATS.length}`;
+    feats.addEventListener('click', () => this.showFeats(), { signal });
+    row.append(daily, hats, feats);
   }
 
   /** Share extras for a finished daily run; a replay shares the day's counted (first) run, as the note says. */
@@ -2106,12 +2122,35 @@ export class PrototypeScene extends Phaser.Scene {
   /** Hats and streaks count only this player's own online shots. */
   private recordOnlineProgress(outcome: ClassifiedOutcome): void {
     const before = this.progress;
-    const after = recordShot(before, outcome, false);
+    const after = recordShot(before, outcome, false, this.currentLevel?.id);
     const solo = loadSaveData().solo;
     const unlocks = this.newUnlocks(before, after, solo, solo);
+    const feats = newlyCompletedFeats(this.featInput(before, solo), this.featInput(after, solo));
     this.progress = after;
     setTimeout(() => saveProgress(after), 0);
     if (unlocks.length) this.htmlControls.setFeedback(`New ${unlocks[0]!.kind} for Jonh: ${this.unlockName(unlocks[0]!)}!`, 'hit');
+    else if (feats.length) this.htmlControls.setFeedback(`Feat: ${feats[0]!.name}!`, 'hit');
+  }
+
+  /** What the feats look at (rules/feats.ts): progress plus the campaign totals from a set of solo bests. */
+  private featInput(progress: Progress, solo: ReturnType<typeof loadSaveData>['solo']): FeatInput {
+    return { progress, ctx: cosmeticContext(MAP_IDS, solo), mapIds: MAP_IDS };
+  }
+
+  /** Jonh's long-term goal list: every feat with its progress and the cosmetics it earns. */
+  private showFeats(): void {
+    const statuses = featStatuses(this.featInput(this.progress, loadSaveData().solo));
+    this.menuOverlay.showCustom('feats', (content, signal) => buildFeats(content, signal, {
+      groups: FEAT_GROUPS.map(group => ({
+        title: group.title,
+        rows: statuses.filter(s => s.def.group === group.id).map(s => ({
+          id: s.def.id, name: s.def.name, hint: s.def.hint, current: s.current, target: s.target, done: s.done,
+          rewards: s.def.rewards.map(r => ({ name: this.unlockName(r), art: this.unlockArt(r), kind: r.kind })),
+        })),
+      })),
+      onBack: () => this.menuOverlay.showHome(),
+      onWardrobe: () => this.showLocker(),
+    }));
   }
 
 

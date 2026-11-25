@@ -53,6 +53,8 @@ export interface SoloResultExtras {
   campaignStars?: { stars: number; maxStars: number } | undefined;
   /** First trick-shot badge on this garden. */
   newTrick?: boolean;
+  /** Feats completed during this run (rules/feats.ts), shown as ribbons. */
+  feats?: string[];
   /** A cleared garden offers Practice (P): unlimited shots that never change stars or bests. */
   practiceMapId?: string | null;
   /** Daily Bonk: the text Share puts on the clipboard (the day's counted run) and an optional note. */
@@ -71,7 +73,7 @@ export interface HandoverParty {
   autoSeconds: number;
 }
 
-export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
+export type MenuOverlayView = 'none' | 'home' | 'main' | 'map_select' | 'multi_setup' | 'settings' | 'handover' | 'round_result' | 'match_result' | 'solo_result' | 'pause' | 'locker' | 'feats' | 'daily' | 'online_setup' | 'online_lobby' | 'online_notice';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const node = document.createElement(tag);
@@ -608,6 +610,12 @@ export class MenuOverlay {
       }
     } else {
       this.content.appendChild(el('p', '', 'Three shots, zero Jonhs. He has resumed reading.'));
+    }
+    if (extras.feats?.length) {
+      const feats = el('div', 'feat-ribbons');
+      for (const name of extras.feats.slice(0, 3)) feats.appendChild(el('span', 'ribbon feat-ribbon', `Feat: ${name}`));
+      if (extras.feats.length > 3) feats.appendChild(el('span', 'ribbon feat-ribbon', `+${extras.feats.length - 3} more`));
+      this.content.appendChild(feats);
     }
     if (extras.quote) this.content.appendChild(el('p', 'quote', `“${extras.quote}”`));
     if (extras.unlockHtml) {

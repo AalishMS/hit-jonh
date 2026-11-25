@@ -334,3 +334,39 @@
 .menu-content .mode-chip + .mode-chip { border-left: 3px solid var(--ink); }
 .menu-content .mode-chip.active { background: var(--zap); }
 .menu-content .mode-chip:hover { transform: none; }
+
+/* ---------- Feats (next 10): the long-term goal list ---------- */
+.view-feats { width: min(760px, 100%); }
+.feats-tally { margin-bottom: 10px; }
+.feats-list { display: grid; gap: 14px; text-align: left; }
+.feats-group-title { margin: 6px 0 6px; font: 400 20px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
+.feats-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.feat { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px;
+  background: #fff; border: 3px solid var(--ink); border-radius: 14px; box-shadow: 0 3px 0 var(--ink); }
+.feat.done { background: #FFF3C4; }
+.feat-medal { position: relative; width: 30px; height: 30px; border: 3px solid var(--ink); border-radius: 50%; background: var(--stone, #C3BDD6); }
+.feat.done .feat-medal { background: var(--hat); }
+.feat.done .feat-medal::after { content: '★'; position: absolute; inset: 0; display: grid; place-items: center; font: 400 16px/1 var(--display); color: var(--ink); }
+.feat-text { display: grid; gap: 2px; min-width: 0; }
+.feat-text strong { font: 400 17px/1.1 var(--display); letter-spacing: .3px; text-transform: uppercase; color: var(--ink); }
+.feat-hint { font: 800 13px/1.3 var(--ui); color: var(--muted); }
+.feat-progress { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.feat-meter { flex: 1; height: 10px; max-width: 260px; overflow: hidden; border: 2px solid var(--ink); border-radius: 999px; background: var(--paper); }
+.feat-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--hat), var(--zap)); }
+.feat-count { font: 900 12px var(--ui); color: var(--ink); white-space: nowrap; }
+.feat-rewards { display: flex; gap: 6px; justify-content: flex-end; }
+.feat-reward { display: grid; justify-items: center; gap: 1px; width: 64px; text-align: center; }
+.feat-reward-art { display: grid; place-items: center; width: 52px; height: 42px; }
+.feat-reward-art svg, .feat-reward-art img { width: 100%; height: 100%; object-fit: contain; overflow: visible; }
+.feat:not(.done) .feat-reward-art { filter: grayscale(.85) opacity(.6); }
+.feat-reward small { font: 900 10px/1.1 var(--ui); color: var(--muted); }
+.feat-badge { padding: 3px 8px 2px; border: 2px dashed var(--muted); border-radius: 999px; font: 900 11px var(--ui); color: var(--muted); white-space: nowrap; }
+.feat.done .feat-badge { border: 2px solid var(--ink); background: var(--pow); color: var(--paper); }
+.feat-ribbons { margin: 6px 0 0; }
+.ribbon.feat-ribbon { background: var(--hat); color: var(--ink); }
+@media (max-width: 560px) {
+  .feat { grid-template-columns: 30px 1fr; }
+  .feat-rewards { grid-column: 2; justify-content: flex-start; }
+}
+/* Jonh's outfit figure draws his chair and feet below its box (as in the wardrobe). */
+.feat-reward-outfit .feat-reward-art { margin-bottom: 14px; }
