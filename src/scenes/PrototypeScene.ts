@@ -15,6 +15,9 @@ import {
 } from '../rules/cosmetics';
 import { outfitFigureSvg } from '../art/outfitArt';
 import { cannonSkinFigureSvg } from '../art/cannonArt';
+import { cannonSkinGroup, cosmeticArtGroups, hatGroup, levelArtGroups, outfitGroup, playerBarrelGroups } from '../art/library';
+import { artMeta, artReady, whenArtReady } from '../render/artTextures';
+import { pickAttractLevel } from './attractLevel';
 import { readabilityBoost } from '../fx/readability';
 import { playTitleCard, TITLE_CARD_SECONDS } from '../ui/transition';
 import { campaignOrder } from '../rules/campaign';
@@ -295,8 +298,7 @@ export class PrototypeScene extends Phaser.Scene {
         this.lastPartyShot = null;
         this.matchHighlights = [];
         this.trailHistory.clear();
-        this.loadMultiplayerMap(this.multiMachine.currentMapId);
-        this.updateUIPerMultiState();
+        this.loadMultiplayerMap(this.multiMachine.currentMapId, () => this.updateUIPerMultiState());
       },
       onPauseResume: () => this.sessionCoordinator.resume(),
       onPauseQuit: () => this.sessionCoordinator.quit(),
@@ -536,10 +538,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   /** A garden the player has unlocked (ordinary width, so the title framing fits). */
   private pickAttractLevel(): LevelData {
-    const fits = (m: LevelData) => m.bounds.maxX * WORLD.pixelsPerMetre <= WORLD.designWidthPx;
-    const open = campaignStatus(MAP_IDS, loadSaveData().solo).filter(e => e.unlocked).map(e => MAPS.find(m => m.id === e.mapId)!)
-      .filter(m => m && fits(m) && m.referenceSolutions.length > 0);
-    return open.length > 0 ? open[Math.floor(Math.random() * open.length)]! : MAPS[0]!;
+    return pickAttractLevel(id => artReady(levelArtGroups(id)));
   }
 
   private hideAttract(): void {
@@ -606,6 +605,11 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null): void {
+    // Art is rasterized the first time a garden (or hat, outfit, cannon) is needed; wait for it, then build the scene.
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups()], () => this.loadMapNow(mapId, daily));
+  }
+
+  private loadMapNow(mapId: string, daily: { key: string; positionId: string } | null): void {
     this.hideAttract();
     this.autoAdvance.cancel();
     this.resetEffects();
@@ -1188,12 +1192,17 @@ export class PrototypeScene extends Phaser.Scene {
     return isBodyHit ? Math.max(FLOW.bodyHitResultSeconds, replaySeconds + 0.6) : FLOW.shotResultSeconds;
   }
 
-  /** A rasterized hat as an image URL for HTML menus. */
+  /** The art groups for what Jonh and the cannon currently wear. */
+  private cosmeticGroups(): string[] {
+    return cosmeticArtGroups({ hat: this.progress.selectedHat, outfit: this.progress.selectedOutfit, cannon: this.progress.selectedCannon });
+  }
+
+  /** A hat as an image URL for HTML menus. */
   private hatImage(id: HatName): string {
     const cached = this.hatImages.get(id);
     if (cached) return cached;
-    const source = this.textures.get(`hat-${id}`).getSourceImage() as HTMLCanvasElement;
-    const url = typeof source.toDataURL === 'function' ? source.toDataURL() : '';
+    // Straight from the SVG: the hat texture may not be rasterized yet, and the menu <img> draws it crisply.
+    const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(artMeta(`hat-${id}`).svg)}`;
     this.hatImages.set(id, url);
     return url;
   }
@@ -1323,19 +1332,19 @@ export class PrototypeScene extends Phaser.Scene {
       title: 'Hats',
       items: HAT_ORDER.map(id => ({ id, name: HAT_RULES[id].name, hint: HAT_RULES[id].hint, unlocked: unlockedHatIds.has(id),
         selected: this.progress.selectedHat === id, image: this.hatImage(id) })),
-      onSelect: id => { this.attract?.stage.jonh.setHat(id as HatName); choose({ selectedHat: id as HatName }); },
+      onSelect: id => whenArtReady(this, [hatGroup(id)], () => { this.attract?.stage.jonh.setHat(id as HatName); choose({ selectedHat: id as HatName }); }),
     }, {
       id: 'outfits',
       title: 'Outfits',
       items: OUTFIT_ORDER.map(id => ({ id, name: OUTFIT_RULES[id].name, hint: OUTFIT_RULES[id].hint, unlocked: outfits.has(id),
         selected: this.progress.selectedOutfit === id, svg: outfitFigureSvg(id, this.progress.selectedHat) })),
-      onSelect: id => { this.attract?.stage.jonh.setOutfit(id as OutfitId); choose({ selectedOutfit: id as OutfitId }); },
+      onSelect: id => whenArtReady(this, [outfitGroup(id as OutfitId)], () => { this.attract?.stage.jonh.setOutfit(id as OutfitId); choose({ selectedOutfit: id as OutfitId }); }),
     }, {
       id: 'cannons',
       title: 'Cannons',
       items: CANNON_SKIN_ORDER.map(id => ({ id, name: CANNON_SKIN_RULES[id].name, hint: CANNON_SKIN_RULES[id].hint, unlocked: skins.has(id),
         selected: this.progress.selectedCannon === id, svg: cannonSkinFigureSvg(id) })),
-      onSelect: id => { this.attract?.stage.cannon.setSkin(id as CannonSkinId); choose({ selectedCannon: id as CannonSkinId }); },
+      onSelect: id => whenArtReady(this, [cannonSkinGroup(id as CannonSkinId)], () => { this.attract?.stage.cannon.setSkin(id as CannonSkinId); choose({ selectedCannon: id as CannonSkinId }); }),
     }];
     const campaign = campaignTotals(campaignStatus(MAP_IDS, loadSaveData().solo));
     this.menuOverlay.showCustom('locker', (content, signal) => buildWardrobe(content, signal, {
@@ -1607,8 +1616,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.activeMode = 'multi';
     this.multiMachine = machine;
     this.trailHistory.clear();
-    this.loadMultiplayerMap(machine.currentMapId);
-    this.updateUIPerMultiState();
+    this.loadMultiplayerMap(machine.currentMapId, () => this.updateUIPerMultiState());
   }
 
   /** Draws the cannon in the active player's colour and pattern (solo keeps the default look). */
@@ -1623,7 +1631,12 @@ export class PrototypeScene extends Phaser.Scene {
     }
   }
 
-  private loadMultiplayerMap(mapId: string): void {
+  /** Builds the map's scene (waiting for its art if it has not been rasterized yet), then runs `then`. */
+  private loadMultiplayerMap(mapId: string, then?: () => void): void {
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups(), ...playerBarrelGroups(this.multiMachine.players)], () => { this.loadMultiplayerMapNow(mapId); then?.(); });
+  }
+
+  private loadMultiplayerMapNow(mapId: string): void {
     this.autoAdvance.cancel();
     this.resetEffects();
     const level = MAPS.find(m => m.id === mapId);
@@ -1853,7 +1866,8 @@ export class PrototypeScene extends Phaser.Scene {
     this.multiMachine.nextRound();
     if (!this.multiMachine.isMatchComplete) {
       this.trailHistory.clear();
-      this.loadMultiplayerMap(this.multiMachine.currentMapId);
+      this.loadMultiplayerMap(this.multiMachine.currentMapId, () => this.updateUIPerMultiState());
+      return;
     }
     this.updateUIPerMultiState();
   }

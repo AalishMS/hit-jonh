@@ -66,7 +66,7 @@ function hillsPath(w: number, h: number, base: number, bumps: Array<[number, num
   return `${d} L${w} ${h - 3} L0 ${h - 3} Z`;
 }
 
-function themeArt(t: Theme): ArtDef[] {
+export function themeArt(t: Theme): ArtDef[] {
   const farHouses = t.skyline === 'town'
     ? [40, 130, 230, 300, 420, 520, 610, 700, 800].map((x, i) => {
       const hh = 40 + ((i * 37) % 55);
@@ -146,13 +146,13 @@ function starsArt(t: Theme): ArtDef {
   return bg(`stars-${t.id}`, 512, 256, stars, 0, 0);
 }
 
-const clouds: ArtDef[] = [
+export const clouds: ArtDef[] = [
   bg('cloud-a', 150, 60, `<path d="M18 50 Q4 50 6 38 Q8 26 24 28 Q28 10 50 12 Q66 2 82 14 Q102 6 112 24 Q134 22 140 38 Q146 52 126 52 Z" fill="${PAL.paper}"/><path d="M10 46 Q60 56 138 46 Q134 54 124 54 L20 54 Q10 54 10 46 Z" fill="#E4EEF2" opacity="0.8"/>`, 75, 30),
   bg('cloud-b', 110, 46, `<path d="M14 40 Q2 40 4 30 Q8 20 20 22 Q26 6 46 10 Q60 2 72 14 Q92 10 98 26 Q108 30 102 40 Z" fill="${PAL.paper}"/><path d="M6 36 Q50 44 104 36 Q100 42 92 42 L14 42 Q6 42 6 36 Z" fill="#E4EEF2" opacity="0.8"/>`, 55, 23),
   bg('cloud-c', 80, 34, `<path d="M10 30 Q2 30 4 22 Q8 14 18 16 Q24 4 40 8 Q54 4 62 16 Q76 16 76 26 Q76 31 68 31 Z" fill="${PAL.paper}"/>`, 40, 17),
 ];
 
-const props: ArtDef[] = [
+export const props: ArtDef[] = [
   {
     key: 'sun-rays', w: 300, h: 300, ax: 150, ay: 150, scale: 1,
     svg: svgDoc(300, 300, Array.from({ length: 12 }, (_, i) => {
