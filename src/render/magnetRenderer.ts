@@ -18,7 +18,7 @@ const CABLE_OVERRUN_PX = 600;
 const CHAIN_RISE_PX = 26;
 
 /**
- * A level's electromagnet on screen (SPEC §8.9): the crane cable it hangs from (running up out of
+ * A level's electromagnet on screen (SPEC §8.10): the crane cable it hangs from (running up out of
  * shot), lifting chains, faint field rings that show its reach and drift inwards (the pull), and a
  * glow plus sparks that swell as the ball comes near (from the drawn ball, so replays and the title
  * demo light it up too). The housing itself is an obstacle texture (art/magnetArt.ts). Nothing here

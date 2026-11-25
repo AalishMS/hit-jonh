@@ -16,6 +16,8 @@ export const MAGNET_LEVEL: LevelData = {
   mechanic: 'magnet',
   name: 'The Scrapyard',
   difficulty: 2,
+  // Joins the Daily Bonk the day after it shipped, so the Daily of the deploy day stays the one players already had.
+  dailyFrom: '2026-11-26',
   bounds: GARDEN_BOUNDS,
   ground: { ...GARDEN_GROUND, material: 'gravel' },
   cannonSpawn: GARDEN_CANNON,

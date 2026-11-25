@@ -17,6 +17,8 @@ export const STROLL_LEVEL: LevelData = {
   mechanic: 'walking',
   name: 'The Afternoon Stroll',
   difficulty: 2,
+  // Joins the Daily Bonk the day after it shipped, so the Daily of the deploy day stays the one players already had.
+  dailyFrom: '2026-11-26',
   bounds: GARDEN_BOUNDS,
   ground: GARDEN_GROUND,
   cannonSpawn: GARDEN_CANNON,

@@ -373,7 +373,7 @@ export class MatterAdapter {
   }
 
   /**
-   * The electromagnet [PROPOSED 2026-11-25] (SPEC §8.9): its pull on the ball where it is now, as a
+   * The electromagnet [PROPOSED 2026-11-25] (SPEC §8.10): its pull on the ball where it is now, as a
    * force for Matter's *next* update, added exactly like wind (and gravity), so it is stepped only by
    * the fixed step and the swept guard sees the velocity Matter produced. Ball only, never a contact,
    * skipped while the ball rests on a surface (so it settles); with no magnet nothing is touched.

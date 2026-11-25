@@ -1215,6 +1215,7 @@ export class AudioManager {
     this.setFlightWhoosh(null);
     this.setRampRumble(null);
     this.setMagnetHum(null);
+    this.setSkid(null);
     this.stopWind(true);
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
     if (this.musicTimer) clearInterval(this.musicTimer);

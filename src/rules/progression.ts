@@ -154,8 +154,10 @@ export interface DailyPick { mapId: string; positionId: string }
  * Today's challenge: a map and one of its authored, physics-validated multiplayer target
  * positions, chosen deterministically from the date (same for every player that day).
  */
-export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; multiplayerPositions?: ReadonlyArray<{ id: string }> }>): DailyPick | null {
-  const options = maps.flatMap(m => (m.multiplayerPositions ?? []).map(p => ({ mapId: m.id, positionId: p.id })));
+export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; multiplayerPositions?: ReadonlyArray<{ id: string }>; dailyFrom?: string }>): DailyPick | null {
+  // Maps join the pool on their `dailyFrom` day (date keys compare as strings), so adding one never changes a day already set.
+  const options = maps.filter(m => m.dailyFrom === undefined || m.dailyFrom <= key)
+    .flatMap(m => (m.multiplayerPositions ?? []).map(p => ({ mapId: m.id, positionId: p.id })));
   if (options.length === 0) return null;
   return options[hashKey(`hit-jonh:${key}`) % options.length]!;
 }

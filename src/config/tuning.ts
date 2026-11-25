@@ -359,7 +359,7 @@ export const MATERIALS = {
   velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   /** Skate ramp [PROPOSED 2026-11-25][TUNE]: varnished plywood; a lively bounce and a long roll. */
   plywood: { restitution: 0.3, friction: 0.5, rollingResistance: 0.03 },
-  /** Scrapyard [PROPOSED 2026-11-25][TUNE]: crushed-car stacks thud; the electromagnet's face is dead (the ball clunks and drops off). */
+  /** Scrapyard [PROPOSED 2026-11-25][TUNE]: crushed-car stacks thud; the electromagnet's face is dead (a ball that touches it is held there; matterAdapter). */
   scrap: { restitution: 0.3, friction: 0.7, rollingDamping: 0.9 },
   magnet: { restitution: 0.1, friction: 0.9 },
   /**
@@ -369,7 +369,7 @@ export const MATERIALS = {
    */
   ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.5 },
   snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2, stopBelowMs: 0.3 },
-  /** The shelter's front flap: soft canvas that swallows a ball. */
+  /** Frozen Pond: the hut's canvas door, soft enough to swallow a ball. */
   canvas: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
@@ -501,7 +501,7 @@ export const WIND = {
 } as const;
 
 /**
- * A level's electromagnet [PROPOSED 2026-11-25][TUNE] (SPEC §8.9). The physics values (centre, reach,
+ * A level's electromagnet [PROPOSED 2026-11-25][TUNE] (SPEC §8.10). The physics values (centre, reach,
  * strongest pull) live in level data (`LevelData.magnet`); these are the limits it is validated
  * against, the field's core, and the presentation values. The pull acts on the ball only.
  */

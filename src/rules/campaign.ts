@@ -10,7 +10,7 @@
 /**
  * Campaign order [PROPOSED]: the gentle gardens, then each mechanic introduced on its own (smash
  * through glass, read the wind, bank off rubber, bank off a billboard, a magic hoop, low gravity, a trampoline),
- * the long shot, then the newest gardens at the end (the scrapyard magnet) until chapters are regrouped.
+ * the long shot, then Chapter 5 easiest first (ice, the skate ramp, the scrapyard magnet; rules/chapters.ts).
  */
 export const CAMPAIGN_ORDER: readonly string[] = ['backyard', 'fence', 'rooftop', 'greenhouse', 'washday', 'rubber', 'bankshot', 'magic', 'stroll', 'moon', 'trampoline', 'valley', 'pond', 'skatepark', 'magnet'];
 

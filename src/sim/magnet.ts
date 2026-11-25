@@ -1,5 +1,5 @@
 /**
- * Pure maths for a level's electromagnet (SPEC §8.9) in SI units (metres, m/s², +y up): the pull it
+ * Pure maths for a level's electromagnet (SPEC §8.10) in SI units (metres, m/s², +y up): the pull it
  * puts on the (iron) cannonball. No Phaser, no Matter; the physics adapter converts the result.
  *
  * Falloff [PROPOSED 2026-11-25], drawn as two rings: the pull points at the magnet's centre at full

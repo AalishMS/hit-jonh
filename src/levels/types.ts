@@ -167,6 +167,12 @@ export interface LevelData {
    * see clear (The Scrapyard's magnet hangs at the top centre). Presentation only; false when omitted.
    */
   captionLow?: boolean;
+  /**
+   * The first day (local `YYYY-MM-DD`) this map can be the Daily Bonk; always when omitted. A map added later
+   * joins from a future day, so the Daily of today and of every past day stays the same for everyone, whatever
+   * build they run, and friends comparing a day played the same garden.
+   */
+  dailyFrom?: string;
   /** Shown as pips in the map pickers: 1 easy, 3 hardest. */
   difficulty: 1 | 2 | 3;
   /** Gravity on this map (m/s²); PHYSICS.gravity when omitted. */

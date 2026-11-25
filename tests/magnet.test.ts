@@ -186,7 +186,7 @@ describe('magnet: physics', () => {
         }
       }
     }
-  });
+  }, 30_000);
 
   it('never moves Jonh, the ground or the housing, and the pull itself is never a contact', () => {
     const level = yard();

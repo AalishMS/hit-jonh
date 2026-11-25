@@ -2,7 +2,7 @@ import { MAGNET } from '../config/tuning';
 import { clamp01 } from './easing';
 
 /**
- * Pure presentation maths for a level's electromagnet (SPEC §8.9): where its field rings sit, how
+ * Pure presentation maths for a level's electromagnet (SPEC §8.10): where its field rings sit, how
  * bright they are, and how strongly the magnet glows as the ball comes near. No Phaser; the renderer
  * only draws these numbers, and nothing here touches the simulation.
  */

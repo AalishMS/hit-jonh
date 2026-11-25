@@ -1733,3 +1733,16 @@ A fresh reviewer read `f973f4f..37fd6f4` (everything except the Chapter 5 garden
 6. A double tap on Show QR code showed two codes; now one (browser-checked).
 - Also: the idle-board cleanup deletes 4 boards per transaction instead of 20, far inside Convex's per-transaction write limit.
 - After the fixes: `Test Files 95 passed (95)`, `Tests 971 passed | 12 skipped (983)`; lint clean.
+
+### Independent review fixes (round 3, garden merges)
+A fresh reviewer read `76e5522..9b6dd1a` (the three garden merges and Chapter 5). It found nothing serious:
+- **The adapter merge kept every branch's logic:** every line each branch added is present or deliberately combined (box bounces in `reflect()`), and none it deleted came back.
+- **The twelve earlier gardens are bit for bit unchanged:** 26,208 grid shots at every target position, each with a SHA-256 of every step, give the same combined digest at `f973f4f` and after the merges (`89ae63fc…`).
+- **The three new gardens play exactly as on their own branches** (identical digests), with no timeouts and their difficulty bands intact.
+
+Fixed:
+1. **The ramp rumble, magnet hum, ice scrape and flight whoosh kept looping through the pause menu** (they are driven every frame, and no frame runs while paused). Pausing now stops them; the first frame after Resume drives them again. `AudioManager.destroy` also stops the scrape.
+2. **Adding gardens re-picked the Daily Bonk** (the pick hashes the date over every map's target positions), so on deploy day production players would get a different Daily from the one they had, and friends on different builds could be ranked on different gardens. A map now joins the Daily pool from its `dailyFrom` day: the seven gardens added since the first release join on 2026-11-26, so every day up to and including deploy day keeps the first-release pick (tested).
+3. A magnet test could pass its 5 s default timeout on a busy machine; it now has 30 s, like the other heavy physics tests.
+- Also: the listening page stops a continuous sound when its case ends; stale comments (the magnet's SPEC section, the magnet "drops off", the hut's canvas door, the campaign order) corrected.
+- After the fixes: `Test Files 101 passed (101)`, `Tests 1091 passed | 15 skipped (1106)`; typecheck and lint clean.

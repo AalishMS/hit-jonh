@@ -80,10 +80,20 @@ function main(): void {
     say(warn);
     return true;
   };
+  // Continuous sounds (whoosh, ramp rumble, magnet hum, ice scrape) are driven every frame in the game; here
+  // they are stopped once their case has played.
+  let stopLoops: number | null = null;
   const play = (c: Case) => {
     start();
     for (const id of timers.splice(0)) window.clearInterval(id);
+    if (stopLoops !== null) window.clearTimeout(stopLoops);
     c.play(audio, (t, fn) => { window.setTimeout(fn, t * 1000); });
+    stopLoops = window.setTimeout(() => {
+      audio.setFlightWhoosh(null);
+      audio.setRampRumble(null);
+      audio.setMagnetHum(null);
+      audio.setSkid(null);
+    }, c.seconds * 1000);
   };
 
   const app = document.getElementById('app')!;

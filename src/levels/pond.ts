@@ -30,6 +30,8 @@ export const POND_LEVEL: LevelData = {
   mechanic: 'ice',
   name: 'Frozen Pond',
   difficulty: 2,
+  // Joins the Daily Bonk the day after it shipped, so the Daily of the deploy day stays the one players already had.
+  dailyFrom: '2026-11-26',
   bounds: GARDEN_BOUNDS,
   ground: { minX: 0, maxX: 25.6, minY: 0, maxY: 1.6, material: 'snow' },
   cannonSpawn: GARDEN_CANNON,

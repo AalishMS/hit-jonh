@@ -286,6 +286,12 @@ export class PrototypeScene extends Phaser.Scene {
     this.sessionCoordinator = new SessionCoordinator({
       onPause: () => {
         this.audioManager.setWindBed(null);
+        // The continuous flight sounds are driven every frame, and no frame runs while paused: stop them here
+        // (the first frame after Resume drives them again).
+        this.audioManager.setFlightWhoosh(null);
+        this.audioManager.setRampRumble(null);
+        this.audioManager.setMagnetHum(null);
+        this.audioManager.setSkid(null);
         this.canvasAim.cancel();
         this.inputCoordinator.setPaused(true);
         this.htmlControls.setControlsInert(true);
