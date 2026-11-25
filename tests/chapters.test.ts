@@ -8,24 +8,27 @@ import {
 const best = (bestShots: number | null, hasStyle = false): MapRecord => ({ bestShots, hasStyle });
 const solo = (...cleared: Array<[string, number]>): Record<string, MapRecord> =>
   Object.fromEntries(cleared.map(([id, shots]) => [id, best(shots)]));
+/** The gardens with a chapter. Gardens added to the campaign since (Frozen Pond) wait in "More gardens" until they get one. */
+const CHAPTERED = CHAPTERS.flatMap(c => c.mapIds);
 
 describe('chapters', () => {
-  it('are four chapters of three that cover the campaign order exactly, in order', () => {
+  it('are four chapters of three that cover the campaign order from its start, in order', () => {
     expect(CHAPTERS).toHaveLength(4);
     for (const chapter of CHAPTERS) expect(chapter.mapIds).toHaveLength(3);
-    expect(CHAPTERS.flatMap(c => c.mapIds)).toEqual([...CAMPAIGN_ORDER]);
+    expect(CHAPTERED).toEqual(CAMPAIGN_ORDER.slice(0, CHAPTERED.length));
     for (const chapter of CHAPTERS) expect(chapter.name.trim().length).toBeGreaterThan(0);
     expect(new Set(CHAPTERS.map(c => c.name)).size).toBe(CHAPTERS.length);
   });
 
-  it('group every real map and leave no extras today', () => {
+  it('group every real map; a garden without a chapter yet waits in More gardens', () => {
     const chapters = chapterStatuses(campaignStatus(MAP_IDS, {}));
-    expect(chapters.map(c => c.number)).toEqual([1, 2, 3, 4]);
+    expect(chapters.map(c => c.number)).toEqual([1, 2, 3, 4, null]);
+    expect(chapters.at(-1)!.entries.map(e => e.mapId)).toEqual(CAMPAIGN_ORDER.filter(id => !CHAPTERED.includes(id)));
     expect(chapters.flatMap(c => c.entries.map(e => e.mapId))).toEqual(campaignStatus(MAP_IDS, {}).map(e => e.mapId));
   });
 
   it('a fresh save: only chapter 1 is open, nothing complete, stars 0 of 9', () => {
-    const chapters = chapterStatuses(campaignStatus(CAMPAIGN_ORDER, {}));
+    const chapters = chapterStatuses(campaignStatus(CHAPTERED, {}));
     expect(chapters.map(c => c.unlocked)).toEqual([true, false, false, false]);
     expect(chapters.map(c => c.complete)).toEqual([false, false, false, false]);
     expect(chapters[0]).toMatchObject({ stars: 0, maxStars: 9, cleared: 0, count: 3, lockedBy: null });
@@ -106,7 +109,7 @@ describe('chapters', () => {
   });
 
   describe('maps outside the chapters', () => {
-    const ids = [...CAMPAIGN_ORDER, 'zeta', 'omega'];
+    const ids = [...CHAPTERED, 'zeta', 'omega'];
 
     it('form a trailing unnumbered group with no title card and no celebration', () => {
       const entries = campaignStatus(ids, {});
@@ -116,13 +119,13 @@ describe('chapters', () => {
       expect(extras).toMatchObject({ number: null, name: EXTRAS_CHAPTER_NAME, count: 2, complete: false });
       expect(chapterLabel(extras)).toBe(EXTRAS_CHAPTER_NAME);
       expect(chapterOpenedBy(entries, 'zeta')).toBeNull();
-      const cleared = campaignStatus(ids, solo(...CAMPAIGN_ORDER.map(id => [id, 1] as [string, number]), ['zeta', 1], ['omega', 1]));
+      const cleared = campaignStatus(ids, solo(...CHAPTERED.map(id => [id, 1] as [string, number]), ['zeta', 1], ['omega', 1]));
       expect(chapterStatuses(cleared).at(-1)!.complete).toBe(false);
-      expect(chapterCompletedBy(campaignStatus(ids, solo(...CAMPAIGN_ORDER.map(id => [id, 1] as [string, number]), ['zeta', 1])), cleared, 'omega')).toBeNull();
+      expect(chapterCompletedBy(campaignStatus(ids, solo(...CHAPTERED.map(id => [id, 1] as [string, number]), ['zeta', 1])), cleared, 'omega')).toBeNull();
     });
 
     it('a game missing some chapter maps drops empty chapters and keeps the numbers of the rest', () => {
-      const without = CAMPAIGN_ORDER.filter(id => id !== 'greenhouse' && id !== 'washday' && id !== 'rubber');
+      const without = CHAPTERED.filter(id => id !== 'greenhouse' && id !== 'washday' && id !== 'rubber');
       const chapters = chapterStatuses(campaignStatus(without, {}));
       expect(chapters.map(c => c.number)).toEqual([1, 3, 4]);
     });

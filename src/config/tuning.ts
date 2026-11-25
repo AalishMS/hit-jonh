@@ -324,7 +324,7 @@ export const MATERIALS = {
    * up), no rolling damping, a low bounce, and a gentle constant slide friction: a ball that lands on
    * it keeps nearly all its horizontal speed and slides for metres. Snow round the pond stops it dead.
    */
-  ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.2 },
+  ice: { restitution: 0.1, friction: 0, rollingDamping: 1, slideFrictionMs2: 1.5 },
   snow: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88, tangentKept: 0.2 },
   /** The shelter's front flap: soft canvas that swallows a ball. */
   canvas: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
@@ -416,6 +416,17 @@ export const MECHANIC_FX = {
   exitScale: 0.8,
   exitSquash: 0.45,
 };
+
+/**
+ * Ice skids, presentation only [PROPOSED 2026-11-25][TUNE] (the physics lives in MATERIALS.ice): the skid
+ * speed that counts as full strength for the spray and the scrape, and the ice spray kicked up behind a
+ * gliding ball (one puff every few fixed steps, above a minimum speed). Reduced motion drops the spray.
+ */
+export const ICE_FX = {
+  fullSpeedMs: 10,
+  sprayEverySteps: 3,
+  sprayFromSpeedMs: 0.6,
+} as const;
 
 /**
  * Constant per-level wind [PROPOSED 2026-11-25][TUNE]. The physics value lives in level data
@@ -560,6 +571,11 @@ export const AUDIO = {
     /** Pitch spread between steps. */
     pitchSpread: 0.12,
   },
+  /**
+   * Ice skid [PROPOSED 2026-11-25][TUNE]: the scrape of a ball gliding on ice, on the surface cue's bus
+   * (scenery tier): its gain at full strength (ICE_FX.fullSpeedMs).
+   */
+  skid: { gain: 0.3 },
   /** Rate limits (seconds between sounds, and a cap per window) so bursts never stack into noise. */
   limits: {
     emoteIn: { minGapSeconds: 0.3, windowSeconds: 3, maxInWindow: 3 },

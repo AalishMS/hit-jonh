@@ -412,7 +412,11 @@ export class MatterAdapter {
         const [vx, vy, dot] = dotNow < 0 ? [matterVx, matterVy, dotNow] : [inVx, inVy, dotIn];
         const mat = (MATERIALS as Record<string, { restitution: number; friction: number }>)[earliestHit.material] ?? { restitution: 0.2, friction: 0.5 };
         const projMat = MATERIALS.cannonball;
-        const restitution = Math.max(mat.restitution, projMat.restitution);
+        // Ice [PROPOSED 2026-11-25]: a slide surface's own low bounce wins, so a landing ball skates off
+        // at once instead of skipping; every other surface bounces at least as much as the ball itself.
+        const restitution = (MATERIALS as Record<string, MaterialProps>)[earliestHit.material]?.slideFrictionMs2 !== undefined
+          ? mat.restitution
+          : Math.max(mat.restitution, projMat.restitution);
 
         let vNewMatterX = vx - (1 + restitution) * dot * matterNormalX;
         let vNewMatterY = vy - (1 + restitution) * dot * matterNormalY;
