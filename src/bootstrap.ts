@@ -1,3 +1,5 @@
+import { registerServiceWorker } from './pwaRegister';
+
 // Keep the loading fallback independent of the game bundle so failed imports
 // still leave the player a useful retry action.
 const statusElement = document.getElementById('game-status');
@@ -16,3 +18,4 @@ function showLoadingFailure(): void {
 
 window.addEventListener('error', showLoadingFailure, { once: true });
 void import('./main').catch(showLoadingFailure);
+registerServiceWorker();

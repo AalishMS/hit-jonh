@@ -403,6 +403,7 @@ Rules:
 | Phaser | 4.2.1 (bundles Matter.js 0.20.0 and its own TS types) |
 | Vitest | 5.0.3 |
 | ESLint / typescript-eslint | 10.12.0 / 8.71.0 |
+| @types/node | 22.20.5 (dev only: types for the build plugin in `build/`) |
 
 **Why Phaser + Matter over a plain canvas:** Phaser supplies scene management, scaling, input, tweens/animation, audio, and a Matter debug renderer; Matter supplies rigid bodies, materials, and constraints needed for future moving props, chain reactions, and possible ragdolls. A plain canvas with a custom ballistic integrator would be smaller (Phaser is ≈ 357 kB gzipped) and gives exact analytic flight with easy swept tests, but every presentation system would be hand-built, and moving props/chain reactions would require writing a rigid-body solver — the hardest part. The canvas approach's strengths (exact maths, swept collisions, determinism) are retained by keeping ballistics, sweeps and rules in pure TypeScript.
 
@@ -425,6 +426,11 @@ tests/      Vitest
 ```
 
 `sim/`, `rules/`, `levels/` must not import Phaser.
+
+### 13.3 Art loading and offline install [PROPOSED]
+
+- **Lazy art.** Every illustration is an SVG rasterized in the browser (`src/art/*`). Rasterizing costs tens of milliseconds per image on a phone, so art is split into groups (`src/art/library.ts`: core, one per hat, outfit, cannon skin and player barrel, and per map) and a group is rasterized the first time something needs it (`src/render/artTextures.ts`). Boot loads the core set, what Jonh and the cannon wear, and one garden. Small art in a batch is packed into atlas pages (`src/art/atlasPack.ts`); tiled textures keep a texture of their own. Sizes and pivots of all art are known from the start, so physics, layout and the rules layer never wait for pixels.
+- **Offline install.** Production builds (never `npm run dev`) emit `manifest.webmanifest`, install icons (`public/icons/`, regenerated from the game's art by `scripts/make-icons.mjs`) and `sw.js` (`build/pwa.ts`, `build/sw.template.js`). The worker precaches the built assets under a cache named for the build's content hash, takes pages over when a new build is ready, and deletes older caches on activate. It handles same-origin GETs only: pages network-first (offline: the cached shell, so `?room=CODE` still opens the app), built assets cache-first. Cross-origin traffic, in particular the Convex backend, is never intercepted or cached, so online rooms always use the network. Solo, hot-seat and Daily Bonk work offline after the first visit; online rooms need a connection.
 
 ## 14. Milestones and acceptance criteria
 
