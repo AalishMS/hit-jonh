@@ -53,6 +53,8 @@ Open http://localhost:5173. Dev-only URL flags:
 - `?debug` draws the Matter physics bodies.
 - `?tune` opens a live panel for every presentation value (hit-stop, slow motion, shake, zoom, particles, replay). **Copy JSON** gives values to paste into `src/config/tuning.ts`.
 
+Dev-only pages: `audio-levels.html` measures every sound offline against its loudness tier, and `listen.html` is for tuning by ear. Play each sound and the in-game mixes, move a cue's slider until it sits right, then **Copy trims** for `AUDIO.cueTrimDb`. To listen on a phone, run `npm run dev -- --host` and open the LAN address.
+
 ## Build
 
 ```bash

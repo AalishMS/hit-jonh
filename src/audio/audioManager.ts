@@ -215,9 +215,10 @@ export class AudioManager {
     this.applyMaster();
   }
 
-  setMusicEnabled(enabled: boolean): void {
+  /** `persist: false` (the listening page) changes this session only, not the saved setting. */
+  setMusicEnabled(enabled: boolean, persist = true): void {
     this._music = enabled;
-    saveSettings({ music: enabled });
+    if (persist) saveSettings({ music: enabled });
     if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(enabled ? AUDIO.musicGain : 0, this.ctx.currentTime, 0.1);
     if (this.ambienceBus && this.ctx) this.ambienceBus.gain.setTargetAtTime(enabled ? AUDIO.musicGain * AUDIO.ambienceGain : 0, this.ctx.currentTime, 0.1);
     if (!enabled) this.stopWind();
