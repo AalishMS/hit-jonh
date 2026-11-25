@@ -8,6 +8,8 @@ export interface OnlinePlayerPresence {
   connected: readonly number[];
   left: readonly number[];
   reconnecting: boolean;
+  /** Emote bubbles to show now, by seat (SPEC §6.1). Absent when there are none. */
+  emotes?: Readonly<Record<number, string>>;
 }
 
 /** Persistent roster outside the playfield; seat order stays stable as scores change. */
@@ -112,6 +114,15 @@ export class PlayerPanel {
       unit.textContent = 'pts';
       score.append(points, unit);
       row.append(avatar, details, score);
+      const emote = this.online?.emotes?.[player.id];
+      if (emote) {
+        // The announcement comes from the emote dock's live region; this copy is for the eye only.
+        const bubble = document.createElement('div');
+        bubble.className = 'player-tab-emote';
+        bubble.setAttribute('aria-hidden', 'true');
+        bubble.textContent = emote;
+        row.appendChild(bubble);
+      }
       this.list.appendChild(row);
     }
   }

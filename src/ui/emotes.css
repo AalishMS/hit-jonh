@@ -1,0 +1,39 @@
+/* Online emotes (SPEC §6.1): the dock (button, picker, bubbles) and the bubble in a player-panel row. */
+.emote-dock { position: fixed; left: max(10px, env(safe-area-inset-left)); bottom: max(10px, env(safe-area-inset-bottom)); z-index: 45;
+  display: flex; align-items: flex-end; gap: 10px; pointer-events: none; font: 900 14px var(--ui); color: var(--ink); }
+.emote-dock > * { pointer-events: auto; }
+.emote-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 6px 14px 6px 10px; border: 3px solid var(--ink); border-radius: 999px;
+  background: var(--paper); color: var(--ink); box-shadow: var(--shadow); font: inherit; cursor: pointer; }
+.emote-toggle svg { width: 22px; height: 22px; color: var(--grape); }
+.emote-toggle:hover:not(:disabled), .emote-toggle.is-open { background: #fff; }
+.emote-toggle:active:not(:disabled) { transform: translateY(3px); box-shadow: none; }
+.emote-toggle:disabled { opacity: .5; cursor: default; }
+.emote-toggle-key, .emote-option-key { padding: .12em .4em; border: 2px solid currentColor; border-radius: 6px; font: 900 11px/1 var(--ui); opacity: .7; }
+
+.emote-picker { position: absolute; left: 0; bottom: calc(100% + 8px); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px;
+  width: min(300px, calc(100vw - 24px)); padding: 8px; border: 3px solid var(--ink); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow); }
+.emote-option { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 44px; padding: 6px 10px; border: 3px solid var(--ink); border-radius: 10px;
+  background: #fff; color: var(--ink); font: 900 14px/1.15 var(--ui); text-align: left; cursor: pointer; }
+.emote-option:hover { background: var(--zap); }
+.emote-option:active { transform: translateY(2px); }
+/* Number hints are for keyboards; touch-only screens drop them. */
+@media (hover: none) and (pointer: coarse) { .emote-toggle-key, .emote-option-key { display: none; } }
+
+.emote-toasts { display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; max-width: min(240px, calc(100vw - 150px)); pointer-events: none; }
+.emote-bubble { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 7px; padding: 6px 12px; border: 3px solid var(--ink); border-left: 8px solid var(--player-color, var(--ink));
+  border-radius: 14px 14px 14px 4px; background: var(--paper); box-shadow: 0 3px 0 var(--ink); animation: emote-pop 240ms cubic-bezier(.2, 1.6, .4, 1); }
+.emote-bubble-name { font: 900 12px/1.2 var(--ui); color: var(--muted); overflow-wrap: anywhere; }
+.emote-bubble-text { font: 400 17px/1.15 var(--display); letter-spacing: .3px; }
+.emote-bubble.is-mine { background: var(--paper-2); }
+.emote-bubble.is-note { border-left-width: 3px; font: 900 13px/1.2 var(--ui); color: var(--muted); }
+@keyframes emote-pop { from { transform: scale(.6) translateY(8px); opacity: 0; } }
+
+/* A bubble over the sender's row in the player panel (it sits over the status line, so rows never change height). */
+.player-tab-emote { position: absolute; left: 46px; right: 44px; bottom: 3px; padding: 1px 8px; overflow: hidden; border: 2px solid var(--ink); border-radius: 10px 10px 10px 3px;
+  background: var(--paper); font: 400 13px/1.35 var(--display); letter-spacing: .3px; text-overflow: ellipsis; white-space: nowrap; animation: emote-pop 240ms cubic-bezier(.2, 1.6, .4, 1); }
+@media (max-height: 520px) and (orientation: landscape) {
+  .emote-toggle { min-height: 40px; padding-block: 4px; }
+  .emote-toggle-label { display: none; }
+  .emote-toggle-key { display: none; }
+  .emote-toggle { padding: 4px 9px; }
+}

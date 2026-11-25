@@ -98,6 +98,8 @@ export async function touchPresence(ctx: MutationCtx, roomId: Id<'rooms'>, playe
 async function deletePlayer(ctx: MutationCtx, playerId: Id<'players'>): Promise<void> {
   const presence = await ctx.db.query('presence').withIndex('by_player', q => q.eq('playerId', playerId)).collect();
   for (const row of presence) await ctx.db.delete(row._id);
+  const emotes = await ctx.db.query('emotes').withIndex('by_player', q => q.eq('playerId', playerId)).collect();
+  for (const row of emotes) await ctx.db.delete(row._id);
   await ctx.db.delete(playerId);
 }
 
@@ -167,6 +169,8 @@ export async function deleteRoomCascade(ctx: MutationCtx, roomId: Id<'rooms'>): 
   for (const s of shots) await ctx.db.delete(s._id);
   const presence = await ctx.db.query('presence').withIndex('by_room', q => q.eq('roomId', roomId)).collect();
   for (const p of presence) await ctx.db.delete(p._id);
+  const emotes = await ctx.db.query('emotes').withIndex('by_room', q => q.eq('roomId', roomId)).collect();
+  for (const e of emotes) await ctx.db.delete(e._id);
   const players = await ctx.db.query('players').withIndex('by_room', q => q.eq('roomId', roomId)).collect();
   for (const p of players) await ctx.db.delete(p._id);
   await ctx.db.delete(roomId);

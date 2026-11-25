@@ -1929,6 +1929,7 @@ export class PrototypeScene extends Phaser.Scene {
       presentSkippedTurn: (seat, angle, power, text) => this.presentSkippedTurn(seat, angle, power, text),
       applyOfficialOutcome: (outcome, mine) => this.applyOfficialOutcome(outcome, mine),
       refreshPlayerPresence: () => this.htmlControls.setOnlinePresence(this.online?.playerPresence ?? null),
+      playEmoteSound: () => this.audioManager.playEmote(),
       refreshMatchResult: () => {
         if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
       },

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MULTIPLAYER, ONLINE } from '../src/config/tuning';
 import { DEFAULT_MAP_SET } from '../src/levels';
 import type { MultiplayerMatchMachine } from '../src/rules/multiplayerMatch';
-import type { PresenceEntry, RoomSnapshot, RoomState, ShotRecord } from '../src/rules/onlineTypes';
+import type { EmoteEntry, PresenceEntry, RoomSnapshot, RoomState, ShotRecord } from '../src/rules/onlineTypes';
 import { OnlineController, type OnlineSceneHooks } from '../src/scenes/onlineController';
 import type { ClassifiedOutcome } from '../src/sim/classification';
 import type { OnlineProfile } from '../src/storage/storage';
@@ -13,7 +13,7 @@ import type { MenuOverlay } from '../src/ui/menuOverlay';
 import type { LobbyOptions, OnlineSetupOptions } from '../src/ui/onlineScreens';
 import { makeRoom, makeSeats, playShots } from './onlineFixtures';
 
-interface Listener { onRoom(s: RoomSnapshot | null): void; onPresence(e: PresenceEntry[]): void }
+interface Listener { onRoom(s: RoomSnapshot | null): void; onPresence(e: PresenceEntry[]): void; onEmotes?(e: EmoteEntry[]): void }
 type Screen =
   | { kind: 'setup'; opts: OnlineSetupOptions }
   | { kind: 'lobby'; opts: LobbyOptions }
@@ -25,6 +25,7 @@ const h = vi.hoisted(() => {
     sessions: [] as FakeSession[],
     screens: [] as Screen[],
     banner: { blocking: null as string | null, retry: undefined as (() => void) | undefined, flashes: [] as string[] },
+    emotes: { visible: false, enabled: false, bubbles: [] as Array<{ key: string; seat: number; name: string; text: string; mine: boolean }>, notices: [] as string[], pick: (_id: string): void => undefined },
     url: '',
   };
   class FakeSession {
@@ -40,6 +41,7 @@ const h = vi.hoisted(() => {
     reportOutcome = vi.fn(async (_a: { matchNumber: number; seq: number; outcome: ClassifiedOutcome }): Promise<void> => undefined);
     reportWitness = vi.fn((_a: { matchNumber: number; seq: number; outcome: ClassifiedOutcome }): void => undefined);
     requestRematch = vi.fn((_m: number): void => undefined);
+    sendEmote = vi.fn(async (_emote: string): Promise<null> => null);
     setMaps = vi.fn(async (_m: string[]): Promise<void> => undefined);
     startMatch = vi.fn(async (): Promise<void> => undefined);
     heartbeat = vi.fn((): void => undefined);
@@ -81,6 +83,16 @@ vi.mock('../src/ui/onlineBanner', () => ({
     destroy(): void { /* nothing to remove */ }
   },
 }));
+vi.mock('../src/ui/emotes', () => ({
+  EmoteWidget: class {
+    constructor(_parent: unknown, onPick: (id: string) => void) { h.state.emotes.pick = onPick; }
+    setVisible(visible: boolean): void { h.state.emotes.visible = visible; if (!visible) h.state.emotes.bubbles = []; }
+    setEnabled(enabled: boolean): void { h.state.emotes.enabled = enabled; }
+    render(bubbles: typeof h.state.emotes.bubbles): void { h.state.emotes.bubbles = [...bubbles]; }
+    notice(text: string): void { h.state.emotes.notices.push(text); }
+    destroy(): void { /* nothing to remove */ }
+  },
+}));
 vi.mock('../src/ui/onlineScreens', () => ({
   showOnlineSetup: (menu: { view: string }, opts: OnlineSetupOptions) => { menu.view = 'online_setup'; h.state.screens.push({ kind: 'setup', opts }); },
   showOnlineLobby: (menu: { view: string }, opts: LobbyOptions) => { menu.view = 'online_lobby'; h.state.screens.push({ kind: 'lobby', opts }); },
@@ -105,6 +117,8 @@ function makeScene() {
     applied: [] as Array<[ClassifiedOutcome, boolean]>,
     skipped: [] as string[],
     aimingRefreshes: 0,
+    presenceRefreshes: 0,
+    emoteSounds: 0,
     leftToMenu: 0,
   };
   const settle = (m: MultiplayerMatchMachine) => {
@@ -134,6 +148,8 @@ function makeScene() {
       m.resolveShot(outcome);
       settle(m);
     },
+    refreshPlayerPresence: () => { scene.presenceRefreshes++; },
+    playEmoteSound: () => { scene.emoteSounds++; },
     refreshMatchResult: () => undefined,
     refreshAimingControls: () => { scene.aimingRefreshes++; },
     leaveToMenu: () => { scene.leftToMenu++; },
@@ -174,6 +190,10 @@ beforeEach(() => {
   h.state.sessions.length = 0;
   h.state.screens.length = 0;
   h.state.banner = { blocking: null, retry: undefined, flashes: [] };
+  h.state.emotes.visible = false;
+  h.state.emotes.enabled = false;
+  h.state.emotes.bubbles = [];
+  h.state.emotes.notices = [];
   h.state.url = '';
   vi.stubGlobal('document', { body: {} });
   vi.stubGlobal('window', {
@@ -829,5 +849,169 @@ describe('OnlineController: finished matches', () => {
     expect(ctl.resultExtras().canRematch).toBe(true);
     ctl.requestRematch();
     expect(session().requestRematch).toHaveBeenCalledWith(0);
+  });
+});
+
+describe('OnlineController: emotes', () => {
+  const entry = (seq: number, over: Partial<EmoteEntry> = {}): EmoteEntry =>
+    ({ sender: 'p1', seat: 1, emote: 'beat_that', seq, at: 0, mine: false, ...over });
+  const bubbleTexts = () => h.state.emotes.bubbles.map(b => `${b.name}: ${b.text}${b.mine ? ' (mine)' : ''}`);
+
+  /** In a match as seat 0, emotes list delivered (empty) so sending is allowed. */
+  async function inMatch() {
+    const ctx = setup();
+    const listener = await enterRoom(ctx.ctl);
+    listener.onRoom(snapshot([], 0));
+    listener.onEmotes!([]);
+    return { ...ctx, listener };
+  }
+
+  it('shows the button while in a room only, enabled once the first emote list arrives, and hides it on leaving', async () => {
+    const { ctl } = setup();
+    ctl.open();
+    expect(h.state.emotes.visible).toBe(false);
+    lastSetup().onCreate({ name: 'Ann', color: 1, pattern: 'dots' });
+    await flush();
+    expect(h.state.emotes.visible).toBe(true);
+    expect(h.state.emotes.enabled).toBe(false);
+    const listener = session().listener!;
+    listener.onRoom(snapshot([], 0, { status: 'lobby' }));
+    listener.onEmotes!([]);
+    expect(h.state.emotes.enabled).toBe(true);
+    ctl.leave();
+    expect(h.state.emotes.visible).toBe(false);
+    expect(h.state.emotes.enabled).toBe(false);
+  });
+
+  it('shows a new emote from another seat with a soft sound', async () => {
+    const { listener, scene } = await inMatch();
+    listener.onEmotes!([entry(1)]);
+    expect(bubbleTexts()).toEqual(['P2: Beat that!']);
+    expect(scene.emoteSounds).toBe(1);
+    listener.onEmotes!([entry(1)]); // the same list again (e.g. another seat changed): nothing new
+    expect(scene.emoteSounds).toBe(1);
+  });
+
+  it('does not replay emotes that were already there when this client joined or reloaded', async () => {
+    const { ctl, scene } = setup();
+    const listener = await enterRoom(ctl);
+    listener.onRoom(snapshot([], 0));
+    listener.onEmotes!([entry(5)]); // the first list is only the baseline
+    expect(h.state.emotes.bubbles).toEqual([]);
+    expect(scene.emoteSounds).toBe(0);
+    listener.onEmotes!([entry(5), entry(6, { at: 1 })]);
+    expect(bubbleTexts()).toEqual(['P2: Beat that!']);
+    expect(scene.emoteSounds).toBe(1);
+  });
+
+  it('puts the bubble in the player panel presence and takes it away when it expires', async () => {
+    const { ctl, listener, scene } = await inMatch();
+    const refreshes = scene.presenceRefreshes;
+    listener.onEmotes!([entry(1)]);
+    expect(ctl.playerPresence?.emotes).toEqual({ 1: 'Beat that!' });
+    expect(scene.presenceRefreshes).toBeGreaterThan(refreshes);
+    ctl.update(ONLINE.emoteShowSeconds + 0.5);
+    expect(ctl.playerPresence).not.toHaveProperty('emotes');
+    expect(h.state.emotes.bubbles).toEqual([]);
+  });
+
+  it('a newer emote from the same seat replaces its bubble', async () => {
+    const { listener } = await inMatch();
+    listener.onEmotes!([entry(1)]);
+    listener.onEmotes!([entry(2, { emote: 'oof', at: 1 })]);
+    expect(bubbleTexts()).toEqual(['P2: Oof.']);
+  });
+
+  it('skips emotes that arrive far too late and unknown emote ids', async () => {
+    const { listener } = await inMatch();
+    session().serverNow = (ONLINE.emoteMaxAgeSeconds + 5) * 1000;
+    listener.onEmotes!([entry(1, { at: 0 }), entry(1, { sender: 'p3', seat: 2, emote: 'from_the_future', at: session().serverNow })]);
+    expect(h.state.emotes.bubbles).toEqual([]);
+  });
+
+  it('shows my own emote at once, sends it, and does not show the echo again', async () => {
+    const { listener, scene } = await inMatch();
+    h.state.emotes.pick('unlucky');
+    expect(bubbleTexts()).toEqual(['P1: Unlucky! (mine)']);
+    expect(session().sendEmote).toHaveBeenCalledWith('unlucky');
+    await flush();
+    const sounds = scene.emoteSounds;
+    listener.onEmotes!([entry(1, { sender: 'me', seat: 0, emote: 'unlucky', mine: true })]);
+    expect(bubbleTexts()).toEqual(['P1: Unlucky! (mine)']);
+    expect(scene.emoteSounds).toBe(sounds); // no sound for my own
+  });
+
+  it('takes my bubble back when the server rejects the send, and says so when it was the rate limit', async () => {
+    const { listener } = await inMatch();
+    session().sendEmote.mockRejectedValueOnce(rejection('RATE_LIMITED'));
+    h.state.emotes.pick('oof');
+    expect(bubbleTexts()).toEqual(['P1: Oof. (mine)']);
+    await flush();
+    expect(h.state.emotes.bubbles).toEqual([]);
+    expect(h.state.emotes.notices).toEqual(['Easy there!']);
+    // the next accepted one is not swallowed as an echo of the rejected one
+    h.state.emotes.pick('oof');
+    await flush();
+    listener.onEmotes!([entry(1, { sender: 'me', seat: 0, emote: 'oof', mine: true })]);
+    expect(bubbleTexts()).toEqual(['P1: Oof. (mine)']);
+  });
+
+  it('limits sending locally to the burst, without calling the server for the rest', async () => {
+    const { listener } = await inMatch();
+    listener.onEmotes!([]);
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    for (let i = 0; i < ONLINE.emoteBurst + 2; i++) h.state.emotes.pick('oof');
+    expect(session().sendEmote).toHaveBeenCalledTimes(ONLINE.emoteBurst);
+    expect(h.state.emotes.notices).toEqual(['Easy there!', 'Easy there!']);
+    now += ONLINE.emoteRefillSeconds * 1000;
+    h.state.emotes.pick('oof');
+    expect(session().sendEmote).toHaveBeenCalledTimes(ONLINE.emoteBurst + 1);
+  });
+
+  it('does not send before the first emote list has arrived, or after leaving', async () => {
+    const { ctl } = setup();
+    const listener = await enterRoom(ctl);
+    listener.onRoom(snapshot([], 0));
+    h.state.emotes.pick('oof');
+    expect(session().sendEmote).not.toHaveBeenCalled();
+    listener.onEmotes!([]);
+    ctl.leave();
+    h.state.emotes.pick('oof');
+    expect(session().sendEmote).not.toHaveBeenCalled();
+  });
+
+  it('works in the lobby and on the result screen too', async () => {
+    const { ctl } = setup();
+    const listener = await enterRoom(ctl);
+    listener.onRoom(snapshot([], 0, { status: 'lobby' }));
+    listener.onEmotes!([]);
+    h.state.emotes.pick('rematch');
+    expect(session().sendEmote).toHaveBeenCalledWith('rematch');
+    listener.onEmotes!([entry(1, { at: 1 })]);
+    expect(bubbleTexts()).toContain('P2: Beat that!');
+  });
+
+  it('forgets everything when the room changes, so a new room starts from its own baseline', async () => {
+    const { ctl } = setup();
+    const listener = await enterRoom(ctl);
+    listener.onRoom(snapshot([], 0));
+    listener.onEmotes!([]);
+    listener.onEmotes!([entry(1)]);
+    ctl.leave();
+    const again = await enterRoom(ctl);
+    again.onRoom(snapshot([], 0));
+    again.onEmotes!([entry(1)]); // same sender and seq in a new room: only the baseline
+    expect(h.state.emotes.bubbles).toEqual([]);
+  });
+
+  it('ignores an emote list from a room the user already left', async () => {
+    const { ctl } = setup();
+    const listener = await enterRoom(ctl);
+    listener.onRoom(snapshot([], 0));
+    listener.onEmotes!([]);
+    ctl.leave();
+    listener.onEmotes!([entry(1)]);
+    expect(h.state.emotes.bubbles).toEqual([]);
   });
 });
