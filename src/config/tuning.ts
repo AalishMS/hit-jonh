@@ -564,8 +564,8 @@ export const AUDIO = {
    * the flight whoosh's bus, so it sits in the quiet tier with it.
    */
   magnetHum: {
-    /** Gain at full proximity, before the whoosh bus trim. */
-    gain: 0.05,
+    /** Gain at full proximity, before the whoosh bus trim (measured: −30.4 LUFS L200, −23.6 dB peak: on the quiet tier's −30 LUFS target). */
+    gain: 0.035,
     /** Buzz fundamental (Hz) far from the magnet, and how much it rises at the magnet. */
     baseHz: 55,
     riseHz: 9,

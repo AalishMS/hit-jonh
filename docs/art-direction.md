@@ -24,6 +24,7 @@ All tokens below live in code at `src/art/palette.ts` (game) and `src/style.css`
 | `glass` / `glassDark` | `#BDE7F5` / `#7FC4E0` | Window panes and breakable glass (translucent fill, paper shine streaks, `glassDark` cel shadow), glass shards. |
 | `magic` / `magicDark` / `magicLight` | `#9B6BE0` / `#5E3A9E` / `#E2D2FF` | Portal hoops' swirl and sparkles only (the grape player colour family, so it never reads as bouncy pink). |
 | `velvet` / `velvetDark` | `#B8324A` / `#7E1F33` | The magician's tent drapes, stage carpet and the tent's back curtain. |
+| `field` / `fieldDark` | `#8FF0FF` / `#2A9CC4` | The scrapyard magnet's field rings, glow and sparks only (electric cyan, a soft dark edge under a bright line). |
 | `iron` / `brass` | `#3A3F63` / `#F2B33D` | Cannon barrel, cannonball / bands, hub. |
 | `jonhShirt` | `#F2643C` | Jonh's cardigan. He is the warmest object in the scene, so he always pops against green and blue. |
 | `jonhTrousers` | `#3B4A7A` | |
@@ -97,6 +98,14 @@ Both are self-hosted (`public/fonts/`). No other typefaces are allowed. System f
 - A "Wind ← 3" caption (Nunito 900, cream fill, thick ink stroke) floats above it so the number reads before the first shot.
 - **Streaks** are long, soft, cream strokes with a little curl on the leading end, kept faint (about half opacity) and drifting slowly the way the wind blows. Under reduced motion the sock hangs still and the streaks do not move.
 - Nothing wind-related is solid: the pole sits behind the playfield. The only collidable things on a windy map are drawn as ordinary garden furniture (a stone wall, a planter).
+
+## Scrapyard magnet (2026-11-25) [PROPOSED]
+
+- **The electromagnet** is drawn exactly on its collider box, side-on: a squat `iron` drum with rounded corners, a yellow (`hat`) band with diagonal ink hazard stripes, a pale steel (`silver`) face along the bottom with one `paper` shine line, an `ironDark` cel shadow on the right and a small highlight on the upper left, 3 px ink outline.
+- It hangs on a **crane cable** (ink under a thin `stoneDark` core) that runs straight up out of shot, and a V of thin **lifting chains** to its top corners with a brass knot. Like the Rubber Yard's chains they are thin and never solid-looking; the crane itself is out of shot (a flat crane silhouette stands in the far background layer, no ink).
+- **Field rings** are faint electric cyan (`field` line over a soft `fieldDark` edge): the reach as a dashed ring, the inner ring (full pull) solid, and three rings drifting slowly inwards between them so the field visibly pulls. They sit behind the playfield (over sky and hills, under every solid). As the ball comes near they brighten and the housing glows; in the strong zone a few cyan sparks crackle off its face. Under reduced motion the rings hold still and there are no sparks.
+- **Crushed-car stacks** are drawn on their collider box: flattened car bodies in assorted paint (`brick`, `ironLight`, `hat`, `leaf`, `stone`, `jonhTrousers`, never `rubber` pink, which means "bounces"), each with a squashed `glass` window, a crease and two `ironDark` wheels, on an `ironDark` backing with a cel shadow on the right.
+- The **scrapyard theme**: a hazy late-afternoon sky, far heaps and a distant crane silhouette, no lollipop trees, and a dusty gravel yard (theme ground colours) that kills a ball's roll.
 
 ## Mood references (described, not copied)
 
