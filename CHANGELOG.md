@@ -1,5 +1,9 @@
 # Changelog
 
+## Walking-Jonh garden (branch `t3/walking-jonh-garden`, 25 November 2026)
+
+- **The Afternoon Stroll** (owner-approved 2026-11-25): Jonh walks a fixed, learnable route up the garden path from the moment you fire, so the shot is a timing puzzle. His colliders move with him every fixed step (Matter and the swept guard agree); every other map is byte-for-byte unchanged. Walk cycle, painted route, replays in step. Eleven maps in every mode; Online rooms need a Convex redeploy to offer it. Details in `docs/progress.md` and SPEC §8.7.
+
 ## Real game pass (branch `real-game-pass`, 24 November 2026)
 
 The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").
