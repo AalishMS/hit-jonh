@@ -91,6 +91,13 @@ Both are self-hosted (`public/fonts/`). No other typefaces are allowed. System f
 | Hat only | PLINK! · YOINK! | `paper` | Small: brief freeze, light shake, the hat flies |
 | Obstacle / miss | (no text) or a small "THUD" | — | Dust puff only |
 
+## Wind (2026-11-25) [PROPOSED]
+
+- A windy garden gets a scrubbed pale-blue sky and a **windsock** on a stone-grey pole at the back of the lawn: red and cream stripes, ink outline, brass ring. It points downwind and lifts from limp to flat as the wind grows.
+- A "Wind ← 3" caption (Nunito 900, cream fill, thick ink stroke) floats above it so the number reads before the first shot.
+- **Streaks** are long, soft, cream strokes with a little curl on the leading end, kept faint (about half opacity) and drifting slowly the way the wind blows. Under reduced motion the sock hangs still and the streaks do not move.
+- Nothing wind-related is solid: the pole sits behind the playfield. The only collidable things on a windy map are drawn as ordinary garden furniture (a stone wall, a planter).
+
 ## Mood references (described, not copied)
 
 - Sunday newspaper strips: flat colour, confident ink lines and onomatopoeia in boxes.
