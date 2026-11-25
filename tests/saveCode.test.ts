@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_KEYS } from '../src/input/keyBindings';
 import { freshProgress, type Progress } from '../src/rules/progression';
-import { decodeSaveCode, encodeSaveCode, mergeSave, saveSummary, type DecodedSave } from '../src/storage/saveCode';
+import { decodeSaveCode, encodeSaveCode, importSaveCode, mergeSave, saveSummary, type DecodedSave } from '../src/storage/saveCode';
 import type { SaveData } from '../src/storage/storage';
 
 const score = (bestShots: number | null, hasStyle = false) => ({ bestShots, hasStyle, lastAngle: 40, lastPower: 60 });
@@ -112,4 +112,38 @@ describe('save codes (next 10, item 6)', () => {
     expect(again.progress).toEqual(merged.progress);
     expect(saveSummary(merged)).toMatchObject({ stars: 3 + 2 + 3, hits: 42 });
   });
+
+  describe('hostile or unlucky codes (independent review)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    const fnv = (text: string) => { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); } return ((h >>> 0) % 36 ** 4).toString(36).padStart(4, '0'); };
+    const b64 = (bytes: Uint8Array) => { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+    const deflate = async (bytes: Uint8Array) => new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+
+    it('refuses a code that would inflate to megabytes, and an absurdly long paste, without decoding it all', async () => {
+      const bomb = await deflate(new Uint8Array(4 * 1024 * 1024).fill(32)); // 4 MB of spaces packs into a few KB
+      expect(await decodeSaveCode(`HJ1-0000-${b64(bomb)}`)).toEqual({ error: 'size' });
+      expect(await decodeSaveCode(`HJ0-0000-${'A'.repeat(30_000)}`)).toEqual({ error: 'size' });
+    });
+
+    it('never throws on a forged Daily day number (the far future is not a valid date)', async () => {
+      const json = JSON.stringify({ v: 1, s: {}, p: { totalHits: 2 }, d: [1e9, '3', ['b']] });
+      const out = await decodeSaveCode(`HJ0-${fnv(json)}-${b64(new TextEncoder().encode(json))}`);
+      expect(out).toMatchObject({ progress: { totalHits: 2, daily: {} } });
+    });
+
+    it('falls back to an uncompressed code when the browser has CompressionStream but not deflate-raw', async () => {
+      vi.stubGlobal('CompressionStream', class { constructor() { throw new TypeError('Unsupported compression format'); } });
+      const code = await encodeSaveCode(save({ backyard: score(1) }, { totalHits: 3 }));
+      expect(code.startsWith('HJ0-')).toBe(true);
+      expect((await decoded(code)).progress.totalHits).toBe(3);
+    });
+
+    it('does not claim "Loaded" when the device refuses to store the save', async () => {
+      vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new DOMException('full', 'QuotaExceededError'); }, removeItem: () => {} });
+      const result = await importSaveCode(await encodeSaveCode(save({ backyard: score(1) })));
+      expect(result).toMatchObject({ ok: false, message: expect.stringContaining("Couldn't save") });
+    });
+  });
 });
+

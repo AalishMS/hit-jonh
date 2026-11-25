@@ -374,11 +374,11 @@ export class MenuOverlay {
     };
     const actions = el('div', 'save-code-actions');
     const copy = this.button('Copy save code', '', () => {
-      void exportSaveCode().then(code => shareOrCopy(code)).then(outcome => {
+      void exportSaveCode().then(code => shareOrCopy(code).then(outcome => {
         if (outcome === 'copied') say('Copied. Paste it into Settings on your other device.');
         else if (outcome === 'shared') say('Shared. Open it on your other device and paste it here.');
-        else if (outcome === 'failed') void exportSaveCode().then(code => { if (!signal.aborted) { input.value = code; input.focus(); input.select(); say('Copy the code from the box.'); } });
-      });
+        else if (outcome === 'failed' && !signal.aborted) { input.value = code; input.focus(); input.select(); say('Copy the code from the box.'); }
+      })).catch(() => say("Couldn't make a save code on this device.", true));
     }, signal, actions);
     copy.id = 'save-code-copy';
     const label = el('label', 'visually-hidden', 'Save code from another device');
@@ -394,12 +394,11 @@ export class MenuOverlay {
       if (!code) { say('Paste a save code into the box first.', true); input.focus(); return; }
       load.disabled = true;
       void importSaveCode(code).then(result => {
-        load.disabled = false;
         if (!result.ok) { say(result.message, true); return; }
         input.value = '';
         say(`Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${result.hits} hit${result.hits === 1 ? '' : 's'}.`);
         this.callbacks.onSaveImported?.();
-      });
+      }).catch(() => say("That code couldn't be loaded.", true)).finally(() => { load.disabled = false; });
     }, signal, actions);
     load.id = 'save-code-load';
     section.append(title, el('p', 'home-note', 'Move your stars, tricks and unlocks to another device. Loading a code keeps the best of both.'),

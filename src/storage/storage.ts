@@ -223,11 +223,14 @@ export function loadSaveData(): SaveData {
   }
 }
 
-export function writeSaveData(data: SaveData): void {
+/** Writes the save; false when the browser refused (storage full, or blocked in private browsing). */
+export function writeSaveData(data: SaveData): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
   } catch (e) {
     console.warn('Failed to write save data', e);
+    return false;
   }
 }
 

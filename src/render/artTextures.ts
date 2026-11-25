@@ -157,6 +157,14 @@ export function requestArtKey(scene: Phaser.Scene, key: string): void {
   if (group && !loadedGroups.has(group)) ensureArt(scene, [group]).catch((error: unknown) => console.error('Hit Jonh failed to prepare art', error));
 }
 
+/** Runs `then` once `key`'s texture exists: now, or after its group has been drawn (never if it is unknown). */
+export function whenArtKey(scene: Phaser.Scene, key: string, then: () => void): void {
+  if (scene.textures.exists(key)) { then(); return; }
+  const group = KEY_GROUP.get(key);
+  if (!group) return;
+  ensureArt(scene, [group]).then(() => { if (scene.textures.exists(key)) then(); }).catch((error: unknown) => console.error('Hit Jonh failed to prepare art', error));
+}
+
 /** Adds an art texture as an Image whose pivot and size are in logical pixels. */
 export function artImage(scene: Phaser.Scene, x: number, y: number, key: string): Phaser.GameObjects.Image {
   const def = artMeta(key);

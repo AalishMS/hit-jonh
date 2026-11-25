@@ -190,6 +190,11 @@ export class PrototypeScene extends Phaser.Scene {
   private titleCardPending = false;
   /** The winning-shot replay before the match result: not started, playing, or done for this match. */
   private showcaseState: 'none' | 'playing' | 'done' = 'none';
+  /**
+   * While a replay plays in ShowcaseScene, the wind bed follows the replayed garden (the winning shot
+   * may come from another round's garden); undefined when no replay is on.
+   */
+  private showcaseWind: number | null | undefined = undefined;
   /** The shareable clip being recorded from a result card, if any (share/clipDirector.ts). */
   private clipDirector: ClipDirector | null = null;
 
@@ -1056,7 +1061,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
-    this.audioManager.setWindBed(this.currentLevel.wind?.accelerationMs2 ?? null);
+    this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
     if (this.isDebugEnabled) {
@@ -2127,6 +2132,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (!win) return false;
     const { best, level, shot, player } = win;
     document.body.classList.add('showcase-on');
+    this.showcaseWind = level.wind?.accelerationMs2 ?? null;
     this.scene.launch('ShowcaseScene', {
       level, shot, angleDeg: best.angle, powerPercent: best.power,
       playerName: player.name, color: player.color, pattern: player.pattern,
@@ -2136,6 +2142,7 @@ export class PrototypeScene extends Phaser.Scene {
       audio: this.audioManager,
       onDone: () => {
         document.body.classList.remove('showcase-on');
+        this.showcaseWind = undefined;
         if (this.showcaseState !== 'playing') return;
         this.showcaseState = 'done';
         if (this.activeMode === 'multi' && this.multiMachine.state === 'match_result') this.updateUIPerMultiState();
@@ -2229,6 +2236,7 @@ export class PrototypeScene extends Phaser.Scene {
       startReplay: hooks => {
         if (this.scene.isActive('ShowcaseScene') || this.showcaseState === 'playing') return null;
         document.body.classList.add('showcase-on', 'clip-on');
+        this.showcaseWind = level.wind?.accelerationMs2 ?? null;
         this.scene.launch('ShowcaseScene', {
           level, shot, angleDeg: spec.angleDeg, powerPercent: spec.powerPercent,
           playerName: spec.paint?.name ?? '', color: spec.paint?.color ?? null, pattern: spec.paint?.pattern ?? 'solid',
@@ -2239,11 +2247,12 @@ export class PrototypeScene extends Phaser.Scene {
           textBoost: this.textBoost,
           audio: this.audioManager,
           clip: { startAt: plan.startAt, endAt: plan.endAt, onRecordStart: hooks.onRecordStart, onEnd: hooks.onEnd },
-          onDone: () => document.body.classList.remove('showcase-on', 'clip-on'),
+          onDone: () => { document.body.classList.remove('showcase-on', 'clip-on'); this.showcaseWind = undefined; },
         });
         return {
           stop: () => {
             document.body.classList.remove('showcase-on', 'clip-on');
+            this.showcaseWind = undefined;
             if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
           },
         };
@@ -2263,6 +2272,7 @@ export class PrototypeScene extends Phaser.Scene {
   private stopShowcase(): void {
     this.clipDirector?.cancel(); // a clip being recorded is discarded
     this.showcaseState = 'none';
+    this.showcaseWind = undefined;
     document.body.classList.remove('showcase-on', 'clip-on');
     if (this.scene.isActive('ShowcaseScene') || this.scene.isPaused('ShowcaseScene')) this.scene.stop('ShowcaseScene');
   }

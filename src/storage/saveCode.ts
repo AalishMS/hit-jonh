@@ -33,6 +33,10 @@ interface Payload {
 type PackedDaily = [number, string, string[]];
 
 const DAY_MS = 86_400_000;
+/** A real code is well under 2 KB; anything far longer is refused before decoding. */
+const MAX_CODE_CHARS = 20_000;
+/** The decoded JSON of a real save is a few KB: inflating stops past this (a "zip bomb" code). */
+const MAX_JSON_BYTES = 256 * 1024;
 const dayNumber = (key: string): number => {
   const [y, m, d] = key.split('-').map(Number) as [number, number, number];
   return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
@@ -54,6 +58,8 @@ function unpackDaily(d: unknown): { daily: Record<string, unknown>; dailyShots: 
   const daily: Record<string, unknown> = {};
   const dailyShots: Record<string, unknown> = {};
   if (!Array.isArray(d) || typeof d[0] !== 'number' || !Number.isInteger(d[0]) || typeof d[1] !== 'string' || d[1].length > 20_000) return { daily, dailyShots };
+  // Day numbers outside 2020–2100 are not a real Daily Bonk (and far ones are not even valid dates).
+  if (d[0] < dayNumber('2020-01-01') || d[0] + d[1].length > dayNumber('2100-12-31')) return { daily, dailyShots };
   const shots = Array.isArray(d[2]) ? d[2] : [];
   let played = 0;
   for (let i = 0; i < d[1].length; i++) {
@@ -72,7 +78,7 @@ export interface DecodedSave {
   progress: Progress;
 }
 
-export type DecodeError = 'format' | 'checksum' | 'version' | 'unsupported';
+export type DecodeError = 'format' | 'checksum' | 'version' | 'unsupported' | 'size';
 
 const mapIds = (): string[] => MAPS.map(m => m.id);
 
@@ -98,12 +104,33 @@ function fromBase64Url(text: string): Uint8Array {
   return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
 
-async function through(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const out = new Blob([bytes as BlobPart]).stream().pipeThrough(stream);
-  return new Uint8Array(await new Response(out).arrayBuffer());
+/** Pipes `bytes` through `stream`, giving up (and throwing) once the output passes `maxBytes`. */
+async function through(bytes: Uint8Array, stream: CompressionStream | DecompressionStream, maxBytes = Number.POSITIVE_INFINITY): Promise<Uint8Array> {
+  const reader = new Blob([bytes as BlobPart]).stream().pipeThrough(stream).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new RangeError('too large');
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) { out.set(chunk, at); at += chunk.byteLength; }
+  return out;
 }
 
-const canCompress = (): boolean => typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+/** The constructors can exist without the `deflate-raw` format (older browsers): check the format itself. */
+function makeStream<T>(make: () => T): T | null {
+  try { return make(); } catch { return null; }
+}
+const canCompress = (): boolean => typeof CompressionStream === 'function' && typeof DecompressionStream === 'function'
+  && makeStream(() => new CompressionStream('deflate-raw')) !== null;
 
 /** The code for this save's solo bests and progress. */
 export async function encodeSaveCode(data: Pick<SaveData, 'solo' | 'progress'>, compress = canCompress()): Promise<string> {
@@ -121,22 +148,29 @@ export async function encodeSaveCode(data: Pick<SaveData, 'solo' | 'progress'>, 
   }
   const json = JSON.stringify({ v: VERSION, s, p: progress as Payload['p'], ...(d ? { d } : {}) } satisfies Payload);
   const bytes = new TextEncoder().encode(json);
-  const body = compress ? await through(bytes, new CompressionStream('deflate-raw')) : bytes;
-  return `${PREFIX}${compress ? 1 : 0}-${checksum(json)}-${toBase64Url(body)}`;
+  let body: Uint8Array | null = null;
+  if (compress) {
+    // A browser that refuses after all still gets a (longer) uncompressed code.
+    try { body = await through(bytes, new CompressionStream('deflate-raw')); } catch { body = null; }
+  }
+  return `${PREFIX}${body ? 1 : 0}-${checksum(json)}-${toBase64Url(body ?? bytes)}`;
 }
 
 /** Reads a code (spaces and line breaks from copying are ignored); everything in it is validated. */
 export async function decodeSaveCode(raw: string): Promise<DecodedSave | { error: DecodeError }> {
-  const match = /^HJ([01])-([0-9a-z]{4})-([A-Za-z0-9_-]+)$/.exec(raw.replace(/\s+/g, ''));
+  const compact = raw.replace(/\s+/g, '');
+  if (compact.length > MAX_CODE_CHARS) return { error: 'size' };
+  const match = /^HJ([01])-([0-9a-z]{4})-([A-Za-z0-9_-]+)$/.exec(compact);
   if (!match) return { error: 'format' };
   const [, kind, sum, body] = match as unknown as [string, string, string, string];
-  if (kind === '1' && !canCompress()) return { error: 'unsupported' };
+  const inflate = kind === '1' ? makeStream(() => new DecompressionStream('deflate-raw')) : null;
+  if (kind === '1' && !inflate) return { error: 'unsupported' };
   let json: string;
   try {
     const bytes = fromBase64Url(body);
-    json = new TextDecoder('utf-8', { fatal: true }).decode(kind === '1' ? await through(bytes, new DecompressionStream('deflate-raw')) : bytes);
-  } catch {
-    return { error: 'format' };
+    json = new TextDecoder('utf-8', { fatal: true }).decode(inflate ? await through(bytes, inflate, MAX_JSON_BYTES) : bytes);
+  } catch (error) {
+    return { error: error instanceof RangeError ? 'size' : 'format' };
   }
   if (checksum(json) !== sum) return { error: 'checksum' };
   let payload: unknown;
@@ -159,8 +193,12 @@ export async function decodeSaveCode(raw: string): Promise<DecodedSave | { error
       };
     }
   }
-  const progress = { ...(p && typeof p === 'object' ? p : {}), ...unpackDaily(d) };
-  return { solo, progress: sanitizeProgress(progress, mapIds(), cosmeticContext(mapIds(), solo)) };
+  try {
+    const progress = { ...(p && typeof p === 'object' ? p : {}), ...unpackDaily(d) };
+    return { solo, progress: sanitizeProgress(progress, mapIds(), cosmeticContext(mapIds(), solo)) };
+  } catch {
+    return { error: 'format' }; // nothing a hand-made code says may throw out of here
+  }
 }
 
 const union = <T>(a: readonly T[], b: readonly T[]): T[] => [...new Set([...a, ...b])];
@@ -232,6 +270,7 @@ export const SAVE_CODE_ERRORS: Record<DecodeError, string> = {
   checksum: 'Part of that code is missing or mistyped. Copy it again.',
   version: 'That code comes from a newer Hit Jonh. Update this one first.',
   unsupported: "This browser can't read that code. Try updating it.",
+  size: "That's far too long to be a Hit Jonh save code.",
 };
 
 /** Adds a code's progress to this device's save (see `mergeSave`) and says what it holds now. */
@@ -239,6 +278,6 @@ export async function importSaveCode(code: string): Promise<{ ok: true; stars: n
   const decoded = await decodeSaveCode(code);
   if ('error' in decoded) return { ok: false, message: SAVE_CODE_ERRORS[decoded.error] };
   const merged = mergeSave(loadSaveData(), decoded);
-  writeSaveData(merged);
+  if (!writeSaveData(merged)) return { ok: false, message: "Couldn't save on this device: its storage is full or blocked (private browsing?)." };
   return { ok: true, ...saveSummary(merged) };
 }

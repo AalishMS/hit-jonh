@@ -2,7 +2,7 @@ import type Phaser from 'phaser';
 import { barrelKey } from '../art/cannonArt';
 import { PAL } from '../art/palette';
 import { MULTIPLAYER, WORLD } from '../config/tuning';
-import { artImage, artScale } from './artTextures';
+import { artImage, artScale, whenArtKey } from './artTextures';
 
 export interface SlotPlayer {
   readonly name: string;
@@ -34,6 +34,8 @@ export class CannonSlotsRenderer {
       slot++;
       const key = barrelKey(player.color, player.pattern);
       const barrel = artImage(this.scene, x + 14 * k, y, this.scene.textures.exists(key) ? key : 'cannon-barrel').setDepth(5);
+      // A barrel not drawn yet (e.g. the player colours changed in Settings) is painted when its art is ready.
+      if (barrel.texture.key !== key) whenArtKey(this.scene, key, () => { if (barrel.active) barrel.setTexture(key); });
       barrel.setScale(artScale('cannon-barrel') * 0.62 * k).setRotation(-0.08);
       this.objects.push(barrel);
       this.objects.push(this.scene.add.text(x + 72 * k, y, `${player.name} · ${player.pattern}`, {
