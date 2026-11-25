@@ -416,4 +416,6 @@
 @media (max-height: 520px) and (orientation: landscape) {
   .chapter-list { gap: 10px; }
   .chapter-name { font-size: 18px; }
+  .ribbon.chapter-ribbon { font-size: 20px; padding: 5px 14px 3px; margin: 2px 4px; }
+  .chapter-complete p { margin: 0; font-size: 12px; }
 }

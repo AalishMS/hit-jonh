@@ -497,12 +497,13 @@ export class MenuOverlay {
   private chapterHeader(chapter: ChapterStatus): HTMLElement {
     const head = el('h3', 'chapter-head');
     head.id = `chapter-head-${chapter.id}`;
-    if (chapter.number !== null) head.appendChild(el('span', 'chapter-no', `Chapter ${chapter.number}`));
-    head.appendChild(el('span', 'chapter-name', chapter.name));
+    // Plain spaces between the parts so a screen reader names the heading "Chapter 2 Mild Inconveniences ...".
+    if (chapter.number !== null) head.append(el('span', 'chapter-no', `Chapter ${chapter.number}`), ' ');
+    head.append(el('span', 'chapter-name', chapter.name), ' ');
     if (!chapter.unlocked) {
-      head.appendChild(el('span', 'chapter-state', `Locked · clear ${mapName(chapter.lockedBy ?? '')}`));
+      head.appendChild(el('span', 'chapter-state', `Locked. Clear ${mapName(chapter.lockedBy ?? '')} to open`));
     } else {
-      if (chapter.complete) head.appendChild(el('span', 'chapter-state done', 'Complete'));
+      if (chapter.complete) head.append(el('span', 'chapter-state done', 'Complete'), ' ');
       const stars = el('span', 'chapter-stars', `★ ${chapter.stars} / ${chapter.maxStars}`);
       stars.setAttribute('aria-label', `${chapter.stars} of ${chapter.maxStars} stars`);
       head.appendChild(stars);
@@ -711,6 +712,13 @@ export class MenuOverlay {
       for (let i = 0; i < 3; i++) starsDiv.appendChild(el('span', i < stars ? 'on' : '', '★'));
       this.content.appendChild(starsDiv);
       this.content.appendChild(el('p', '', `You hit Jonh in ${shots} shot${shots > 1 ? 's' : ''}.`));
+      if (extras.chapterComplete) {
+        const done = extras.chapterComplete;
+        const card = el('div', 'chapter-complete');
+        card.append(el('span', 'ribbon chapter-ribbon', `Chapter ${done.number} complete!`),
+          el('p', '', `${done.name} · ★ ${done.stars} / ${done.maxStars}`));
+        this.content.appendChild(card);
+      }
       const ribbons = el('div');
       if (extras.newBest) ribbons.appendChild(el('span', 'ribbon', 'New best!'));
       if (hasStyle) ribbons.appendChild(el('span', 'ribbon pow', extras.newTrick ? 'Trick badge!' : 'Trick shot!'));
@@ -719,13 +727,6 @@ export class MenuOverlay {
       if (extras.campaignStars) {
         const tally = el('p', 'result-tally', `Campaign ★ ${extras.campaignStars.stars} / ${extras.campaignStars.maxStars}`);
         this.content.appendChild(tally);
-      }
-      if (extras.chapterComplete) {
-        const done = extras.chapterComplete;
-        const card = el('div', 'chapter-complete');
-        card.append(el('span', 'ribbon chapter-ribbon', `Chapter ${done.number} complete!`),
-          el('p', '', `${done.name} · ★ ${done.stars} / ${done.maxStars}`));
-        this.content.appendChild(card);
       }
       if (extras.unlockedMapId) {
         const card = el('div', 'unlock-card map-unlock');
