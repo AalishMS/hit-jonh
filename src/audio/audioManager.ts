@@ -595,6 +595,15 @@ export class AudioManager {
     this.kick(ctx.currentTime, 900 * this.vary(0.05), 600, 0.05, 0.18);
   }
 
+  /** A quiet two-note pop when another player's emote arrives (online rooms). */
+  playEmote(): void {
+    const ctx = this.ready();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    this.marimba(t, 79, 0.12, this.sfxBus!);
+    this.marimba(t + 0.07, 84, 0.1, this.sfxBus!);
+  }
+
   /** Two-note sting for results; success rises, failure falls. */
   playSting(success: boolean): void {
     const ctx = this.ready();

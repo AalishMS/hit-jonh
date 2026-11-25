@@ -397,4 +397,13 @@ export const ONLINE = {
   codeAlphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789',
   /** Delays between send retries; 15.5 s in total. */
   retryDelaysSeconds: [0.5, 1, 2, 4, 8],
+  /** [PROPOSED 2026-11-25] Emotes: a seat may send this many at once, then one more every `emoteRefillSeconds`. */
+  emoteBurst: 3,
+  emoteRefillSeconds: 2,
+  /** [PROPOSED 2026-11-25] How long a bubble stays up. */
+  emoteShowSeconds: 4,
+  /** [PROPOSED 2026-11-25] An emote delivered later than this after it was sent is not shown (e.g. a laptop waking up). */
+  emoteMaxAgeSeconds: 10,
+  /** [PROPOSED 2026-11-25] Bubbles on screen at once (the newest win). */
+  emoteMaxVisible: 3,
 } as const;

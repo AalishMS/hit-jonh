@@ -134,7 +134,15 @@ Design: `docs/superpowers/specs/2026-10-08-online-multiplayer-design.md`. Summar
 - **Timers run on the server.** Online-only turn limit of 120 s (countdown from 90 s). Missing player skipped after 90 s without a heartbeat (warning from 60 s). Unreported shot resolved after 40 s with a spectator's outcome or a miss. If everyone is disconnected at once, nothing is skipped. Values are [PROPOSED][TUNE] in `ONLINE` (`src/config/tuning.ts`), except the 120 s limit [DECIDED].
 - **Rematch.** Any active player may press Rematch. It starts when everyone is ready, or after a 30 s window with the ready players (at least 2). Others see "You weren't included".
 - **Identity.** One player per browser tab (token in sessionStorage); a reload keeps the seat. The name/colour profile is saved in the `online` field of the `hitJonh.v1` save. The hot-seat roster is untouched.
-- **Out of scope.** Accounts, matchmaking, chat, spectators, live aim streaming, server physics, async play, deployment, kicking.
+- **Emotes [DECIDED request by owner 2026-11-25; the set, limits and presentation are PROPOSED]** (`rules/onlineEmotes.ts`, `convex/emotes.ts`). Quick reactions everyone in the room sees, matching the hot-seat taunts. This is not chat: the set is fixed and an emote travels as an id, never as free text, so there is nothing to moderate.
+  - **Set [PROPOSED]:** Beat that!, Unlucky!, Nice shot!, Oof., Poor Jonh., Rematch?
+  - **Allowed** in the lobby, during a match and on the result screen. An emote never affects turns, timers, check-ins, scoring or the room's 24 h cleanup clock.
+  - **Rate limit [PROPOSED][TUNE]**, per seat and enforced by the server: a burst of 3, then one more every 2 s (`ONLINE.emoteBurst`, `emoteRefillSeconds`). The client applies the same limit first, so spamming shows "Easy there!" instead of calling the server.
+  - **Delivery:** a seat's latest emote lives in its own `emotes` row, so it never contends with turn, shot or check-in writes, and has its own `getEmotes` subscription (like presence). A client shows only emotes newer than the first list it received, so nothing replays after a reload. One delivered more than 10 s after it was sent is dropped.
+  - **Presentation [PROPOSED][TUNE]:** the sender's bubble sits in their player-panel row for 4 s (and in a small stack beside the Emote button wherever the panel is not on screen: lobby, result, overlays, portrait phones), with a soft sound for other players' emotes. Your own bubble appears the moment you send it and is taken back if the server refuses it.
+  - **Controls:** an Emote button (bottom-left), `E` to open, `1`–`6` to pick, Esc to close. Pointer presses and picking never leave a button focused, so Space still fires and Enter still skips.
+  - **Deploy:** needs a Convex redeploy (new table and two functions); see `convex/README.md`.
+- **Out of scope.** Accounts, matchmaking, chat (free-text messages; canned emotes are in scope since 2026-11-25), spectators, live aim streaming, server physics, async play, deployment, kicking.
 - **Known limitation.** After a reload, previous-shot trails are empty until each player fires again.
 
 ## 7. Scoring and scene reset

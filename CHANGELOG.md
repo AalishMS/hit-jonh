@@ -1,5 +1,9 @@
 # Changelog
 
+## Online emotes (branch `t3/online-room-emotes`, 25 November 2026)
+
+- **Emotes in online rooms.** Six canned reactions (Beat that!, Unlucky!, Nice shot!, Oof., Poor Jonh., Rematch?) that everyone in the room sees, in the lobby, during a match and on the result screen. An Emote button (or `E`, then `1`–`6`) opens them; the bubble shows in the sender's player-panel row with a soft sound, and your own appears at once. Rate-limited per seat (a burst of 3, then one every 2 s). Needs a Convex redeploy before it works online (`convex/README.md`).
+
 ## Real game pass (branch `real-game-pass`, 24 November 2026)
 
 The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").

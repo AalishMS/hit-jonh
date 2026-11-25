@@ -88,3 +88,29 @@ function handleButtonPress() {
 Use the Convex CLI to push your functions to a deployment. See everything
 the Convex CLI can do by running `npx convex -h` in your project root
 directory. To learn more, launch the docs with `npx convex docs`.
+
+---
+
+# Hit Jonh: deploying the emotes change
+
+Online emotes (SPEC §6.1) add a table and two functions, so the Convex deployment must be updated before they
+work. The change is additive: nothing existing is altered, so rooms in play and older open tabs keep working.
+
+| What | Where |
+| --- | --- |
+| New table `emotes` (indexes `by_room`, `by_player`) | `convex/schema.ts` |
+| `emotes:sendEmote` (mutation) and `emotes:getEmotes` (query) | `convex/emotes.ts` |
+| Emote rows removed with their player and with the room | `convex/model.ts` (`deletePlayer`, `deleteRoomCascade`) |
+
+**What to run** (once per deployment; this is the owner's step, the code was not deployed from this branch):
+
+```bash
+npx convex dev --once     # the dev deployment named in .env.local
+npx convex deploy         # the production deployment
+```
+
+Deploy the backend **before** shipping the new frontend build. A new build talking to an old backend does not
+break: the emote list never arrives, so the Emote button stays disabled. No data migration or backfill is needed
+(the table starts empty), and no new environment variables.
+`convex/_generated/api.d.ts` was edited by hand to list the new `emotes` module (the same line `npx convex dev`
+would add); the next `npx convex dev`/`deploy` rewrites that file, so a diff in it is expected and harmless.

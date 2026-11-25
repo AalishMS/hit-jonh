@@ -37,6 +37,24 @@ export default defineSchema({
     lastSeen: v.number(),
   }).index('by_room', ['roomId']).index('by_player', ['playerId']),
 
+  /**
+   * Each player's latest emote plus their send allowance (spec §6.1). Its own table, like `presence`: an emote
+   * writes only here, so it never collides with a turn, a shot or a heartbeat, and the read-side `getEmotes`
+   * subscription is separate from `getRoom`. At most one row per player, rewritten in place.
+   */
+  emotes: defineTable({
+    roomId: v.id('rooms'),
+    playerId: v.id('players'),
+    /** An id from EMOTES in src/rules/onlineEmotes.ts. */
+    emote: v.string(),
+    /** This player's emote count, from 1. */
+    seq: v.number(),
+    /** When it was sent; also when `tokens` was last counted. */
+    at: v.number(),
+    /** Send allowance left as of `at`. */
+    tokens: v.number(),
+  }).index('by_room', ['roomId']).index('by_player', ['playerId']),
+
   shots: defineTable({
     roomId: v.id('rooms'),
     matchNumber: v.number(),
