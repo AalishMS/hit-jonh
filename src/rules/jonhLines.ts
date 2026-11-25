@@ -83,6 +83,8 @@ export const OBSTACLE_LINES: ReadonlyArray<{ match: { id?: string; material?: st
   { match: { id: 'carport' }, lines: ['Mind the carport.', 'That carport is load-bearing, probably.'] },
   { match: { id: 'garden-wall' }, lines: ['Not the garden wall! It holds up the washing.', 'That wall keeps the breeze off my sandwiches. Mostly.'] },
   { match: { id: 'silo' }, lines: ['You hit a silo. From there. Somehow.'] },
+  { match: { material: 'magnet' }, lines: ["It's stuck to the magnet. Marvellous.", 'The magnet thanks you for the cannonball.', 'Leave it up there. It suits it.'] },
+  { match: { material: 'scrap' }, lines: ['Mind the scrap. Some of that is vintage.', "That stack was perfectly stable. Was."] },
   { match: { material: 'glass' }, lines: ['Mind the glass!', 'That glass was imported.'] },
   { match: { material: 'velvet' }, lines: ['That velvet was hired.', 'Mind the curtains.'] },
   { match: { material: 'trampoline' }, lines: ['That trampoline is for the grandchildren.', 'Boing. Very mature.'] },
@@ -144,6 +146,11 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     arrival: ['Lovely breeze. Do mind the sheets.', 'Perfect drying weather, this.', 'Can you not feel that wind? Do keep up.'],
     miss: ['The wind has opinions about your aim.', 'Did you check the windsock?', 'My sheets are unbothered.'],
     hit: ['Through a gale? Show-off.', 'The wind was on my side. Apparently not.'],
+  },
+  magnet: {
+    arrival: ['Peace and quiet. Apart from the magnet.', 'Nobody shoots cannonballs at a scrapyard.', 'Lovely spot. Bit magnetic.'],
+    miss: ['The magnet had other ideas.', 'Pulled it, did it?', "You're aiming at me, not the crane."],
+    hit: ['You used the magnet? That is cheating.', 'Curved it in. Of course you did.', 'Drawn to me, apparently.'],
   },
   stroll: {
     arrival: ['Just a quick stroll. Nobody bother me.', 'A man is allowed a walk in his own garden.', 'Same route every day. Lovely and predictable.'],

@@ -1,4 +1,5 @@
 import type { LevelData, ObstacleData } from '../levels/types';
+import { magnetObstacleBody } from './magnetArt';
 import { mechanicArt, mechanicObstacleBody } from './mechanicArt';
 import { PAL } from './palette';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
@@ -14,7 +15,7 @@ export interface Theme {
   midDark: string;
   sunY: number;
   sun: string;
-  skyline: 'village' | 'town' | 'park' | 'mesas' | 'craters';
+  skyline: 'village' | 'town' | 'park' | 'mesas' | 'craters' | 'yard';
   /** Ground surface and soil; grass on earth when omitted. */
   groundTop?: string;
   groundDark?: string;
@@ -48,6 +49,11 @@ export const THEMES: Record<string, Theme> = {
   magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
   /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
   washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },
+  /** A dusty scrapyard in the late afternoon: hazy sky, heaps and a distant crane, a gravel yard. */
+  magnet: {
+    id: 'magnet', skyTop: '#7FA3D6', skyLow: '#FFC88E', far: '#B9AAC2', farDetail: '#9D8DAA', mid: '#A9A383', midDark: '#857F60', sunY: 175, sun: '#FFB54A',
+    skyline: 'yard', groundTop: '#B9A88F', groundDark: '#94836B', groundEarth: '#A88766',
+  },
 };
 
 export function themeFor(levelId: string): Theme {
@@ -85,6 +91,12 @@ export function themeArt(t: Theme): ArtDef[] {
       : t.skyline === 'mesas'
         ? [[60, 70, 150], [300, 46, 110], [560, 84, 170], [760, 40, 90]].map(([x, h, w]) =>
           `<path d="M${x} 150 L${x! + 14} ${150 - h!} H${x! + w! - 14} L${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
+        : t.skyline === 'yard'
+          ? [[40, 46, 170], [250, 34, 140], [420, 54, 190], [690, 40, 150]].map(([x, h, w]) =>
+            `<path d="M${x} 150 Q${x! + w! * 0.2} ${150 - h! * 0.8} ${x! + w! * 0.38} ${150 - h!} L${x! + w! * 0.55} ${150 - h! * 0.86} Q${x! + w! * 0.8} ${150 - h! * 0.7} ${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('') +
+            // A distant crane: lattice mast, jib and counter-jib, flat background shapes.
+            `<path d="M598 150 V52 H608 V150 Z M520 52 H700 V60 H520 Z M603 52 L560 40 M603 52 L660 40" fill="${t.farDetail}" stroke="${t.farDetail}" stroke-width="3"/>` +
+            `<path d="M524 60 V86" stroke="${t.farDetail}" stroke-width="2"/><rect x="516" y="86" width="16" height="8" fill="${t.farDetail}"/>`
         : t.skyline === 'craters'
           ? [[120, 60], [430, 90], [700, 50]].map(([x, w]) =>
             `<path d="M${x! - w!} 150 Q${x! - w! * 0.6} ${150 - w! * 0.4} ${x! - w! * 0.4} ${150 - w! * 0.18} Q${x} ${150 - w! * 0.05} ${x! + w! * 0.4} ${150 - w! * 0.18} Q${x! + w! * 0.6} ${150 - w! * 0.4} ${x! + w!} 150 Z" fill="${t.farDetail}"/>`).join('')
@@ -92,7 +104,7 @@ export function themeArt(t: Theme): ArtDef[] {
         `<path d="M520 150 L560 96 L600 150 Z" fill="${t.farDetail}"/><path d="M640 150 Q700 70 760 150 Z" fill="none" stroke="${t.farDetail}" stroke-width="7"/>`;
   const farHills = hillsPath(900, 190, 150, [[180, 34], [220, 22], [160, 40], [190, 18], [150, 30]]);
   const midHills = hillsPath(900, 160, 110, [[260, 60], [200, 38], [240, 70], [200, 44]]);
-  const trees = t.space || t.skyline === 'mesas' ? '' : [70, 330, 610, 820].map((x, i) => {
+  const trees = t.space || t.skyline === 'mesas' || t.skyline === 'yard' ? '' : [70, 330, 610, 820].map((x, i) => {
     const r = 26 + (i % 2) * 8;
     const y = 72 - (i % 3) * 10;
     return `<path d="M${x - 3} ${y + r - 4} L${x - 4} ${y + r + 34} L${x + 4} ${y + r + 34} L${x + 3} ${y + r - 4} Z" fill="${PAL.woodDark}" stroke="${t.midDark}" stroke-width="2"/>` +
@@ -371,7 +383,7 @@ function hedge(w: number, h: number): string {
 }
 
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
-  const mechanic = mechanicObstacleBody(obs, w, h);
+  const mechanic = mechanicObstacleBody(obs, w, h) ?? magnetObstacleBody(obs, w, h);
   if (mechanic !== null) return mechanic;
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.id.includes('trunk')) return trunk(w, h);

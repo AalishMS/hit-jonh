@@ -62,6 +62,9 @@ export const PAL = {
   /** The magician's tent: deep red velvet. */
   velvet: '#B8324A',
   velvetDark: '#7E1F33',
+  /** The scrapyard magnet's field rings: electric cyan, used for nothing else. */
+  field: '#8FF0FF',
+  fieldDark: '#2A9CC4',
 } as const;
 
 export type PaletteKey = keyof typeof PAL;

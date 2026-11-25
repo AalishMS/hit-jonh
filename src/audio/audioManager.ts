@@ -90,6 +90,7 @@ export class AudioManager {
   private musicNextIndex = 0;
   private readonly notes = loopNotes();
   private whoosh: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
+  private hum: { oscs: OscillatorNode[]; gain: GainNode } | null = null;
   private analyser: AnalyserNode | null = null;
   private clipTap: MediaStreamAudioDestinationNode | null = null;
   private nextChirp = 0;
@@ -669,6 +670,52 @@ export class AudioManager {
     this.whoosh.gain.gain.setTargetAtTime(0.09 * k * k, ctx.currentTime, 0.05);
   }
 
+  /**
+   * The scrapyard magnet's hum: a low buzz whose loudness and pitch follow how close the flying ball is
+   * to the magnet (`proximity01`, 0..1). Call every frame during a flight on a magnet garden, and with
+   * `null` otherwise (it fades out and stops). Plays through the flight whoosh's bus (quiet tier).
+   */
+  setMagnetHum(proximity01: number | null): void {
+    const ctx = this.ctx;
+    const bus = this.cueBuses.get('whoosh');
+    if (!ctx || !bus) return;
+    const H = AUDIO.magnetHum;
+    if (proximity01 === null || proximity01 <= 0 || this._isMuted || this.hiddenTab) {
+      if (this.hum) {
+        const h = this.hum;
+        h.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.06);
+        for (const o of h.oscs) { try { o.stop(ctx.currentTime + 0.4); } catch { /* already stopped */ } }
+        this.hum = null;
+      }
+      return;
+    }
+    if (!this.hum) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = H.lowpassHz;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const buzz = ctx.createOscillator();
+      buzz.type = 'sawtooth';
+      buzz.frequency.value = H.baseHz;
+      const body = ctx.createOscillator();
+      body.type = 'sine';
+      body.frequency.value = H.baseHz * 2;
+      buzz.connect(filter);
+      body.connect(filter);
+      filter.connect(gain).connect(bus);
+      buzz.start();
+      body.start();
+      this.hum = { oscs: [buzz, body], gain };
+    }
+    const p = Math.max(0, Math.min(1, proximity01));
+    const t = ctx.currentTime;
+    this.hum.gain.gain.setTargetAtTime(H.gain * p * p, t, 0.06);
+    this.hum.oscs.forEach((o, i) => o.frequency.setTargetAtTime((H.baseHz + H.riseHz * p) * (i + 1), t, 0.08));
+  }
+
+  get magnetHumPlaying(): boolean { return this.hum !== null; }
+
   /** Dev/test aid: peak absolute sample level at the master output right now (0..1+). */
   peakLevel(): number {
     if (!this.analyser) return 0;
@@ -1064,6 +1111,7 @@ export class AudioManager {
 
   destroy(): void {
     this.setFlightWhoosh(null);
+    this.setMagnetHum(null);
     this.stopWind(true);
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisibility);
     if (this.musicTimer) clearInterval(this.musicTimer);

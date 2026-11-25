@@ -1,7 +1,7 @@
 import { backdropBox } from '../art/mechanicArt';
 import { PAL } from '../art/palette';
 import { THEMES } from '../art/sceneryArt';
-import { WIND } from '../config/tuning';
+import { MAGNET, WIND } from '../config/tuning';
 import { MAPS } from '../levels';
 import type { Box2D, LevelData, ObstacleData, PortalData } from '../levels/types';
 
@@ -49,6 +49,8 @@ function obstacleSvg(obs: ObstacleData, f: Frame): string {
     case 'gravel': return rect('#A9A3B8');
     case 'sand': return rect('#F2D59B');
     case 'rug': return rect(PAL.pow);
+    case 'scrap': return `${rect(PAL.ironDark, ' rx="1.5"')}${[0.2, 0.45, 0.7].map((f, i) => `<rect x="${x + 1.5}" y="${y + h * f}" width="${Math.max(1, w - 3)}" height="${Math.max(2, h * 0.14)}" rx="1" fill="${[PAL.brick, PAL.hat, PAL.ironLight][i]}"/>`).join('')}`;
+    case 'magnet': return `${rect(PAL.iron, ' rx="1.5"')}<rect x="${x}" y="${y + h * 0.3}" width="${w}" height="${Math.max(1.5, h * 0.28)}" fill="${PAL.hat}"/>`;
     default: return rect(PAL.stone);
   }
 }
@@ -67,6 +69,19 @@ function portalSvg(portal: PortalData, f: Frame): string {
   const hoop = (cx: number, cy: number, sx: number, rot: number) =>
     `<g transform="translate(${cx} ${cy}) rotate(${rot}) scale(${sx} 1)"><circle r="${r}" fill="${PAL.magicDark}"/><circle r="${r * 0.45}" fill="${PAL.magic}"/><circle r="${r}" fill="none" stroke="${PAL.brass}" stroke-width="2.4"/></g>`;
   return hoop(f.x(portal.entry.x), f.y(portal.entry.y), 1, 0) + hoop(f.x(portal.exit.x), f.y(portal.exit.y), 0.5, -portal.exit.angleDeg);
+}
+
+/** The magnet's cable up out of the frame and its reach as faint rings, so the field reads in the thumbnail. */
+function magnetSvg(level: LevelData, f: Frame): string {
+  const m = level.magnet;
+  if (!m) return '';
+  const cx = f.x(m.x);
+  const cy = f.y(m.y);
+  const housing = level.obstacles.find(o => o.id === m.housingId)?.box;
+  const top = housing ? f.y(housing.maxY) : cy;
+  const ring = (r: number, extra: string) => `<circle cx="${cx}" cy="${cy}" r="${r * f.s}" fill="none" stroke="${PAL.field}" stroke-width="2" ${extra}/>`;
+  return `<g class="map-magnet"><path d="M${cx} 0 V${top}" stroke="${PAL.ink}" stroke-width="2"/>` +
+    ring(m.radius, `stroke-dasharray="5 4" opacity="0.7"`) + ring(m.radius * MAGNET.fullReachShare, 'opacity="0.85"') + '</g>';
 }
 
 /** The windsock (pointing downwind) and the wind arrow, so a windy garden reads in its thumbnail. */
@@ -145,6 +160,7 @@ export function mapPreview(id: string): string {
     ${interiorSvg(level, f)}
     ${level.obstacles.map(o => obstacleSvg(o, f)).join('')}
     ${(level.portals ?? []).map(p => portalSvg(p, f)).join('')}
+    ${magnetSvg(level, f)}
     ${windSvg(level, f)}
     ${routeSvg(level, f)}
     ${cannonSvg(level, f)}
@@ -193,6 +209,7 @@ export const MAP_DESCRIPTIONS: Record<string, string> = {
   magic: 'Through the floating hoop and out the other. Power decides where it lands.',
   washday: 'A steady wind blows across the garden. Watch the windsock and lead your shot.',
   stroll: 'He walks the garden path the moment you fire. Time it to meet him.',
+  magnet: 'A crane magnet pulls the ball towards it. Aim to one side and let it curve in.',
 };
 
 export function mapDescription(id: string): string {

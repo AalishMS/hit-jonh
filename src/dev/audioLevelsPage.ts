@@ -37,6 +37,7 @@ const ALL: Case[] = [
   { id: 'sting (success)', cue: 'sting', seconds: 1.2, play: a => a.playSting(true) },
   { id: 'sting (failure)', cue: 'sting', seconds: 1.2, play: a => a.playSting(false) },
   { id: 'flight whoosh (full speed)', cue: 'whoosh', seconds: 2.0, play: a => a.setFlightWhoosh(1) },
+  { id: 'magnet hum (ball at the magnet)', cue: 'whoosh', seconds: 2.0, play: a => a.setMagnetHum(1) },
   { id: 'UI click', cue: 'click', seconds: 0.3, play: a => a.playClick() },
   { id: 'emote (incoming)', cue: 'emoteIn', seconds: 0.6, play: a => a.playEmote(false) },
   { id: 'emote (mine)', cue: 'emoteOut', seconds: 0.6, play: a => a.playEmote(true) },
