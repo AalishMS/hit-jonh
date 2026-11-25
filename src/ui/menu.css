@@ -158,9 +158,13 @@
   .view-home .home-note { display: none; }
   .menu-content .btn-play { font-size: 24px; padding: 12px 26px 9px; min-width: 0; }
   .home-row { gap: 6px; margin-top: 10px; }
-  .home-row .btn { min-height: 38px; padding: 8px 12px; font-size: 13px; }
+  .home-row .btn { min-height: 44px; padding: 8px 12px; font-size: 13px; }
   .tagline { margin: 6px 0 10px !important; }
   .map-btn small { display: none; }
+  /* 44 px buttons and the Feats entry need the room: the tagline and tip give it up on short screens. */
+  .view-home .tagline, .view-home .home-tip { display: none; }
+  .view-home .logo { margin-bottom: 6px; }
+  .view-home .btn-modes { margin-top: 8px; }
 }
 .view-daily, .view-locker { width: min(680px, 100%); }
 
@@ -189,7 +193,7 @@
 .online-picker { border: 0; padding: 0; margin: 0; min-width: 0; }
 .online-picker legend { padding: 0; margin-bottom: 8px; }
 .online-picker-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.picker-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 14px; cursor: pointer;
+.picker-chip { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 14px; cursor: pointer;
   border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); box-shadow: 0 3px 0 var(--ink); font: 900 14px var(--ui); text-transform: capitalize;
   transition: transform 100ms; }
 .picker-chip:hover { transform: translateY(-2px); }
@@ -307,7 +311,7 @@
 
 /* ---------- Wardrobe tabs (real game pass) ---------- */
 .wardrobe-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 4px 0 6px; }
-.wardrobe-tab { min-height: 40px; padding: 8px 16px 6px; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper);
+.wardrobe-tab { min-height: 46px; padding: 8px 16px 6px; cursor: pointer; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper);
   box-shadow: 0 3px 0 var(--ink); font: 400 17px/1 var(--display); text-transform: uppercase; letter-spacing: .5px; color: var(--ink); }
 .wardrobe-tab.active { background: var(--zap); transform: translateY(-2px); }
 /* Jonh's figure draws its chair and feet a little below its box: leave room under it. */
@@ -329,7 +333,7 @@
 
 /* ---------- Practice (next 10): Challenge / Practice switch on the garden list ---------- */
 .mode-toggle { display: inline-flex; gap: 0; margin: 0 auto 10px; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; box-shadow: 0 3px 0 var(--ink); }
-.menu-content .mode-chip { min-height: 40px; margin: 0; padding: 8px 18px 6px; border: 0; border-radius: 0; box-shadow: none; background: var(--paper);
+.menu-content .mode-chip { min-height: 46px; margin: 0; padding: 8px 18px 6px; border: 0; border-radius: 0; box-shadow: none; background: var(--paper);
   font: 400 17px/1 var(--display); letter-spacing: .5px; text-transform: uppercase; color: var(--ink); }
 .menu-content .mode-chip + .mode-chip { border-left: 3px solid var(--ink); }
 .menu-content .mode-chip.active { background: var(--zap); }
@@ -370,3 +374,10 @@
 }
 /* Jonh's outfit figure draws his chair and feet below its box (as in the wardrobe). */
 .feat-reward-outfit .feat-reward-art { margin-bottom: 14px; }
+/* Very short landscape phones (≤ 380 px tall): a smaller logo and Play so the home card needs no scrolling. */
+@media (max-height: 380px) and (orientation: landscape) {
+  .view-home { padding: 10px 16px; }
+  .view-home .logo .hit, .view-home .logo .jonh { font-size: 38px; }
+  .menu-content.view-home .btn-play { font-size: 20px; padding: 9px 20px 7px; }
+  .view-home .btn-modes { margin-top: 6px; }
+}

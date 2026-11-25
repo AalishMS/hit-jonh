@@ -48,7 +48,7 @@
   .emote-bubble-name { font-size: 11px; }
   .emote-toasts > :not(:nth-last-child(-n + 2)) { display: none; }
   .player-tab-emote { margin-top: 1px; font-size: 11px; line-height: 1.3; }
-  .emote-toggle { min-height: 40px; padding-block: 4px; }
+  .emote-toggle { min-height: 44px; padding-block: 4px; }
   .emote-toggle-label { display: none; }
   .emote-toggle-key { display: none; }
   .emote-toggle { padding: 4px 9px; }
