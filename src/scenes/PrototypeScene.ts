@@ -45,6 +45,7 @@ import { SceneryRenderer } from '../render/sceneryRenderer';
 import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
 import { PlayerHistory } from '../rules/playerHistory';
 import { classifyShotOutcome, JonhReactionSelector, type ReactionContext } from '../rules/reactions';
+import { SharedLines } from '../rules/sharedLines';
 import { HeckleTimer } from '../rules/heckleTimer';
 import { SessionCoordinator } from '../rules/sessionCoordinator';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
@@ -208,6 +209,8 @@ export class PrototypeScene extends Phaser.Scene {
   private menuOverlay!: MenuOverlay;
   private audioManager!: AudioManager;
   private reactionSelector = new JonhReactionSelector();
+  /** Online lines: seeded by the match and the moment, so every screen shows the same one. */
+  private readonly sharedLines = new SharedLines();
   private classifier = new ShotClassifier();
 
   private currentLevel!: LevelData;
@@ -802,7 +805,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
 
     this.reset();
-    this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
+    this.jonhSays(this.lines('arrival').selectArrival(level.id, this.currentLevel.arrivalLine));
     this.updateUIPerSoloState();
     const number = campaignOrder(MAP_IDS).indexOf(level.id) + 1;
     // The first garden of a campaign chapter names the chapter on the same card (not practice or Daily).
@@ -1114,12 +1117,12 @@ export class PrototypeScene extends Phaser.Scene {
 
     if (state.hitHat && !state.hitJonh && !this.hatReactionTriggered) {
       this.hatReactionTriggered = true;
-      this.activeReactionQuote = this.reactionSelector.selectReaction('hat', this.talkContext(state));
+      this.activeReactionQuote = this.lines('shot').selectReaction('hat', this.talkContext(state));
       this.jonhRenderer.triggerHatHit(this.activeReactionQuote, this.flightDir);
       this.playImpactMoment('hat', state.xPx, state.yPx, reduced);
     } else if (state.passedOverhead && !state.hitJonh && !state.hitHat && !this.overheadReactionTriggered && !this.hatReactionTriggered) {
       this.overheadReactionTriggered = true;
-      this.activeReactionQuote = this.reactionSelector.selectReaction('overhead', { ...this.talkContext(state), missStreak: this.missStreak + 1 });
+      this.activeReactionQuote = this.lines('shot').selectReaction('overhead', { ...this.talkContext(state), missStreak: this.missStreakSoFar() + 1 });
       this.jonhRenderer.triggerOverhead(this.activeReactionQuote);
     }
 
@@ -1139,9 +1142,22 @@ export class PrototypeScene extends Phaser.Scene {
   private talkContext(state: ProjectileState): ReactionContext {
     return {
       mapId: this.currentLevel.id,
-      hatId: this.progress.selectedHat,
+      // Online each screen dresses Jonh in its own player's hat, so hat-specific lines would differ between screens.
+      ...(this.online?.inMatch ? {} : { hatId: this.progress.selectedHat }),
       obstacles: state.obstacleContacts.map(o => ({ id: o.id, material: o.material })),
     };
+  }
+
+  /** Jonh's line picker. Online it is seeded by the match and the moment, so every screen shows the same line. */
+  private lines(moment: 'shot' | 'moved' | 'arrival' | 'winning'): JonhReactionSelector {
+    const shared = this.online?.inMatch ? this.online.lineMoment(moment) : null;
+    return shared ? this.sharedLines.at(shared.match, shared.moment) : this.reactionSelector;
+  }
+
+  /** Misses in a row before this shot; online, counted from the shared shot list so every screen agrees. */
+  private missStreakSoFar(): number {
+    const shared = this.online?.inMatch ? this.online.lineMoment('shot') : null;
+    return shared ? shared.missStreak : this.missStreak;
   }
 
   /** Jonh says a line (speech bubble plus a quiet mutter). */
@@ -1246,7 +1262,7 @@ export class PrototypeScene extends Phaser.Scene {
       { classifiedOutcome: classification.outcome, trick: classification.trick, passedOverhead: state.passedOverhead, obstacleContacts: state.obstacleContacts },
     );
 
-    this.missStreak = isBodyHit ? 0 : this.missStreak + 1;
+    this.missStreak = isBodyHit ? 0 : this.missStreakSoFar() + 1;
     if (isBodyHit) this.mechanicTip = null; // met and mastered
     // Coach (rules/coach.ts): until the first hit ever, a solo miss names one fix for the next shot.
     if (this.activeMode === 'solo') {
@@ -1264,8 +1280,8 @@ export class PrototypeScene extends Phaser.Scene {
       ...(this.activeMode === 'solo' ? { firstShot: this.soloMachine.attemptsLeft === 2, hitStreak: this.progress.currentStreak + 1 } : {}),
     };
     const quote = isBodyHit
-      ? this.reactionSelector.selectReaction(feedback.category, talk)
-      : (this.activeReactionQuote ?? this.reactionSelector.selectReaction(feedback.category, talk));
+      ? this.lines('shot').selectReaction(feedback.category, talk)
+      : (this.activeReactionQuote ?? this.lines('shot').selectReaction(feedback.category, talk));
     this.lastMissQuote = isBodyHit ? null : quote;
     if (!isBodyHit) this.audioManager.playMutter(quote.length);
 
@@ -1934,7 +1950,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.draw(false);
     const data = loadSaveData();
     this.jonhRenderer.setReducedMotion(data.settings.reducedMotion);
-    this.jonhSays(this.reactionSelector.selectArrival(level.id, this.currentLevel.arrivalLine));
+    this.jonhSays(this.lines('arrival').selectArrival(level.id, this.currentLevel.arrivalLine));
 
     const radiusPx = metresToPixels(PROJECTILE.radiusMetres, ppm);
     this.ballRenderer = new BallRenderer(this, radiusPx);
@@ -2087,7 +2103,7 @@ export class PrototypeScene extends Phaser.Scene {
     this.jonhRenderer.setUiScale(this.textBoost / (this.view.zoom ?? 1));
     this.jonhRenderer.setReducedMotion(loadSaveData().settings.reducedMotion);
     this.jonhRenderer.draw(false);
-    this.jonhSays(this.reactionSelector.selectReaction('moved'));
+    this.jonhSays(this.lines('moved').selectReaction('moved'));
   }
 
   private beginMultiplayerTurn(): void {
@@ -2137,7 +2153,7 @@ export class PrototypeScene extends Phaser.Scene {
       level, shot, angleDeg: best.angle, powerPercent: best.power,
       playerName: player.name, color: player.color, pattern: player.pattern,
       hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit, reducedMotion: false,
-      line: this.reactionSelector.selectWinningShot(),
+      line: this.lines('winning').selectWinningShot(),
       textBoost: this.textBoost,
       audio: this.audioManager,
       onDone: () => {
@@ -2243,7 +2259,7 @@ export class PrototypeScene extends Phaser.Scene {
           ...(spec.skin ? { skin: spec.skin } : {}),
           hatId: this.progress.selectedHat, outfitId: this.progress.selectedOutfit,
           reducedMotion: loadSaveData().settings.reducedMotion || Boolean(this.jonhRenderer?.isReducedMotionActive()),
-          line: this.reactionSelector.selectWinningShot(),
+          line: this.lines('winning').selectWinningShot(),
           textBoost: this.textBoost,
           audio: this.audioManager,
           clip: { startAt: plan.startAt, endAt: plan.endAt, onRecordStart: hooks.onRecordStart, onEnd: hooks.onEnd },

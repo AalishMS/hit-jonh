@@ -10,6 +10,7 @@ import type { EmoteEntry, RoomSnapshot } from '../rules/onlineTypes';
 import { sanitizePlayerName } from '../rules/playerName';
 import { replayMatch } from '../rules/replayMatch';
 import { normalizeRoomCode } from '../rules/roomCode';
+import { missStreakBefore } from '../rules/sharedLines';
 import type { ClassifiedOutcome } from '../sim/classification';
 import { loadOnlineProfile, onlineToken, saveOnlineProfile, type OnlineProfile } from '../storage/storage';
 import type { MenuOverlay, OnlineResultExtras } from '../ui/menuOverlay';
@@ -135,6 +136,19 @@ export class OnlineController {
   get inRoom(): boolean { return this.code !== null; }
   get inMatch(): boolean { return this.match; }
   get mySeat(): number | null { return this.tracker.mySeat; }
+
+  /**
+   * Where an online Jonh line comes from (rules/sharedLines.ts): this match and the moment, plus the shared miss
+   * streak before it, all the same on every client. A shot's moment is its seq; the other moments are numbered
+   * by the shots shown so far. Null outside a match.
+   */
+  lineMoment(kind: 'shot' | 'moved' | 'arrival' | 'winning'): { match: string; moment: string; missStreak: number } | null {
+    const snapshot = this.tracker.snapshot;
+    if (!this.match || !snapshot) return null;
+    const { room } = snapshot;
+    const seq = kind === 'shot' && this.current ? this.current.seq : this.tracker.presented;
+    return { match: `${room.code}/${room.seed}/${room.matchNumber}`, moment: `${kind}:${seq}`, missStreak: missStreakBefore(snapshot.shots, seq) };
+  }
   get playerPresence() {
     const snapshot = this.tracker.snapshot;
     const session = this.session;

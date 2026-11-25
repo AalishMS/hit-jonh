@@ -108,7 +108,13 @@ export class JonhReactionSelector {
   private lastSelectedLine: string | null = null;
   private readonly recent: string[] = [];
 
-  constructor(private readonly rng: () => number = Math.random) {}
+  constructor(private rng: () => number = Math.random) {}
+
+  /** Draw from `rng` from now on (online lines are seeded per moment, see rules/sharedLines.ts). */
+  useRandom(rng: () => number): this {
+    this.rng = rng;
+    return this;
+  }
 
   selectReaction(category: ReactionCategory, context?: ReactionContext): string {
     if (context) {

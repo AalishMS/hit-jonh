@@ -3,6 +3,7 @@
  * persisted by storage.ts. Nothing here affects physics or scoring.
  */
 
+import { hashKey } from './seededRandom';
 import { sanitizeDailyShots } from './dailyShare';
 import { isMechanicId } from './mechanicTips';
 import {
@@ -147,15 +148,6 @@ export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function hashString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
 export interface DailyPick { mapId: string; positionId: string }
 
 /**
@@ -165,7 +157,7 @@ export interface DailyPick { mapId: string; positionId: string }
 export function dailyChallenge(key: string, maps: ReadonlyArray<{ id: string; multiplayerPositions?: ReadonlyArray<{ id: string }> }>): DailyPick | null {
   const options = maps.flatMap(m => (m.multiplayerPositions ?? []).map(p => ({ mapId: m.id, positionId: p.id })));
   if (options.length === 0) return null;
-  return options[hashString(`hit-jonh:${key}`) % options.length]!;
+  return options[hashKey(`hit-jonh:${key}`) % options.length]!;
 }
 
 /** The longest run of consecutive days with a recorded daily attempt (ever). */
