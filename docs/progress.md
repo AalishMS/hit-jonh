@@ -1379,3 +1379,41 @@ Built in a parallel worktree (branch `t3/mobile-performance-pwa`, section above)
 - **Screen readers:** `ui/announcer.ts` speaks the chapter card ("Garden 2. The Fence Dispute."), handovers (banner, stakes, taunt, shot), round and match results, and the solo result ("Bullseye! 3 of 3 stars. You hit Jonh in 1 shot. New best. Unlocked Rooftop Lunch. Feat: Clean shot. Jonh: …"). Checked by reading the live region in headless Chromium; not tried with a real screen reader.
 - **Remappable keys:** `input/keyBindings.ts` (pure, tested) plus Settings → Keys (Change / Press a key… / Escape cancels / Reset keys). The keyboard coordinator, the "touch the aim to skip" rule, the FIRE label, the Next pill and the result card's retry hint follow the bindings. Headless check: Fire rebound to F showed "F" on FIRE, Space no longer fired, F did; binding Skip to F swapped Fire to ↵.
 - **Colour vision:** `art/colorVision.ts` simulates protanopia, deuteranopia and tritanopia. Normal-vision player colours are ΔE > 50 apart. Under deuteranopia tomato/leaf (≈15) and sky/grape (≈11) come close, and with four hues any three players include such a pair, so colour must never stand alone. It doesn't: cannons pair it with patterns (unique per default player), panels and cards show names, and trails have ink outlines. The palette is unchanged (art direction); a darker grape would widen sky/grape if wanted ([PROPOSED] option).
+
+### Next-10 summary, owner decisions and the next proposal
+**All ten done.**
+
+| # | Item | Built | Notes |
+| --- | --- | --- | --- |
+| 1 | Shareable Daily Bonk result | here | |
+| 2 | First-garden coach | here | |
+| 3 | Practice on cleared gardens | here | |
+| 4 | Online emotes | worktree | Needs the Convex redeploy |
+| 5 | Wind garden (Windy Washday) | worktree | |
+| 6 | Feats screen | here | |
+| 7 | Hot-seat sudden death | here | |
+| 8 | Accessibility | here | |
+| 9 | Mobile performance and install | worktree | Phone not measured: it stayed locked |
+| 10 | Walking-Jonh garden (The Afternoon Stroll) | worktree | |
+
+The physics fix (the game now runs the tested physics) came out of item 6's checks.
+
+**Owner decisions needed.** Reversible defaults are in place and labelled [PROPOSED].
+- **Convex redeploy** (`npx convex dev --once` for dev, `npx convex deploy` for production). Until then, online rooms can't pick Windy Washday or The Afternoon Stroll (`INVALID_MAPS`), and the emote button stays disabled. Nothing online was tested live.
+- **Cosmetics re-lock when gardens are added.** The Crown ("three stars on every garden") and Golden Bonk ("every star") now need all 12 gardens. On `main` the Crown needed 8, so a player who had it falls back to the boater until they three-star the new gardens. Should earned cosmetics stay earned? This is cheap to add; see the proposal below.
+- **Trick shots on the new mechanics** (SPEC §7.1 [OPEN]). Glass, portals and wind never make a shot a trick. The Stroll's pear-tree canopy is ricochet-eligible.
+- **The [PROPOSED] rules** for practice (nothing counts, not even hit totals), sudden death (3 rounds, then shared; totals unchanged), the coach (until the first hit ever), and the feats list and names.
+- **Wind and walking values** (3 m/s² headwind, the 1.25 m/s route) and the two new garden names and slots.
+- **Player colours.** Under deuteranopia sky/grape and tomato/leaf come close; patterns and names carry identity. A darker grape would widen the gap if wanted.
+
+**Proposed next 10**, ranked by value per unit of effort:
+1. **Go live online.** After the owner's Convex deploy, test emotes and the two new gardens in a real two-browser room, and fix what turns up. Low effort, and it unblocks two features.
+2. **Earned cosmetics stay earned.** Record unlocks so adding gardens never takes a hat or cannon away, with a one-time migration for Crown holders from `main`. Low effort.
+3. **A first-meeting tip for each mechanic.** The first time a player meets wind, glass, portals, bounce, low gravity or a walking Jonh, one coach line explains it ("Wind pushes the ball. Watch the windsock."). Low effort.
+4. **Real-phone pass.** With the phone unlocked, measure boot, frame time and GPU memory, then fix the worst offender. Medium effort; most players are on phones.
+5. **Sound for the new gardens and a listening pass.** Wind gusts, Jonh's footsteps and the emote pops, then balance all cues by ear. Low to medium effort.
+6. **Save code.** Export and import progress as a short code, to move between devices without accounts. Low to medium effort.
+7. **Shareable winning-shot clip.** Record the replay with MediaRecorder as a few-second video to post. Medium to high effort; viral.
+8. **Chapters for the 12-garden campaign.** Groups of 3 with a chapter-complete moment and a title card per chapter. Medium effort.
+9. **Colour-blind palette option.** Alternative player colours with more lightness separation. Low effort.
+10. **Trick-shot rules for the new mechanics.** Implement the owner's §7.1 decision, with tests and Jonh's lines. Low effort once decided.
