@@ -335,10 +335,12 @@ export class OnlineController {
   /** Brings the dock and the player panel in line with the bubbles that are up (also expires old ones). */
   private syncEmotes(): void {
     const views = this.emoteBubbles();
-    const key = views.map(v => v.key).join('|');
+    // The player panel carries the bubbles itself while a match is on screen with no overlay over it.
+    const panelShown = this.match && this.menu.getView() === 'none';
+    const key = `${panelShown}|${views.map(v => v.key).join('|')}`;
     if (key === this.emoteKey) return;
     this.emoteKey = key;
-    this.emotes.render(views);
+    this.emotes.render(views, panelShown);
     if (this.match) this.hooks.refreshPlayerPresence?.();
   }
 

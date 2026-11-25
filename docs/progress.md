@@ -1033,3 +1033,53 @@ There were also fixes from an independent review.
 9. **Mobile performance and install.** Texture atlas, lazy cosmetic rasterising, PWA offline install, measured on a real phone. Today's GPU cost is unknown (headless SwiftShader only).
 10. **A walking-Jonh garden.** A predictable route timed from Fire (a timing challenge). SPEC lists "Jonh moving during shots" as deferred, so it needs owner approval.
 
+
+## Online emotes (2026-11-25, branch t3/online-room-emotes)
+
+Owner request approved 2026-11-25: "Online emotes. Quick reactions everyone in the room sees ('Beat that!', 'Unlucky'), matching the hot-seat taunts. Needs a small Convex mutation and schema field, plus a deploy." Built from `real-game-pass` at ef4bf12. **Nothing was deployed**: the redeploy is the owner's step (`npx convex dev --once` for dev, `npx convex deploy` for production; details in `convex/README.md`).
+
+**Done**
+- **Server** (`convex/emotes.ts`, `convex/schema.ts`, `convex/model.ts`).
+  - `emotes:sendEmote({ code, token, emote })` authenticates exactly like the other mutations (room by code, member by token; a seat that left is `NOT_MEMBER`). The emote id must be one of the fixed set (`INVALID_EMOTE`), and the seat must have allowance (`RATE_LIMITED`).
+  - `emotes:getEmotes({ code, token })` returns each seated player's latest emote, with `mine` for the caller.
+  - Stored in a new `emotes` table, one row per player, rewritten in place. A new table keeps every existing document valid (no backfill, no migration).
+  - Why a table and not a field on `players`: every turn, shot and rematch mutation reads the `players` row, so an emote patching it would make them retry or conflict. The schema guidelines also say to keep high-churn data off shared documents. This mirrors `presence`. It also gets its own subscription, so emotes never re-run `getRoom`.
+  - An emote never calls `touchPresence` and never touches `rooms.updatedAt`: it is not a check-in and cannot keep a dead room alive. It writes only the caller's `emotes` row.
+  - Rows are deleted with their player (`deletePlayer`) and with the room (`deleteRoomCascade`).
+- **Rules** (`src/rules/onlineEmotes.ts`, pure). The set, the token-bucket limit, `EmoteTracker` (baseline on the first list, per-sender `seq`, own-echo swallowing) and `EmoteBoard` (bubbles for a few seconds, one per seat, newest few).
+- **Client.**
+  - `OnlineSession` gained a third subscription and `sendEmote` (not retried, since a late emote is stale).
+  - `src/ui/emotes.ts` + `emotes.css` hold the button, picker and bubble stack.
+  - `PlayerPanel` shows the bubble in the sender's row; `playerPresence.emotes` carries it through the existing refresh path, so `htmlControls` needed no change.
+  - `AudioManager.playEmote()` is a quiet two-note pop for other players' emotes.
+- **Keyboard and touch.** Emote button (44 px tap target; icon-only on short landscape phones), `E` opens and closes, `1`–`6` pick, Esc closes without pausing the game. A mouse or finger press never leaves a button focused and picking always lets go of focus, because the game ignores Space and Enter while a button has focus. Only opening the picker from the keyboard (Tab to the button, Enter) moves focus into it.
+- **Reduced motion.** The bubble pop uses the global reduced-motion rules (verified: 1 ms animation under `prefers-reduced-motion: reduce`).
+
+**Tests added** (628 passed | 10 skipped in the full run)
+- `tests/onlineEmotes.test.ts`: the set, the rate limit (burst, refill, fractions, spammer bound, clock going backwards), the tracker and the board.
+- `tests/emotesServer.test.ts`: `storeEmote` against an in-memory stand-in for `ctx.db` (auth, validation, rate limit per seat, seq, lobby/playing/finished, writes only its own row). The repo has no Convex runtime test setup (`convex-test` is not a dependency and I did not add one), so this proves the function's own logic only.
+- `tests/onlineController.test.ts`: 13 emote tests (baseline, no replay, sound, panel presence and expiry, optimistic bubble and echo, rejection rollback, local burst limit, lobby and result, room change, stale room).
+- `tests/onlineSession.test.ts`: the new subscription (updated count, name and args) and `sendEmote`.
+
+**Verified in a real browser** (headless Chromium against the dev server, with a fake session driving the real controller, scene and panel; no backend)
+- Desktop 1280×760, phone landscape 844×390 and portrait 390×844: button, picker, dock bubbles, panel bubbles, lobby, handover overlay.
+- Pointer click on the button and an option: focus ends on `BODY`. Keyboard: Enter on the button moves focus to the first option, Enter picks, focus ends on `BODY`. Esc closes the picker and leaves the lobby overlay as it was.
+- Panel rows keep their height with a bubble except where a long name already wraps (68→68 desktop, 46→46 phone for short names).
+- Screenshots (scratch, not committed): `/tmp/claude-1000/-home-aalish--t3-worktrees-hit-jonh-t3-71ae5f1b-06c8d536272d9c76/f2d9db46-8795-4034-8b54-2b82f61b1634/scratchpad/pw/shots/` (`desktop-match2.png`, `phone-match2.png`, `portrait-match2.png`, `phone-lobby-picker.png`, `desktop-lobby.png`).
+
+**Not verified**
+- **Anything against a live Convex deployment**: the schema push, the two functions running, validators, OCC behaviour, `getEmotes` reactivity, two real browsers seeing each other's emotes, and an old backend with the new frontend (reasoned: the subscription error is swallowed and the button stays disabled, but not exercised).
+- The sound is only unit-tested via the hook; I did not listen to it.
+- Real touch devices; screen-reader announcements (the dock's `role="log"` live region is in place but was not tried with a reader).
+- `convex/_generated/api.d.ts` was edited by hand (one import and one line for `emotes`); `tsc` accepts it, and the next `npx convex dev`/`deploy` regenerates it.
+
+**[PROPOSED] decisions and open questions for the owner**
+- The set of six, and the wording, in `EMOTES`. Ids are stable on the wire, so wording can change without a deploy-order problem.
+- Rate limit: burst 3, then one per 2 s (`ONLINE.emoteBurst`, `emoteRefillSeconds`); bubble 4 s; drop an emote delivered over 10 s late; at most 3 bubbles (`emoteShowSeconds`, `emoteMaxAgeSeconds`, `emoteMaxVisible`).
+- Emotes are allowed on every screen of a room (lobby, match, result). Spectators do not exist, so every sender is a seated player.
+- A seat that has left cannot send (`NOT_MEMBER`).
+- Presentation: panel row while the match is on screen, a dock stack elsewhere (lobby, result, overlays, portrait phones); `E` and `1`–`6` shortcuts.
+- Emotes do not count as a check-in or game action, so they do not keep a room alive past its 24 h cleanup.
+- No per-recipient mute. If an emote ever needs moderating, the fixed set already means there is no text to moderate.
+
+**Files touched that other sessions are also editing:** `src/scenes/PrototypeScene.ts`, one added line in `onlineHooks()` (`playEmoteSound: () => this.audioManager.playEmote()`). Nothing else on the list (`menuOverlay.ts`, `htmlControls.ts`, `menu.css`, `style.css`, `progression.ts`, `cosmetics.ts`, `multiplayerMatch.ts`, `storage.ts`) was touched; the emote styles live in `src/ui/emotes.css`, imported by `src/ui/emotes.ts`.

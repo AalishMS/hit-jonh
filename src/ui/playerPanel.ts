@@ -113,16 +113,18 @@ export class PlayerPanel {
       const unit = document.createElement('small');
       unit.textContent = 'pts';
       score.append(points, unit);
-      row.append(avatar, details, score);
       const emote = this.online?.emotes?.[player.id];
       if (emote) {
-        // The announcement comes from the emote dock's live region; this copy is for the eye only.
+        // Takes the status line's place, so rows keep their height. The emote dock's live region announces it;
+        // this copy is for the eye only.
+        status.hidden = true;
         const bubble = document.createElement('div');
         bubble.className = 'player-tab-emote';
         bubble.setAttribute('aria-hidden', 'true');
         bubble.textContent = emote;
-        row.appendChild(bubble);
+        details.appendChild(bubble);
       }
+      row.append(avatar, details, score);
       this.list.appendChild(row);
     }
   }

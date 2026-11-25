@@ -98,8 +98,13 @@ export class EmoteWidget {
     if (!enabled) this.setOpen(false);
   }
 
-  /** Makes the bubbles on screen exactly `bubbles`: new ones appear, missing ones go. */
-  render(bubbles: readonly EmoteBubbleView[]): void {
+  /**
+   * Makes the bubbles on screen exactly `bubbles`: new ones appear, missing ones go. While the player panel shows
+   * the same bubbles beside the arena (`panelShown`), the dock's copies step aside, except on portrait phones where
+   * the panel sits below the fold.
+   */
+  render(bubbles: readonly EmoteBubbleView[], panelShown = false): void {
+    this.toasts.classList.toggle('is-redundant', panelShown);
     const keep = new Set(bubbles.map(b => b.key));
     for (const [key, node] of this.bubbles) {
       if (keep.has(key)) continue;

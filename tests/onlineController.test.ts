@@ -25,7 +25,7 @@ const h = vi.hoisted(() => {
     sessions: [] as FakeSession[],
     screens: [] as Screen[],
     banner: { blocking: null as string | null, retry: undefined as (() => void) | undefined, flashes: [] as string[] },
-    emotes: { visible: false, enabled: false, bubbles: [] as Array<{ key: string; seat: number; name: string; text: string; mine: boolean }>, notices: [] as string[], pick: (_id: string): void => undefined },
+    emotes: { visible: false, enabled: false, bubbles: [] as Array<{ key: string; seat: number; name: string; text: string; mine: boolean }>, panelShown: false, notices: [] as string[], pick: (_id: string): void => undefined },
     url: '',
   };
   class FakeSession {
@@ -88,7 +88,7 @@ vi.mock('../src/ui/emotes', () => ({
     constructor(_parent: unknown, onPick: (id: string) => void) { h.state.emotes.pick = onPick; }
     setVisible(visible: boolean): void { h.state.emotes.visible = visible; if (!visible) h.state.emotes.bubbles = []; }
     setEnabled(enabled: boolean): void { h.state.emotes.enabled = enabled; }
-    render(bubbles: typeof h.state.emotes.bubbles): void { h.state.emotes.bubbles = [...bubbles]; }
+    render(bubbles: typeof h.state.emotes.bubbles, panelShown = false): void { h.state.emotes.bubbles = [...bubbles]; h.state.emotes.panelShown = panelShown; }
     notice(text: string): void { h.state.emotes.notices.push(text); }
     destroy(): void { /* nothing to remove */ }
   },
@@ -913,6 +913,19 @@ describe('OnlineController: emotes', () => {
     ctl.update(ONLINE.emoteShowSeconds + 0.5);
     expect(ctl.playerPresence).not.toHaveProperty('emotes');
     expect(h.state.emotes.bubbles).toEqual([]);
+  });
+
+  it('tells the dock when the player panel is already showing the bubbles (a match on screen, no overlay)', async () => {
+    const { ctl, menu, listener } = await inMatch();
+    listener.onEmotes!([entry(1)]);
+    expect(h.state.emotes.panelShown).toBe(false); // the room's own screens are up: the dock carries the bubble
+    menu.view = 'none';
+    ctl.update(0.3);
+    listener.onEmotes!([entry(2, { at: 1 })]);
+    expect(h.state.emotes.panelShown).toBe(true);
+    menu.view = 'match_result';
+    ctl.update(0.3);
+    expect(h.state.emotes.panelShown).toBe(false);
   });
 
   it('a newer emote from the same seat replaces its bubble', async () => {
