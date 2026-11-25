@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { PAL, hex } from '../art/palette';
+import { gustLevelAt } from '../audio/windSound';
 import { WIND } from '../config/tuning';
 import { hash01 } from '../fx/easing';
 import { sockChain, sockLift, streakAlpha, streakDriftPxPerSecond, windCaption, windDirection } from '../fx/windVisuals';
@@ -14,7 +15,7 @@ const POLE_PX = 132;
 /** How far streaks run past the visible world before wrapping (px). */
 const WRAP_MARGIN = 120;
 
-interface Streak { image: Phaser.GameObjects.Image; x: number; speedFactor: number }
+interface Streak { image: Phaser.GameObjects.Image; x: number; alpha: number; speedFactor: number }
 
 /**
  * A level's constant wind on screen (SPEC §8.7): a windsock on a pole that lifts and points
@@ -79,35 +80,43 @@ export class WindRenderer {
       const x = this.left + hash01(i * 3.7 + 1) * (this.right - this.left);
       const y = top + hash01(i * 5.3 + 2) * (bottom - top);
       const length = 0.6 + hash01(i * 7.1 + 3) * 0.9;
-      const image = add(artImage(s, x, y, 'wind-streak').setDepth(DEPTH.streak).setAlpha(streakAlpha(a) * (0.5 + hash01(i * 2.9 + 4) * 0.5)));
+      const alpha = streakAlpha(a) * (0.5 + hash01(i * 2.9 + 4) * 0.5);
+      const image = add(artImage(s, x, y, 'wind-streak').setDepth(DEPTH.streak).setAlpha(alpha));
       image.setScale(image.scaleX * length * (dir === 0 ? 1 : dir), image.scaleY);
-      this.streaks.push({ image, x, speedFactor: 0.7 + hash01(i * 4.1 + 5) * 0.6 });
+      this.streaks.push({ image, x, alpha, speedFactor: 0.7 + hash01(i * 4.1 + 5) * 0.6 });
     }
   }
 
-  /** Real-time clock; held still under reduced motion. */
-  update(dt: number, reduced: boolean): void {
+  /**
+   * Real-time clock; held still under reduced motion. `heardGust` (0–1) is how far into a gust the wind bed
+   * you hear is, so the sock and streaks swell with it; with no wind bed playing (muted, music off) the same
+   * gust schedule runs on this clock instead. Gusts are presentation only: the ball's wind never changes.
+   */
+  update(dt: number, reduced: boolean, heardGust: number | null = null): void {
     const wind = this.level?.wind;
     if (!wind || reduced || !(dt > 0)) return;
     this.time += dt;
-    this.drawSock(this.time, true);
-    const drift = streakDriftPxPerSecond(wind.accelerationMs2);
+    const gust = heardGust ?? gustLevelAt(this.time, wind.accelerationMs2);
+    this.drawSock(this.time, true, gust);
+    const drift = streakDriftPxPerSecond(wind.accelerationMs2) * (1 + WIND.gustStreakSpeedup * gust);
+    const brighten = 1 + WIND.gustStreakAlpha * gust;
     const span = this.right - this.left;
     for (const streak of this.streaks) {
       streak.x += drift * streak.speedFactor * dt;
       if (streak.x > this.right) streak.x -= span;
       else if (streak.x < this.left) streak.x += span;
-      streak.image.setPosition(streak.x, streak.image.y);
+      streak.image.setPosition(streak.x, streak.image.y).setAlpha(Math.min(1, streak.alpha * brighten));
     }
   }
 
-  private drawSock(time: number, flutter: boolean): void {
+  private drawSock(time: number, flutter: boolean, gust = 0): void {
     const wind = this.level?.wind;
     if (!wind || !this.sock) return;
     const dir = windDirection(wind.accelerationMs2) || 1;
     const g = this.sock;
     g.clear();
-    const segments = sockChain(sockLift(wind.accelerationMs2), time, flutter);
+    const lift = Math.min(1, sockLift(wind.accelerationMs2) + WIND.gustSockLift * gust);
+    const segments = sockChain(lift, time, flutter, 1 + WIND.gustFlutter * gust);
     segments.forEach((seg, i) => {
       const ox = this.poleX;
       const oy = this.poleTop;

@@ -1036,7 +1036,7 @@ export class PrototypeScene extends Phaser.Scene {
     if (this.skipPresentationFrame) { this.skipPresentationFrame = false; return; }
     const dtSeconds = Math.max(0, Math.min(FLOW.maxFrameSeconds, deltaMs / MS_PER_SECOND));
     const reduced = this.jonhRenderer.isReducedMotionActive();
-    this.sceneryRenderer.update(dtSeconds, reduced);
+    this.sceneryRenderer.update(dtSeconds, reduced, this.audioManager.windGust());
     this.coachHand?.update(dtSeconds, reduced);
     const wasHolding = this.impactTimeline.isHolding;
     const timelineSeconds = this.impactTimeline.advance(dtSeconds, false, reduced);

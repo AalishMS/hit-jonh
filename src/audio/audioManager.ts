@@ -16,7 +16,7 @@ import type { HitQuality } from '../fx/impactProfile';
 import { CueGate } from './cueGate';
 import { dbToGain, softClipCurve } from './loudness';
 import { loopNotes, loopSeconds, midiToHz, type ScheduledNote } from './music';
-import { gustPlan, windBedFilters, windBedLevel } from './windSound';
+import { gustLevelAt, gustPlan, windBedFilters, windBedLevel } from './windSound';
 
 export const SAMPLE_NAMES = [
   'impactPunch_heavy_000', 'impactPunch_heavy_001', 'impactPunch_heavy_002', 'impactPunch_heavy_003',
@@ -52,6 +52,8 @@ interface WindBed {
   freshUntil: number;
   gustIndex: number;
   nextGustAt: number;
+  /** Audio time the bed began: gusts are laid out from here. */
+  startedAt: number;
 }
 
 type AnyContext = AudioContext | OfflineAudioContext;
@@ -786,6 +788,13 @@ export class AudioManager {
 
   get windBedPlaying(): boolean { return this.wind !== null; }
 
+  /** How far into a gust the wind bed is right now (0–1), so the windsock can swell with it; null when silent. */
+  windGust(): number | null {
+    const w = this.wind;
+    const ctx = this.ctx;
+    return w && ctx ? gustLevelAt(ctx.currentTime - w.startedAt, w.accel) : null;
+  }
+
   private startWind(ctx: AnyContext, accel: number, now: number): void {
     this.windBuffer ??= this.makeWindBuffer(ctx, 6);
     const filters = windBedFilters(accel);
@@ -828,7 +837,7 @@ export class AudioManager {
     gust.connect(bed).connect(this.ambienceDuck!);
     this.wind = {
       accel, sources, air, bed, gust, freshUntil: now + AUDIO.wind.keepAliveSeconds,
-      gustIndex: 0, nextGustAt: now + gustPlan(0, accel).gapSeconds,
+      gustIndex: 0, nextGustAt: now + gustPlan(0, accel).gapSeconds, startedAt: now,
     };
     this.scheduleGusts();
   }

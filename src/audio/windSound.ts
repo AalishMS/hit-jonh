@@ -65,3 +65,24 @@ export function gustTimeline(from: number, until: number, accelerationMs2: numbe
   }
   return out;
 }
+
+/**
+ * How far into a gust the wind is `elapsed` seconds after the bed began: 0 between gusts, rising to 1 at a
+ * gust's peak and falling back, on exactly the ramps the audio schedules (gusts laid out as `gustTimeline`).
+ * Normalised by the largest lift, so the windsock and streaks can swell with what is heard.
+ */
+export function gustLevelAt(elapsed: number, accelerationMs2: number): number {
+  if (!(elapsed > 0) || windStrength(accelerationMs2) <= 0) return 0;
+  let t = 0;
+  for (let i = 0; ; i++) {
+    const plan = gustPlan(i, accelerationMs2);
+    const start = t + plan.gapSeconds;
+    if (elapsed < start) return 0;
+    const peak = start + plan.swellSeconds;
+    const end = peak + plan.fadeSeconds;
+    const level = plan.lift / W.gustLift;
+    if (elapsed < peak) return Math.min(1, level * (elapsed - start) / plan.swellSeconds);
+    if (elapsed < end) return Math.min(1, level * (end - elapsed) / plan.fadeSeconds);
+    t = end;
+  }
+}

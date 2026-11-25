@@ -151,10 +151,10 @@ export class SceneryRenderer {
     for (const o of drawRoute(s, level, this.ppm, this.worldHeightPx, DEPTH.prop)) add(o);
   }
 
-  /** Ambient motion on the real-time clock (not the hit-stop clock). */
-  update(dt: number, reduced: boolean): void {
+  /** Ambient motion on the real-time clock (not the hit-stop clock); `heardGust`: see WindRenderer.update. */
+  update(dt: number, reduced: boolean, heardGust: number | null = null): void {
     this.mechanics.update(dt, reduced);
-    this.wind.update(dt, reduced);
+    this.wind.update(dt, reduced, heardGust);
     if (reduced || !(dt > 0)) return;
     this.time += dt;
     this.rays?.setRotation(this.time * 0.05);

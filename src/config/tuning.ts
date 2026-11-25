@@ -419,6 +419,14 @@ export const WIND = {
   streakDriftPxPerMs2: 70,
   /** Streak opacity range. */
   streakAlpha: 0.55,
+  /**
+   * Gust visuals [PROPOSED 2026-11-25][TUNE]: at a gust's peak (the audio's gusts) the sock lifts by this much
+   * and flutters harder, and streaks drift faster and show clearer. The ball's wind never changes (SPEC §8.7).
+   */
+  gustSockLift: 0.18,
+  gustFlutter: 1.6,
+  gustStreakSpeedup: 1.1,
+  gustStreakAlpha: 0.6,
 } as const;
 
 /**

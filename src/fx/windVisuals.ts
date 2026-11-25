@@ -41,15 +41,15 @@ export const SOCK = { segments: 4, segmentPx: 24, mouthPx: 17, tipPx: 8 } as con
 /**
  * The windsock as a chain of tapering segments. At lift 1 it flies level; as the wind drops it hangs
  * down limp. `time` (seconds) adds a small flutter, which is 0 for reduced motion (pass 0 and
- * `flutter` false). Segment i is a quad from its mouth edge to its tip edge.
+ * `flutter` false); `flutterScale` makes it wilder in a gust. Segment i is a quad from its mouth edge to its tip edge.
  */
-export function sockChain(lift: number, time: number, flutter: boolean): SockSegment[] {
+export function sockChain(lift: number, time: number, flutter: boolean, flutterScale = 1): SockSegment[] {
   const out: SockSegment[] = [];
   let x = 0;
   let y = 0;
   const hang = (1 - clamp01(lift)) * (Math.PI / 2 - 0.12);
   for (let i = 0; i < SOCK.segments; i++) {
-    const wave = flutter ? Math.sin(time * 7 + i * 1.1) * 0.07 * (0.35 + clamp01(lift)) : 0;
+    const wave = flutter ? Math.sin(time * 7 + i * 1.1) * 0.07 * (0.35 + clamp01(lift)) * flutterScale : 0;
     const angle = hang + i * 0.05 * (1 - clamp01(lift)) + wave; // below horizontal, radians
     const dx = Math.cos(angle) * SOCK.segmentPx;
     const dy = Math.sin(angle) * SOCK.segmentPx;

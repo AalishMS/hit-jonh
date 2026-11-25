@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AUDIO, WIND } from '../src/config/tuning';
-import { gustPlan, gustTimeline, windBedFilters, windBedLevel, windStrength } from '../src/audio/windSound';
+import { gustLevelAt, gustPlan, gustTimeline, windBedFilters, windBedLevel, windStrength } from '../src/audio/windSound';
 import { WASHDAY_LEVEL } from '../src/levels';
 
 describe('wind bed maths', () => {
@@ -56,5 +56,31 @@ describe('wind bed maths', () => {
     // Resuming from the next index continues the same sequence.
     const cont = gustTimeline(gusts[0]!.end, 90, -3, 1);
     expect(cont[0]!.start).toBeCloseTo(gusts[1]!.start, 9);
+  });
+});
+
+describe('gustLevelAt (the gust visuals follow the gusts you hear)', () => {
+  const accel = -3; // Windy Washday
+  const gusts = gustTimeline(0, 120, accel);
+
+  it('is 0 between gusts and rises to the gust\'s lift at its peak, on the audio\'s own layout', () => {
+    expect(gusts.length).toBeGreaterThan(3);
+    expect(gustLevelAt(0, accel)).toBe(0);
+    for (const g of gusts) {
+      expect(gustLevelAt(g.start, accel)).toBeCloseTo(0, 9);
+      expect(gustLevelAt(g.peak - 1e-9, accel)).toBeCloseTo(Math.min(1, g.lift / AUDIO.wind.gustLift), 6);
+      expect(gustLevelAt((g.start + g.peak) / 2, accel)).toBeCloseTo(Math.min(1, g.lift / AUDIO.wind.gustLift) / 2, 6);
+      expect(gustLevelAt(g.end, accel)).toBe(0);
+    }
+    for (let i = 1; i < gusts.length; i++) expect(gustLevelAt((gusts[i - 1]!.end + gusts[i]!.start) / 2, accel)).toBe(0);
+  });
+
+  it('stays within 0..1 and is 0 in calm air', () => {
+    for (let t = 0; t < 60; t += 0.37) {
+      const v = gustLevelAt(t, accel);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+      expect(gustLevelAt(t, 0)).toBe(0);
+    }
   });
 });
