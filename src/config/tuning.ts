@@ -306,6 +306,9 @@ export const MATERIALS = {
   /** Mechanic maps [PROPOSED][TUNE]: unbroken glass is hard and slick; velvet drapes swallow a ball. */
   glass: { restitution: 0.35, friction: 0.2 },
   velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
+  /** Scrapyard [PROPOSED 2026-11-25][TUNE]: crushed-car stacks thud; the electromagnet's face is dead (the ball clunks and drops off). */
+  scrap: { restitution: 0.3, friction: 0.7, rollingDamping: 0.9 },
+  magnet: { restitution: 0.1, friction: 0.9 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
@@ -414,6 +417,32 @@ export const WIND = {
   streakDriftPxPerMs2: 70,
   /** Streak opacity range. */
   streakAlpha: 0.55,
+} as const;
+
+/**
+ * A level's electromagnet [PROPOSED 2026-11-25][TUNE] (SPEC §8.9). The physics values (centre, reach,
+ * strongest pull) live in level data (`LevelData.magnet`); these are the limits it is validated
+ * against, the field's core, and the presentation values. The pull acts on the ball only.
+ */
+export const MAGNET = {
+  /** Full pull out to this share of the reach (the inner ring), then a smooth fade to nothing at the reach. */
+  fullReachShare: 0.65,
+  /** Inside this distance of the centre the pull eases linearly to zero (no singularity). */
+  coreRadiusMetres: 0.3,
+  /** Strongest pull a level may declare (m/s²)... */
+  maxAccelerationMs2: 8,
+  /** ...and never more than this share of the level's gravity, so the ball can never hover, orbit or cling. */
+  maxShareOfGravity: 0.85,
+  /** Longest reach a level may declare (m). */
+  maxRadiusMetres: 8,
+  /** Rings that drift inwards between the reach and the inner ring (the two edges are always drawn), their opacity, and the drift period. */
+  ringCount: 3,
+  ringAlpha: 0.42,
+  pulseSeconds: 2.4,
+  /** How much the rings and the magnet's glow brighten while the ball is in the field (0..1 proximity). */
+  glowAlpha: 0.55,
+  /** Sparks crackle on the magnet's face when the ball is this close (proximity 0..1) or closer. */
+  sparkProximity: 0.55,
 } as const;
 
 /**
@@ -528,6 +557,20 @@ export const AUDIO = {
     /** Shot cues dip the bed by this many dB for `duckSeconds`, so it stays under them. */
     duckDb: -9,
     duckSeconds: 0.9,
+  },
+  /**
+   * The scrapyard magnet's hum [PROPOSED 2026-11-25][TUNE]: a low electric buzz that swells as the ball
+   * nears the magnet (gain ∝ proximity², 0..1, sim/magnet.ts), during the flight only. It plays through
+   * the flight whoosh's bus, so it sits in the quiet tier with it.
+   */
+  magnetHum: {
+    /** Gain at full proximity, before the whoosh bus trim. */
+    gain: 0.05,
+    /** Buzz fundamental (Hz) far from the magnet, and how much it rises at the magnet. */
+    baseHz: 55,
+    riseHz: 9,
+    /** Low-pass on the buzz so it hums rather than rasps. */
+    lowpassHz: 420,
   },
   /** Gravel footsteps: one per foot-plant, in step with the walk cycle (levels/jonhRoute distance). */
   footstep: {

@@ -1,7 +1,8 @@
 import Matter, { type Body, type World } from '@matter-js';
 import { LOOK, MATERIALS, PHYSICS, type MaterialProps } from '../config/tuning';
 import { routePoseAtStep, shiftJonh, type RoutePose } from '../levels/jonhRoute';
-import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, PortalData } from '../levels/types';
+import type { BreakableData, JonhRouteData, JonhSpawnData, LevelData, MagnetData, PortalData } from '../levels/types';
+import { magnetAcceleration, magnetProfile, type MagnetProfile } from '../sim/magnet';
 import type { Box2D, Point2D, SweptHit } from '../sim/swept';
 import { circleOverlapsBox, sweepCircleVsBox, sweepCircleVsDisc } from '../sim/swept';
 import './matterSolver';
@@ -114,6 +115,14 @@ export class MatterAdapter {
   private stepEvents: MechanicEvent[] = [];
   /** Constant wind as a Matter acceleration (px/ms², + is +x); 0 when the level has none. */
   private windPxPerMs2 = 0;
+  /** The level's electromagnet (SI level data); null when it has none, and nothing is touched. */
+  private magnet: MagnetData | null = null;
+  private magnetShape: MagnetProfile | null = null;
+  /**
+   * Where the magnet holds the ball (sim metres) once it has touched the magnet's housing this shot:
+   * the ball stays stuck there (a static body) until the shot ends. Per shot; null otherwise.
+   */
+  private magnetHold: Point2D | null = null;
   /**
    * Walking Jonh (levels/jonhRoute.ts): the route, the spawn it is measured from, and the fixed step
    * his colliders are placed for (0 while aiming, k during the k-th step after Fire). He stops for
@@ -134,6 +143,8 @@ export class MatterAdapter {
   setupLevel(level: LevelData): void {
     this.clear();
     this.windPxPerMs2 = accelerationToMatter(level.wind?.accelerationMs2 ?? 0, this.pixelsPerMetre);
+    this.magnet = level.magnet ?? null;
+    this.magnetShape = level.magnet ? magnetProfile(level.magnet.radius) : null;
     this.jonhRoute = level.jonhRoute ?? null;
     this.jonhSpawnBase = level.jonhSpawn;
 
@@ -269,6 +280,7 @@ export class MatterAdapter {
     Matter.World.add(this.matterWorld, this.projectileBody);
     Matter.Body.setVelocity(this.projectileBody, launchVelocityWorld);
     this.pushWind(false);
+    this.pushMagnet(false, pixelsToMetres(startXPx, this.pixelsPerMetre), worldYToSimY(startYPx, this.worldHeightPx, this.pixelsPerMetre));
     // Walking Jonh: his colliders sit where he is during the first fixed step after Fire.
     this.placeJonh(1);
 
@@ -278,7 +290,11 @@ export class MatterAdapter {
 
   stepProjectile(level: LevelData, radiusMetres: number): ProjectileState | null {
     const state = this.stepSwept(level, radiusMetres);
-    if (state) this.pushWind(this.supportMaterial(level, { x: state.xSim, y: state.ySim }, radiusMetres) !== undefined);
+    if (state) {
+      const supported = this.supportMaterial(level, { x: state.xSim, y: state.ySim }, radiusMetres) !== undefined;
+      this.pushWind(supported);
+      this.pushMagnet(supported, state.xSim, state.ySim);
+    }
     return state;
   }
 
@@ -294,6 +310,47 @@ export class MatterAdapter {
     this.projectileBody.force.x += this.projectileBody.mass * this.windPxPerMs2;
   }
 
+  /**
+   * The electromagnet [PROPOSED 2026-11-25] (SPEC §8.9): its pull on the ball where it is now, as a
+   * force for Matter's *next* update, added exactly like wind (and gravity), so it is stepped only by
+   * the fixed step and the swept guard sees the velocity Matter produced. Ball only, never a contact,
+   * skipped while the ball rests on a surface (so it settles); with no magnet nothing is touched.
+   */
+  private pushMagnet(supported: boolean, xSim: number, ySim: number): void {
+    const field = this.magnet;
+    if (!field || !this.magnetShape || supported || this.magnetHold || !this.projectileBody) return;
+    const a = magnetAcceleration(field, xSim, ySim, this.magnetShape);
+    if (a.x === 0 && a.y === 0) return;
+    const mass = this.projectileBody.mass;
+    this.projectileBody.force.x += mass * accelerationToMatter(a.x, this.pixelsPerMetre);
+    // Matter's y points down.
+    this.projectileBody.force.y -= mass * accelerationToMatter(a.y, this.pixelsPerMetre);
+  }
+
+  /**
+   * The ball touched the magnet's housing [PROPOSED 2026-11-25]: it sticks at the contact point (just
+   * outside the surface) with no velocity, as a static body, so nothing (gravity, the pull, Matter's
+   * contacts) moves it again this shot. Its speed is 0, so the shot settles: a miss.
+   */
+  private holdOnMagnet(hit: SweptHit, currSim: Point2D, currPx: Point2D): void {
+    const body = this.projectileBody!;
+    const at = { x: hit.point.x + hit.normal.x * 1e-4, y: hit.point.y + hit.normal.y * 1e-4 };
+    const px = { x: metresToPixels(at.x, this.pixelsPerMetre), y: simYToWorldY(at.y, this.worldHeightPx, this.pixelsPerMetre) };
+    Matter.Body.setPosition(body, px);
+    Matter.Body.setVelocity(body, { x: 0, y: 0 });
+    body.positionImpulse.x = 0;
+    body.positionImpulse.y = 0;
+    Matter.Body.setStatic(body, true);
+    this.magnetHold = at;
+    currSim.x = at.x;
+    currSim.y = at.y;
+    currPx.x = px.x;
+    currPx.y = px.y;
+  }
+
+  /** Whether the magnet is holding the ball (it touched the magnet's housing this shot). */
+  get heldByMagnet(): boolean { return this.magnetHold !== null; }
+
   /** The material of the top surface the ball rests on (ground, roofs, decks), if any. */
   private supportMaterial(level: LevelData, at: Point2D, radiusMetres: number): string | undefined {
     return this.hasHitGround && at.y <= level.ground.maxY + radiusMetres + 1e-3
@@ -305,6 +362,11 @@ export class MatterAdapter {
   private stepSwept(level: LevelData, radiusMetres: number): ProjectileState | null {
     if (!this.projectileBody) return null;
     this.stepEvents = [];
+    if (this.magnetHold) {
+      // Stuck to the magnet: it does not move again this shot (it settles, a miss).
+      this.advanceJonh();
+      return this.snapshot({ ...this.magnetHold }, { x: this.projectileBody.position.x, y: this.projectileBody.position.y });
+    }
 
     const currPx = {
       x: this.projectileBody.position.x,
@@ -383,6 +445,15 @@ export class MatterAdapter {
       const inVy = wall ? this.previousVelocity.y - wall.y : this.previousVelocity.y;
       const dotIn = inVx * matterNormalX + inVy * matterNormalY;
       const minBounce = speedMsToMatterVelocity(PHYSICS.bounceMinNormalSpeedMs, this.pixelsPerMetre);
+
+      // The magnet holds a ball that touches its housing: no bounce, it sticks where it touched.
+      if (earliestHit.boxLabel === 'obstacle' && this.magnet !== null && earliestHit.id === this.magnet.housingId) {
+        this.holdOnMagnet(earliestHit.hit, currSim, currPx);
+        this.prevPosPx = { ...currPx };
+        this.previousVelocity = { x: 0, y: 0 };
+        this.advanceJonh();
+        return this.snapshot(currSim, currPx);
+      }
 
       // Still moving into the surface: reflect to prevent tunnelling. Already resolved by Matter
       // after a real impact: redo the bounce from the incoming velocity with this material.
@@ -678,6 +749,7 @@ export class MatterAdapter {
     this.brokenIds = [];
     this.portalsUsed = [];
     this.stepEvents = [];
+    this.magnetHold = null;
     // Jonh walks back to the start of his route (scene reset, SPEC §7.2).
     if (this.jonhRoute) this.placeJonh(0);
   }

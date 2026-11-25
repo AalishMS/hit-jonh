@@ -2,11 +2,12 @@ import type Phaser from 'phaser';
 import { barrelKey, cannonSkinKeys } from '../art/cannonArt';
 import { DEFAULT_CANNON_SKIN, type CannonSkinId } from '../rules/cosmetics';
 import { PAL, hex } from '../art/palette';
-import { AIM, PROJECTILE } from '../config/tuning';
+import { AIM, PHYSICS, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
-import { previewDotsPx } from '../sim/ballistics';
-import { metresToPixels, muzzleSpawnPx, simYToWorldY } from '../sim/units';
+import { previewDotsPx, type PreviewPull } from '../sim/ballistics';
+import { magnetAcceleration, magnetProfile } from '../sim/magnet';
+import { metresToPixels, muzzleSpawnPx, pixelsToMetres, simYToWorldY, worldYToSimY } from '../sim/units';
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { artImage, artScale, requestArtKey } from './artTextures';
 
@@ -142,7 +143,7 @@ export class CannonRenderer {
     if (!this.showAimAids) return;
     const muzzle = this.getMuzzlePosition(this.angleDeg, PROJECTILE.radiusMetres);
     const dots = previewDotsPx(muzzle, this.angleDeg, this.physics.launchSpeed(this.powerPercent), this.physics.gravity,
-      this.physics.windMs2, this.ppm, AIM.previewSeconds, 9);
+      this.physics.windMs2, this.ppm, AIM.previewSeconds, 9, this.magnetPull(muzzle));
     const count = dots.length;
     for (let i = 1; i <= count; i++) {
       const { x, y } = dots[i - 1]!;
@@ -153,6 +154,16 @@ export class CannonRenderer {
       g.fillStyle(hex(PAL.paper), a);
       g.fillCircle(x, y, r);
     }
+  }
+
+  /** The level magnet's pull for the preview, measured from the muzzle (none on other maps). */
+  private magnetPull(muzzlePx: { x: number; y: number }): PreviewPull | undefined {
+    const field = this.physics.magnet;
+    if (!field) return undefined;
+    const mx = pixelsToMetres(muzzlePx.x, this.ppm);
+    const my = worldYToSimY(muzzlePx.y, this.worldHeightPx, this.ppm);
+    const profile = magnetProfile(field.radius);
+    return { accel: (dx, dy) => magnetAcceleration(field, mx + dx, my + dy, profile), dtSeconds: PHYSICS.fixedStepSeconds };
   }
 
   private drawMeter(): void {
