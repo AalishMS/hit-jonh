@@ -1084,6 +1084,73 @@ Owner request approved 2026-11-25: "Online emotes. Quick reactions everyone in t
 
 **Files touched that other sessions are also editing:** `src/scenes/PrototypeScene.ts`, one added line in `onlineHooks()` (`playEmoteSound: () => this.audioManager.playEmote()`). Nothing else on the list (`menuOverlay.ts`, `htmlControls.ts`, `menu.css`, `style.css`, `progression.ts`, `cosmetics.ts`, `multiplayerMatch.ts`, `storage.ts`) was touched; the emote styles live in `src/ui/emotes.css`, imported by `src/ui/emotes.ts`.
 
+## Wind garden (2026-11-25, branch t3/constant-wind-garden)
+
+The owner approved item 5 of the "next 10" on 2026-11-25: "A wind garden. A third mechanic: a per-level constant wind with a windsock and streaks, deterministic, with the launch preview bending to match." Built on `real-game-pass` at ef4bf12 (breakables and portals were the template). Rules and values are [PROPOSED][TUNE] in SPEC §8.7; nothing was deployed.
+
+**Done**
+- **Mechanic** (`src/levels/types.ts` `WindData`, `levelPhysics().windMs2`, `MatterAdapter`).
+  - A level may carry `wind: { accelerationMs2, windsockX? }`: a horizontal acceleration on the ball only.
+  - It is a Matter body force (`mass × a`), added the way Matter adds gravity and re-added after each fixed step, because Matter clears forces every update. No second integrator and no change to `FixedStepper` or the swept guard, which simply reads the velocity Matter produced.
+  - With no wind, no force is touched at all. `stepProjectile` now wraps the old body (renamed `stepSwept`) and the new `supportMaterial` helper was extracted from the rolling-damping check with the same logic.
+  - It is not applied while the ball rests on a top surface, so a rolling ball still settles ([PROPOSED]; otherwise a 3 m/s² wind keeps a ball rolling at about 1.2 m/s until the 15 s timeout).
+- **Launch preview.** `previewDotsPx` (`src/sim/ballistics.ts`) is the pure maths for the 0.3 s dots and includes `½·a·t²`. `CannonRenderer.drawGuide` uses it. Still never shows the landing point.
+- **Readability** (`src/fx/windVisuals.ts` pure, `src/render/windRenderer.ts`, `src/art/windArt.ts`).
+  - A windsock on a pole behind the playfield, a "Wind ← 3" caption and 16 drifting streaks.
+  - Under reduced motion the sock hangs still and the streaks stop.
+  - The map picker thumbnail shows a windsock and arrow.
+  - The one scene edit is `PrototypeScene.detectBounce`, which now subtracts the wind's per-step speed change so the bounce-sound detector is not fooled.
+  - Optional gust sound: **not done** (needs a hook in the scene's fire path; skipped to keep the shared files untouched).
+- **Windy Washday** (`src/levels/washday.ts`, SPEC §11 row 11).
+  - A 3 m/s² headwind, a 6 m stone garden wall at x 10.6–11.1 m, a low planter and Jonh at x ≈ 19 m.
+  - In `MAPS` (last), in the Trick shots preset, in `CAMPAIGN_ORDER` after The Greenhouse.
+  - Own arrival, miss and hit lines, a garden-wall complaint and a sky theme.
+  - 1° grid: 3.2 / 3.4 / 3.3 % (cap 8 %).
+  - Three multiplayer positions (offsets −2, 0, +2 m), each with two reference solutions.
+  - Recorded flights (title demo and winning-shot replay) include the wind because `recordShot` runs through the same adapter.
+- **Validation.** Wind must be non-zero, finite and at most 8 m/s², and its windsock must be inside the world. The collider thickness rule adds `|a| × 4 s` of wind speed. This affects only maps with wind.
+- **Docs.** SPEC §3.2, §4.1, §4.2, §8.7, §9.2, §11; `CHANGELOG.md`; `docs/art-direction.md`.
+
+**Tests added**
+- `tests/wind.test.ts` (25).
+  - Drift equals ½·a·t²; the horizontal velocity changes by `a`; vertical is untouched.
+  - Jonh, the ground and obstacles never move, and there is no contact in free flight.
+  - A resting ball settles in the wind.
+  - Identical outcome, end point and step count at 30/60/144 Hz.
+  - No tunnelling through a 0.2 m wall in ±8 m/s² at max power for 9 angles.
+  - The reported velocity equals Matter's.
+  - After a bounce the wind keeps acting.
+  - **All ten pre-wind maps reproduce golden results recorded at ef4bf12** (4 aims × 10 maps, outcome, step count, end point and the recorded path), bit for bit.
+  - The preview agrees with the simulated flight within 5 cm for several winds and aims, and bends the right way.
+  - Validation, level physics, and `recordShot` includes the wind.
+- `tests/windGarden.test.ts` (15).
+  - All reference solutions (map and positions) hit with the wind and **miss without it**.
+  - Of the calm-air hits on a 2°×2% grid, fewer than 15 % still hit in the wind.
+  - Nothing tunnels at 9 angles at 100 % and 75 % power.
+  - The recorded reference shot hits in the wind and misses without it.
+  - Pure wind visuals, and `WindRenderer` with a mock scene (nothing on a calm level, caption, drift direction, still under reduced motion, rebuilds).
+  - Plus the existing per-map suites (`levels`, `multiplayerPositions`, `headlessShot`, `difficulty`, settle fast-forward, campaign) which now include the new map.
+
+**Verified**
+- `npm run check` and `npm run build` (summary lines in the report; see below).
+- Browser (Vite 5181, headless Chromium CDP 9231, manual 60 Hz clock; servers started and stopped per run, 0 page errors):
+  - From a save with four gardens cleared, the title's Continue button read "Windy Washday".
+  - The garden shows the windsock, the "Wind ← 3" caption, streaks and the bent preview.
+  - 45° / 60 % fired in the real scene gave a DIRECT HIT, at 1440×900 desktop, 844×390 phone landscape and with reduced motion on.
+  - Screenshots: `scratchpad/pw/shots/wash-{desk,phone,reduced}-{aim,flight,after}.png` under the session scratchpad.
+
+**Not verified**
+- Real GPU, real device or real-time frame pacing (headless SwiftShader at about 4 fps, driven by the manual clock).
+- The Convex side. Room map ids come from `validMaps(MAP_IDS)` in `src/rules/onlineRules.ts`, bundled into the Convex functions at deploy time. **Online rooms can pick Windy Washday only after the Convex functions are redeployed** (not run). A client on the new build and a server on the old one gets `INVALID_MAPS`. Each client simulates the same fixed-step wind locally.
+- Audio: no new sound.
+
+**Owner decisions / open questions**
+- Wind strength 3 m/s² headwind, the 8 m/s² cap, and the sock's "flat at 5 m/s²" are [TUNE].
+- Wind is switched off while the ball rests on a surface ([PROPOSED]); the alternative is a constant wind that never lets a ball settle.
+- Should a hit that depends on the wind ever count as a trick shot? Today it does not (SPEC §7.1 [OPEN] for every mechanic).
+- Campaign slot (after The Greenhouse) and the Trick shots preset are [PROPOSED].
+- A tailwind garden, or several winds on one map, would be new content on the same mechanic.
+
 ## Next 10 (2026-11-25)
 
 The owner approved the proposed next 10 ("I like the proposal. Continue with them"), including the two items the spec had deferred (hot-seat sudden death and a walking-Jonh garden). Independent items run in parallel worktrees: the wind garden (5), online emotes (4), mobile performance and install (9) and the walking-Jonh garden (10). Items 1, 2, 3, 6, 7 and 8 are built on `real-game-pass` directly.

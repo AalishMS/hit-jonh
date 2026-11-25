@@ -6,6 +6,7 @@ import type { LevelData } from '../levels/types';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import { artImage, artMeta, artScale } from './artTextures';
 import { MechanicsRenderer } from './mechanicsRenderer';
+import { WindRenderer } from './windRenderer';
 
 /** Layer depths: background < playfield < actors. */
 const DEPTH = { sky: -100, sun: -95, cloud: -90, far: -80, bird: -75, mid: -70, fence: -60, ground: 1, obstacle: 2, prop: 4, flora: 5 } as const;
@@ -31,6 +32,8 @@ export class SceneryRenderer {
   private span = 2 * OVERDRAW + 1280;
   /** Breakable props, portals and their effects: the scene forwards physics events and resets here. */
   readonly mechanics: MechanicsRenderer;
+  /** The level's constant wind: windsock, caption and streaks (nothing on a calm level). */
+  readonly wind: WindRenderer;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -39,6 +42,7 @@ export class SceneryRenderer {
     private readonly worldWidthPx: number,
   ) {
     this.mechanics = new MechanicsRenderer(scene, ppm, worldHeightPx);
+    this.wind = new WindRenderer(scene, ppm, worldHeightPx, worldWidthPx);
   }
 
   draw(level: LevelData): void {
@@ -140,11 +144,13 @@ export class SceneryRenderer {
     }
 
     this.mechanics.draw(level);
+    this.wind.draw(level);
   }
 
   /** Ambient motion on the real-time clock (not the hit-stop clock). */
   update(dt: number, reduced: boolean): void {
     this.mechanics.update(dt, reduced);
+    this.wind.update(dt, reduced);
     if (reduced || !(dt > 0)) return;
     this.time += dt;
     this.rays?.setRotation(this.time * 0.05);
@@ -171,10 +177,12 @@ export class SceneryRenderer {
     this.flora = [];
     this.rays = null;
     this.mechanics.clear();
+    this.wind.clear();
   }
 
   destroy(): void {
     this.clear();
     this.mechanics.destroy();
+    this.wind.destroy();
   }
 }

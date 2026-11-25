@@ -4,6 +4,12 @@
 
 - **Emotes in online rooms.** Six canned reactions (Beat that!, Unlucky!, Nice shot!, Oof., Poor Jonh., Rematch?) that everyone in the room sees, in the lobby, during a match and on the result screen. An Emote button (or `E`, then `1`–`6`) opens them; the bubble shows in the sender's player-panel row with a soft sound, and your own appears at once. Rate-limited per seat (a burst of 3, then one every 2 s). Needs a Convex redeploy before it works online (`convex/README.md`).
 
+## Wind garden (branch `t3/constant-wind-garden`, 25 November 2026)
+
+- **Wind.** A level can declare a constant horizontal wind on the ball (SPEC §8.7). It is applied in the fixed physics step like gravity, so it is deterministic, frame-rate independent, seen by the swept guard, and never a contact or a push on Jonh and the props. A ball resting on a surface is left alone so it still settles. Maps without wind are bit-for-bit unchanged.
+- **Readable.** The launch preview dots bend with the wind. A windsock, a "Wind ← 3" caption and drifting streaks show it before the first shot (still under reduced motion), and the map picker thumbnail shows a windsock.
+- **Windy Washday.** An eleventh garden: a 3 m/s² headwind, a 6 m garden wall and a planter. Shots that ignore the wind miss. In the campaign after The Greenhouse and in the Trick shots preset, with its own lines from Jonh.
+
 ## Real game pass (branch `real-game-pass`, 24 November 2026)
 
 The owner asked for Hit Jonh to feel like a polished game people want to keep playing, not a physics prototype. I played it, listed the 10 biggest gaps ranked by value per unit of effort, and fixed them in order. The list and the per-item evidence are in `docs/progress.md` ("Real game pass").

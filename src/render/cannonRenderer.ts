@@ -5,6 +5,7 @@ import { PAL, hex } from '../art/palette';
 import { AIM, PROJECTILE } from '../config/tuning';
 import { clamp01 } from '../fx/easing';
 import type { Point2D } from '../levels/types';
+import { previewDotsPx } from '../sim/ballistics';
 import { metresToPixels, simYToWorldY } from '../sim/units';
 import { levelPhysics, type LevelPhysics } from '../levels/levelPhysics';
 import { artImage, artScale } from './artTextures';
@@ -131,23 +132,21 @@ export class CannonRenderer {
       this.fuse.setPosition(fx, fy).setScale(artScale('fx-spark-fuse') * (0.8 + 0.6 * Math.abs(Math.sin(this.time * 60))))
         .setRotation(this.time * 20);
     }
-    this.drawGuide(rad);
+    this.drawGuide();
     this.drawMeter();
   }
 
-  /** The first ~0.3 s of the analytic arc: direction and power at a glance, never the landing. */
-  private drawGuide(rad: number): void {
+  /** The first ~0.3 s of the analytic arc (bent by the level's wind): direction and power at a glance, never the landing. */
+  private drawGuide(): void {
     const g = this.guide;
     g.clear();
     if (!this.showAimAids) return;
     const muzzle = this.getMuzzlePosition(this.angleDeg, PROJECTILE.radiusMetres);
-    const speedPx = this.physics.launchSpeed(this.powerPercent) * this.ppm;
-    const gPx = this.physics.gravity * this.ppm;
-    const count = 9;
+    const dots = previewDotsPx(muzzle, this.angleDeg, this.physics.launchSpeed(this.powerPercent), this.physics.gravity,
+      this.physics.windMs2, this.ppm, AIM.previewSeconds, 9);
+    const count = dots.length;
     for (let i = 1; i <= count; i++) {
-      const t = (AIM.previewSeconds * i) / count;
-      const x = muzzle.x + Math.cos(rad) * speedPx * t;
-      const y = muzzle.y - (Math.sin(rad) * speedPx * t - 0.5 * gPx * t * t);
+      const { x, y } = dots[i - 1]!;
       const r = 4.2 - (i / count) * 2.2;
       const a = 1 - (i / count) * 0.65;
       g.fillStyle(hex(PAL.ink), a);

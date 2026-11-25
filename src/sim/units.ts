@@ -37,6 +37,14 @@ export function matterGravityY(gravityMs2: number, pixelsPerMetre: number, gravi
   return accelPxPerMs2 / gravityScale;
 }
 
+/**
+ * Matter acceleration in px/ms² for `accelMs2` (m/s²): what `gravity.y * gravity.scale` equals for
+ * gravity. A force of `mass * this` on a body accelerates it by `accelMs2`, exactly as gravity does.
+ */
+export function accelerationToMatter(accelMs2: number, pixelsPerMetre: number): number {
+  return (accelMs2 * pixelsPerMetre) / (MS_PER_SECOND * MS_PER_SECOND);
+}
+
 /** Map a 0–100 power percentage to launch speed (m/s) via linear impulse mapping. */
 export function powerToLaunchSpeed(
   powerPercent: number,

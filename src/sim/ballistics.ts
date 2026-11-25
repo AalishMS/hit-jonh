@@ -10,7 +10,7 @@ export interface Point2D {
 
 /**
  * Position of a ballistic projectile at time t seconds under uniform gravity g (m/s²).
- * Initial position (x0, y0), initial velocity (vx, vy).
+ * Initial position (x0, y0), initial velocity (vx, vy). A level's constant wind adds ½·w·t² to x.
  */
 export function analyticPosition(
   t: number,
@@ -19,9 +19,11 @@ export function analyticPosition(
   vx: number,
   vy: number,
   gravity: number,
+  /** Constant horizontal wind acceleration (m/s², + is +x); none when omitted. */
+  windAcceleration = 0,
 ): Point2D {
   return {
-    x: x0 + vx * t,
+    x: x0 + vx * t + 0.5 * windAcceleration * t * t,
     y: y0 + vy * t - 0.5 * gravity * t * t,
   };
 }
@@ -72,4 +74,29 @@ export function analyticLandingX(
   const t = flightTimeToAltitude(y0, vy, yGround, gravity);
   if (t === null) return null;
   return x0 + vx * t;
+}
+
+/**
+ * The launch preview's dots (SPEC §10.3): the first `seconds` of the analytic arc from the muzzle,
+ * in world pixels (+y down), bent by the level's constant wind. Dot `i` (1-based) is at time
+ * seconds·i/count. Never goes as far as a landing point.
+ */
+export function previewDotsPx(
+  muzzle: Point2D,
+  angleDeg: number,
+  speedMs: number,
+  gravityMs2: number,
+  windMs2: number,
+  pixelsPerMetre: number,
+  seconds: number,
+  count: number,
+): Point2D[] {
+  const rad = (angleDeg * Math.PI) / 180;
+  const dots: Point2D[] = [];
+  for (let i = 1; i <= count; i++) {
+    const t = (seconds * i) / count;
+    const p = analyticPosition(t, 0, 0, Math.cos(rad) * speedMs, Math.sin(rad) * speedMs, gravityMs2, windMs2);
+    dots.push({ x: muzzle.x + p.x * pixelsPerMetre, y: muzzle.y - p.y * pixelsPerMetre });
+  }
+  return dots;
 }

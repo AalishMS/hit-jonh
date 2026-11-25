@@ -38,6 +38,17 @@ export interface PortalData {
   exit: { x: number; y: number; angleDeg: number };
 }
 
+/**
+ * A constant wind [PROPOSED]: a horizontal acceleration on the ball only (never Jonh, obstacles or
+ * contacts), applied in the fixed step the same way gravity is. Positive blows towards +x (towards
+ * Jonh's side), negative back towards the cannon. Scenery draws a windsock and streaks from it.
+ */
+export interface WindData {
+  accelerationMs2: number;
+  /** Where the windsock stands (metres); WIND.defaultSockXMetres when omitted. */
+  windsockX?: number;
+}
+
 export interface JonhSpawnData {
   bodyBox: Box2D;
   hatBox?: Box2D;
@@ -74,4 +85,6 @@ export interface LevelData {
   launchSpeedScale?: number;
   /** One-way portals (see PortalData); none when omitted. */
   portals?: PortalData[];
+  /** Constant wind on the ball (see WindData); none when omitted, and the map plays exactly as before. */
+  wind?: WindData;
 }

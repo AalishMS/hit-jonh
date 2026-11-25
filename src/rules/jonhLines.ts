@@ -72,6 +72,7 @@ export const OBSTACLE_LINES: ReadonlyArray<{ match: { id?: string; material?: st
   { match: { id: 'awning' }, lines: ['Not the awning!', 'That awning keeps the sun off my sandwiches.'] },
   { match: { id: 'billboard' }, lines: ['Mind the advertising.', "That billboard isn't even mine."] },
   { match: { id: 'carport' }, lines: ['Mind the carport.', 'That carport is load-bearing, probably.'] },
+  { match: { id: 'garden-wall' }, lines: ['Not the garden wall! It holds up the washing.', 'That wall keeps the breeze off my sandwiches. Mostly.'] },
   { match: { id: 'silo' }, lines: ['You hit a silo. From there. Somehow.'] },
   { match: { material: 'glass' }, lines: ['Mind the glass!', 'That glass was imported.'] },
   { match: { material: 'velvet' }, lines: ['That velvet was hired.', 'Mind the curtains.'] },
@@ -129,6 +130,11 @@ export const MAP_LINES: Readonly<Record<string, { arrival: readonly string[]; mi
     arrival: ['Sealed tent. No tricks.', 'Abracadabra. Safe as houses.', 'Nobody gets past the velvet.'],
     miss: ['The magician will hear about this.', 'Nothing up my sleeve, either.'],
     hit: ['Was that part of the act?', "Through the hoop? That's cheating."],
+  },
+  washday: {
+    arrival: ['Lovely breeze. Do mind the sheets.', 'Perfect drying weather, this.', 'Can you not feel that wind? Do keep up.'],
+    miss: ['The wind has opinions about your aim.', 'Did you check the windsock?', 'My sheets are unbothered.'],
+    hit: ['Through a gale? Show-off.', 'The wind was on my side. Apparently not.'],
   },
   valley: {
     arrival: ["They'll never reach me out here.", 'Is that a cannon? From over there?'],
