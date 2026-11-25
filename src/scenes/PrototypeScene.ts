@@ -139,6 +139,11 @@ export class PrototypeScene extends Phaser.Scene {
   private practice = false;
   /** Gameplay key bindings (Settings → Keys). */
   private keys: KeyBindings = DEFAULT_KEYS;
+  /**
+   * Bumped by every map load and by leaving play: a map whose art finishes rasterizing after the
+   * player has gone Home (or picked another garden) must not build itself behind the menu.
+   */
+  private loadToken = 0;
   /** The coach's ghost hand on the first garden while it plays (rules/coach.ts). */
   private coachHand: CoachRenderer | null = null;
   /** One fix for the last solo miss, shown while re-aiming until the player's first hit ever. */
@@ -517,6 +522,7 @@ export class PrototypeScene extends Phaser.Scene {
   private teardownGameplay(): void {
     this.stopShowcase();
     this.titleCardPending = false;
+    this.loadToken++; // a garden still loading its art must not build itself after this
     this.missStreak = 0;
     this.daily = null;
     this.practice = false;
@@ -645,7 +651,10 @@ export class PrototypeScene extends Phaser.Scene {
 
   private loadMap(mapId: string, daily: { key: string; positionId: string } | null = null, practice = false): void {
     // Art is rasterized the first time a garden (or hat, outfit, cannon) is needed; wait for it, then build the scene.
-    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups()], () => this.loadMapNow(mapId, daily, practice));
+    const token = ++this.loadToken;
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups()], () => {
+      if (token === this.loadToken) this.loadMapNow(mapId, daily, practice);
+    });
   }
 
   private loadMapNow(mapId: string, daily: { key: string; positionId: string } | null, practice: boolean): void {
@@ -1268,7 +1277,7 @@ export class PrototypeScene extends Phaser.Scene {
     } else if (feats.length && this.activeMode === 'multi') {
       this.htmlControls.setFeedback(`Feat: ${feats[0]!.name}!`, 'hit');
     }
-    if (this.activeMode === 'multi') this.pendingFeats = [];
+    if (this.activeMode === 'multi') { this.pendingFeats = []; this.pendingUnlocks = []; }
 
     if (soloFinished) {
       const res = this.soloMachine.result!;
@@ -1471,7 +1480,8 @@ export class PrototypeScene extends Phaser.Scene {
     const choose = (patch: Partial<Progress>) => {
       this.progress = { ...this.progress, ...patch };
       saveProgress(this.progress);
-      this.showLocker();
+      // A pick waits for its art; if the player has left the wardrobe meanwhile, don't reopen it.
+      if (this.menuOverlay.getView() === 'locker') this.showLocker();
     };
     const sections: WardrobeSection[] = [{
       id: 'hats',
@@ -1780,7 +1790,13 @@ export class PrototypeScene extends Phaser.Scene {
 
   /** Builds the map's scene (waiting for its art if it has not been rasterized yet), then runs `then`. */
   private loadMultiplayerMap(mapId: string, then?: () => void): void {
-    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups(), ...playerBarrelGroups(this.multiMachine.players)], () => { this.loadMultiplayerMapNow(mapId); then?.(); });
+    const token = ++this.loadToken;
+    whenArtReady(this, [...levelArtGroups(mapId), ...this.cosmeticGroups(), ...playerBarrelGroups(this.multiMachine.players)], () => {
+      if (token !== this.loadToken) return; // the player left (or started something else) meanwhile
+      this.loadMultiplayerMapNow(mapId);
+      // Paused while it loaded: the screen for this state is drawn on resume (onResume) instead.
+      if (!this.sessionCoordinator.isPaused) then?.();
+    });
   }
 
   private loadMultiplayerMapNow(mapId: string): void {
@@ -1945,7 +1961,7 @@ export class PrototypeScene extends Phaser.Scene {
       this.htmlControls.setFeedback(status, 'info');
     } else if (match.state === 'round_result') {
       this.htmlControls.setControlsInert(true);
-      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount);
+      this.menuOverlay.showMPRoundResult(match.players, match.roundIndex, match.roundCount, match.suddenDeathNext);
       this.autoAdvance.schedule('round', FLOW.roundResultSeconds);
       this.htmlControls.setCanFire(false);
       this.htmlControls.setFeedback('', 'info');
@@ -2041,7 +2057,9 @@ export class PrototypeScene extends Phaser.Scene {
     if (loadSaveData().settings.reducedMotion || this.jonhRenderer?.isReducedMotionActive()) return false;
     const winners = new Set(this.multiMachine.getWinners().map(w => w.id));
     const hits = this.matchHighlights.filter(h => winners.has(h.player));
-    const best = [...hits].reverse().find(h => h.outcome === 'ricochet_body') ?? hits[hits.length - 1];
+    // A shoot-out winner's latest hit is the one that decided it; otherwise their best (a trick shot first).
+    const decidedBySuddenDeath = this.multiMachine.suddenDeath?.winners?.length === 1;
+    const best = decidedBySuddenDeath ? hits[hits.length - 1] : [...hits].reverse().find(h => h.outcome === 'ricochet_body') ?? hits[hits.length - 1];
     const base = best ? MAPS.find(m => m.id === best.mapId) : undefined;
     if (!best || !base) return false;
     const level = levelAtMultiplayerPosition(base, best.positionId);

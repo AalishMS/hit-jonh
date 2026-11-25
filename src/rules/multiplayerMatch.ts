@@ -291,6 +291,12 @@ export class MultiplayerMatchMachine {
     }
   }
 
+  /** The round summary on screen is the last round's, and the match is level: a shoot-out comes next. */
+  get suddenDeathNext(): boolean {
+    return this.suddenDeathEnabled && this.sd === null && this._state === 'round_result'
+      && this._roundIndex + 1 >= this.maps.length && this.levelLeaders().length > 1;
+  }
+
   /** Players level on points and body hits at the top (more than one means still tied). */
   private levelLeaders(): number[] {
     const top = Math.max(...this._players.map(p => p.totalScore));

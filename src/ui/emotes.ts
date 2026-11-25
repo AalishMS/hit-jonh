@@ -1,3 +1,4 @@
+import { loadSaveData } from '../storage/storage';
 // src/ui/emotes.ts — the online emote button, its picker and the bubbles (spec §6.1). Own module and stylesheet.
 import { cssColor, playerDisplayColor } from '../art/palette';
 import { isTextInputElement } from '../input/controls';
@@ -158,6 +159,8 @@ export class EmoteWidget {
       return;
     }
     if (e.repeat) return;
+    // A key the player bound to a game action (Settings → Keys) belongs to the game, not the picker.
+    if (Object.values(loadSaveData().settings.keys).includes(e.code)) return;
     if (e.code === 'KeyE' && this.enabled) {
       this.setOpen(!this.isOpen);
       e.preventDefault();

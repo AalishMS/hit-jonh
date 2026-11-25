@@ -112,6 +112,21 @@ describe('hot-seat sudden death', () => {
     expect(clear.getWinners().map(w => w.name)).toEqual(['Bo']);
   });
 
+  it('tells the round summary when a shoot-out comes next', () => {
+    const level = new MultiplayerMatchMachine(players(2), ['fence', 'backyard'], fixed, { suddenDeath: true });
+    playRound(level, () => 'miss');
+    expect(level.suddenDeathNext).toBe(false); // not the last round yet
+    level.nextRound();
+    playRound(level, () => 'body');
+    expect(level.suddenDeathNext).toBe(true);
+    level.nextRound();
+    expect(level.suddenDeathNext).toBe(false); // it has started
+
+    const off = new MultiplayerMatchMachine(players(2), ['backyard'], fixed);
+    playRound(off, () => 'body');
+    expect(off.suddenDeathNext).toBe(false);
+  });
+
   it('rematch clears the shoot-out', () => {
     const m = new MultiplayerMatchMachine(players(2), ['backyard'], fixed, { suddenDeath: true });
     playRound(m, () => 'miss');

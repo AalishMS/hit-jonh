@@ -1380,6 +1380,15 @@ Built in a parallel worktree (branch `t3/mobile-performance-pwa`, section above)
 - **Remappable keys:** `input/keyBindings.ts` (pure, tested) plus Settings → Keys (Change / Press a key… / Escape cancels / Reset keys). The keyboard coordinator, the "touch the aim to skip" rule, the FIRE label, the Next pill and the result card's retry hint follow the bindings. Headless check: Fire rebound to F showed "F" on FIRE, Space no longer fired, F did; binding Skip to F swapped Fire to ↵.
 - **Colour vision:** `art/colorVision.ts` simulates protanopia, deuteranopia and tritanopia. Normal-vision player colours are ΔE > 50 apart. Under deuteranopia tomato/leaf (≈15) and sky/grape (≈11) come close, and with four hues any three players include such a pair, so colour must never stand alone. It doesn't: cannons pair it with patterns (unique per default player), panels and cards show names, and trails have ink outlines. The palette is unchanged (art direction); a darker grape would widen sky/grape if wanted ([PROPOSED] option).
 
+### Independent review fixes (next 10)
+A fresh read-only reviewer went over `ef4bf12..HEAD`. It found nothing serious in practice saving, wind combined with portals and breakables, the walking Jonh, sudden-death rules (online unaffected), the service worker or saved data. It found one bug and several smaller issues, all fixed:
+1. **Bug: a garden still loading its art built itself after the player had left.** Example: Next garden, then Home within the art decode, which is longer on phones. The garden, HUD and FIRE appeared under the Home card. A load token now drops stale continuations in `loadMap`, `loadMultiplayerMap` and `teardownGameplay`. A multiplayer load that finishes while paused draws its screen on resume. Wardrobe picks that finish after leaving the wardrobe no longer reopen it. Reproduced and fixed in headless Chromium: still Home with no garden built, and a normal load afterwards works.
+2. A Retry key rebound to N or P ran both actions on the result card. The bound Retry key now wins and the card drops its own N/P shortcut. Checked: N retried, and Next garden lost its hint.
+3. Emote keys (E, 1–6) ignored the bindings. A key bound to a game action now belongs to the game, not the picker.
+4. A player with every star saw "Play · Garden 1" on Home. They now get the generic Play.
+5. Sudden death: the last round's summary says "Dead level! Sudden death next." with a **Sudden death ›** button (`suddenDeathNext`, tested), and the winning-shot replay shows the shoot-out winner's deciding hit.
+6. Unlocks already captioned during hot-seat are no longer announced again on a later solo card. Feats or unlocks earned in a solo run abandoned before its result card still appear on the next result card. This is deliberate: they were never shown.
+
 ### Next-10 summary, owner decisions and the next proposal
 **All ten done.**
 

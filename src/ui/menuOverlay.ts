@@ -215,7 +215,7 @@ export class MenuOverlay {
       const tally = el('span', 'home-stars', `★ ${totals.stars} / ${totals.maxStars}`);
       tally.setAttribute('aria-label', `${totals.stars} of ${totals.maxStars} campaign stars`);
       modes.appendChild(tally);
-    } else if (campaign[0]) {
+    } else if (!played && campaign[0]) {
       // A brand-new player starts the first garden in one tap (the coach takes it from there).
       const first = campaign[0].mapId;
       play = this.button('', 'btn-primary btn-play btn-continue', () => this.startMap(first), signal);
@@ -598,15 +598,19 @@ export class MenuOverlay {
     return list;
   }
 
-  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number): void {
+  /** `suddenDeathNext`: the match is level after the last round, so a shoot-out follows. */
+  showMPRoundResult(players: readonly MPPlayerView[], roundIndex: number, roundCount: number, suddenDeathNext = false): void {
     const signal = this.open('round_result');
     this.content.appendChild(el('h2', '', `Round ${roundIndex + 1} done`));
     const sorted = [...players].sort((a, b) => b.totalScore - a.totalScore);
     this.content.appendChild(this.scoreRows(sorted, p => `+${p.roundScores[roundIndex] ?? 0} this round`));
     const finalNext = roundIndex === roundCount - 2;
     if (finalNext) this.content.appendChild(el('p', 'stakes-line', 'Final round next. Everything to play for.'));
-    announce(sentence(`Round ${roundIndex + 1} done`, sorted.map(p => `${p.name} ${p.totalScore}`).join(', '), finalNext && 'Final round next'));
-    const btn = this.button(roundIndex >= roundCount - 1 ? 'Final result' : finalNext ? 'Final round ›' : 'Next round', 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
+    if (suddenDeathNext) this.content.appendChild(el('p', 'stakes-line decisive', 'Dead level! Sudden death next.'));
+    announce(sentence(`Round ${roundIndex + 1} done`, sorted.map(p => `${p.name} ${p.totalScore}`).join(', '), finalNext && 'Final round next',
+      suddenDeathNext && 'Dead level. Sudden death next'));
+    const label = suddenDeathNext ? 'Sudden death ›' : roundIndex >= roundCount - 1 ? 'Final result' : finalNext ? 'Final round ›' : 'Next round';
+    const btn = this.button(label, 'btn-primary', () => { this.hide(); this.callbacks.onMultiplayerNextRound?.(); }, signal);
     const bar = el('div', 'auto-bar');
     bar.style.setProperty('--auto-duration', `${FLOW.roundResultSeconds}s`);
     bar.appendChild(el('i'));
@@ -717,15 +721,18 @@ export class MenuOverlay {
     const retry = () => { this.hide(); this.callbacks.onRetry(); };
     const next = success && extras.nextMapId ? extras.nextMapId : null;
     let nextBtn: HTMLButtonElement | null = null;
+    // A Retry key rebound to N or P wins on this card: that card shortcut is dropped, never doubled.
+    const retryKey = loadSaveData().settings.keys.retry;
     if (next) {
       const goNext = () => this.startMap(next);
       nextBtn = this.button('Next garden ›', 'btn-primary btn-next', goNext, signal, actions);
-      this.keyHint(nextBtn, 'N');
-      this.shortcut('KeyN', goNext, signal);
+      if (retryKey !== 'KeyN') {
+        this.keyHint(nextBtn, 'N');
+        this.shortcut('KeyN', goNext, signal);
+      }
     }
     const quiet = next !== null || shareBtn !== null;
     const retryBtn = this.button(extras.share ? 'Play again' : success ? 'Retry' : 'Retry map', quiet ? 'btn-retry-quiet' : 'btn-retry', retry, signal, actions);
-    const retryKey = loadSaveData().settings.keys.retry;
     this.keyHint(retryBtn, keyLabel(retryKey));
     this.shortcut(retryKey, retry, signal);
     if (extras.share) this.button('Home', '', () => { this.callbacks.onReturnToMenu(); this.showHome(); }, signal, actions);
@@ -734,8 +741,10 @@ export class MenuOverlay {
     if (practiceId && this.callbacks.onPracticeSelected) {
       const practise = () => this.startPractice(practiceId);
       const practiceBtn = this.button('Practice', 'btn-practice', practise, signal, actions);
-      this.keyHint(practiceBtn, 'P');
-      this.shortcut('KeyP', practise, signal);
+      if (retryKey !== 'KeyP') {
+        this.keyHint(practiceBtn, 'P');
+        this.shortcut('KeyP', practise, signal);
+      }
     }
     (nextBtn ?? shareBtn ?? retryBtn).focus();
   }
