@@ -476,6 +476,11 @@ export const ONLINE = {
  * Private boards reached only by their code; codes use the room code alphabet and length (`ONLINE`).
  */
 export const FRIENDS_BOARD = {
+  /**
+   * Board code length (room alphabet). Rooms live minutes and use 5 characters; a board lives for weeks and holds
+   * names and results, so 8 characters (31⁸ ≈ 8.5 × 10¹¹) keep it from being found by trying codes.
+   */
+  codeLength: 8,
   /** Members per board. */
   maxMembers: 20,
   /** Boards one browser may belong to at once. */

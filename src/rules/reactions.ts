@@ -180,6 +180,13 @@ export class JonhReactionSelector {
     return selected;
   }
 
+  /** Replaces the recent-lines memory (oldest first; the last is treated as the line just said). */
+  setMemory(lines: readonly string[]): void {
+    this.recent.length = 0;
+    this.recent.push(...lines.slice(-RECENT_LINES));
+    this.lastSelectedLine = lines.length > 0 ? lines[lines.length - 1]! : null;
+  }
+
   getLastReaction(): string | null {
     return this.lastSelectedLine;
   }

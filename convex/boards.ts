@@ -15,7 +15,7 @@ import {
   type BoardResultView, type BoardSnapshot, type MyBoardEntry,
 } from '../src/rules/friendsBoard';
 import { takeEmoteToken } from '../src/rules/onlineEmotes';
-import { generateRoomCode } from '../src/rules/roomCode';
+import { generateBoardCode, normalizeBoardCode } from '../src/rules/roomCode';
 
 type Reader = Pick<QueryCtx, 'db'>;
 type Writer = Pick<MutationCtx, 'db'>;
@@ -33,6 +33,7 @@ async function findPlayer(ctx: Reader, token: string): Promise<Doc<'boardPlayers
 }
 
 async function findBoard(ctx: Reader, code: string): Promise<Doc<'boards'> | null> {
+  if (normalizeBoardCode(code) !== code) return null;
   return ctx.db.query('boards').withIndex('by_code', q => q.eq('code', code)).unique();
 }
 
@@ -93,8 +94,8 @@ async function deleteBoardCascade(ctx: Writer, boardId: Id<'boards'>): Promise<v
 export async function createBoardFor(ctx: Writer, args: { token: string; name: string }, now: number, random: () => number = Math.random): Promise<string> {
   const me = await spendAction(ctx, args.token, args.name, now);
   if ((await listMemberships(ctx, me._id)).length >= FRIENDS_BOARD.maxBoardsPerPlayer) fail('TOO_MANY_BOARDS');
-  let code = generateRoomCode(random);
-  for (let attempt = 0; attempt < 10 && (await findBoard(ctx, code)); attempt++) code = generateRoomCode(random);
+  let code = generateBoardCode(random);
+  for (let attempt = 0; attempt < 10 && (await findBoard(ctx, code)); attempt++) code = generateBoardCode(random);
   if (await findBoard(ctx, code)) throw new Error('Could not allocate a board code');
   const boardId = await ctx.db.insert('boards', { code, createdAt: now, updatedAt: now });
   await ctx.db.insert('boardMembers', { boardId, playerId: me._id, joinedAt: now });
@@ -234,9 +235,13 @@ export const myBoards = query({
 
 // ---------- Retention ----------
 
-/** Rows per cleanup transaction; a full batch schedules the next one straight away. */
+/**
+ * Rows per cleanup transaction; a full batch schedules the next one straight away. An idle board can take up to
+ * 20 memberships, their players and each player's kept results with it (a few hundred writes), so boards go a few
+ * at a time to stay far inside Convex's per-transaction write limit.
+ */
 const RESULT_BATCH = 200;
-const BOARD_BATCH = 20;
+const BOARD_BATCH = 4;
 
 /** Deletes results older than `keepResultsDays` and boards idle for `idleBoardDays`. True when there may be more. */
 export async function cleanupBoardsBatch(ctx: Writer, now: number): Promise<boolean> {

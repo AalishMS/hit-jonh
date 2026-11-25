@@ -5,7 +5,7 @@ import { MULTIPLAYER } from '../config/tuning';
 import {
   isTrickRun, ordinal, resultSymbols, resultWords, starText, type BoardDay, type RankedRow,
 } from '../rules/friendsBoard';
-import { normalizeRoomCode } from '../rules/roomCode';
+import { normalizeBoardCode } from '../rules/roomCode';
 import type { MenuOverlay } from './menuOverlay';
 import { shareOrCopy } from './share';
 import './friendsBoard.css';
@@ -130,8 +130,8 @@ export function showBoardHub(menu: MenuOverlay, o: BoardHubOptions): void {
     codeInput.addEventListener('input', () => { typed = codeInput.value; o.onCodeInput(typed); }, { signal });
     const problem = error(o.error);
     const tryJoin = (): void => {
-      const code = normalizeRoomCode(codeInput.value);
-      if (!code) { problem.textContent = 'Board codes are 5 letters and numbers, like K7QPX.'; codeInput.focus(); return; }
+      const code = normalizeBoardCode(codeInput.value);
+      if (!code) { problem.textContent = 'Board codes are 8 letters and numbers, like K7QP-XW2M.'; codeInput.focus(); return; }
       problem.textContent = '';
       o.onJoin(name, code);
     };

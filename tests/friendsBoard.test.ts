@@ -128,7 +128,7 @@ describe('ranking', () => {
   });
 
   it('builds the invite text', () => {
-    expect(boardInviteText('K7QPX', 'https://example.com/?board=K7QPX')).toBe('Join my Hit Jonh Daily board: K7QPX\nhttps://example.com/?board=K7QPX');
+    expect(boardInviteText('K7QPXW2M', 'https://example.com/?board=K7QPXW2M')).toBe('Join my Hit Jonh Daily board: K7QPXW2M\nhttps://example.com/?board=K7QPXW2M');
   });
 });
 

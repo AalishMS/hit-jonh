@@ -1,7 +1,7 @@
 // src/storage/friendsBoardStore.ts — this browser's Daily Bonk friends-board identity (SPEC §6.2), kept apart from
 // the `hitJonh.v1` save on purpose: save codes never carry it (the token is a secret, and a save code is meant to
 // be pasted around), and clearing it only forgets the boards, never progress.
-import { normalizeRoomCode } from '../rules/roomCode';
+import { normalizeBoardCode } from '../rules/roomCode';
 import { FRIENDS_BOARD } from '../config/tuning';
 import { randomToken } from './storage';
 
@@ -29,9 +29,9 @@ const POSTED_KEEP = 8;
 export function sanitizeBoardStore(raw: unknown, make: () => string = randomToken): BoardStoreData {
   const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
   const token = typeof r.token === 'string' && /^[0-9a-f]{32}$/.test(r.token) ? r.token : make();
-  const codes = Array.isArray(r.boards) ? r.boards.flatMap(c => (typeof c === 'string' ? [normalizeRoomCode(c)] : [])).filter((c): c is string => c !== null) : [];
+  const codes = Array.isArray(r.boards) ? r.boards.flatMap(c => (typeof c === 'string' ? [normalizeBoardCode(c)] : [])).filter((c): c is string => c !== null) : [];
   const boards = [...new Set(codes)].slice(0, FRIENDS_BOARD.maxBoardsPerPlayer);
-  const last = typeof r.lastBoard === 'string' ? normalizeRoomCode(r.lastBoard) : null;
+  const last = typeof r.lastBoard === 'string' ? normalizeBoardCode(r.lastBoard) : null;
   const posted = Array.isArray(r.posted) ? r.posted.filter((k): k is string => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k)) : [];
   return { token, boards, lastBoard: last, posted: [...new Set(posted)].sort().slice(-POSTED_KEEP) };
 }

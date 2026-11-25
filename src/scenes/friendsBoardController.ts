@@ -10,7 +10,7 @@ import {
   resultWords, sanitizeBoardName, type BoardDay, type BoardMemberView, type BoardSnapshot, type MyBoardEntry,
 } from '../rules/friendsBoard';
 import { dateKey, type Progress } from '../rules/progression';
-import { normalizeRoomCode } from '../rules/roomCode';
+import { normalizeBoardCode } from '../rules/roomCode';
 import { localBoardStore, withPosted, type BoardStore } from '../storage/friendsBoardStore';
 import { announce } from '../ui/announcer';
 import {
@@ -77,6 +77,9 @@ const ERRORS: Partial<Record<string, string>> = {
 };
 const message = (error: unknown): string => ERRORS[errorCode(error) ?? ''] ?? OFFLINE;
 
+/** The menu views the board screens draw into. */
+const BOARD_VIEWS: ReadonlySet<string> = new Set(['board_hub', 'board_join', 'board_view']);
+
 type Screen =
   | { kind: 'hub'; code: string; busy: 'create' | 'join' | null; error: string | null; boards: MyBoardEntry[] | null }
   | {
@@ -90,6 +93,8 @@ export class FriendsBoardController {
   private screen: Screen | null = null;
   /** Bumped on every screen change; a late reply or snapshot only acts while its screen is still on show. */
   private screenId = 0;
+  /** The screen last drawn (see render). */
+  private shownScreen: Screen | null = null;
   private unsubscribe: (() => void) | null = null;
   private name: string;
   private syncing = false;
@@ -118,10 +123,21 @@ export class FriendsBoardController {
 
   /** `?board=CODE`: open that board (its snapshot decides between the board and "Join this board?"). */
   openFromLink(raw: string): void {
-    const code = normalizeRoomCode(raw);
+    const code = normalizeBoardCode(raw);
     if (!code) { this.showHub('That link has no valid board code.'); return; }
     this.openBoard(code);
     void this.syncPosts();
+  }
+
+  /**
+   * Another screen took over (a save-link prompt, a game, the online lobby): stop the live board so a late
+   * snapshot or reply can never draw over it. Opening a board again starts afresh.
+   */
+  close(): void {
+    this.stopWatching();
+    this.screenId++;
+    this.screen = null;
+    this.shownScreen = null;
   }
 
   destroy(): void {
@@ -415,6 +431,9 @@ export class FriendsBoardController {
   private render(): void {
     const screen = this.screen;
     if (!screen) return;
+    // A live update for a board screen that something else has since replaced: stop instead of drawing over it.
+    if (this.shownScreen === screen && !BOARD_VIEWS.has(this.menu.getView())) { this.close(); return; }
+    this.shownScreen = screen;
     const { screens } = this.deps;
     if (screen.kind === 'hub') {
       const data = this.deps.store.load();

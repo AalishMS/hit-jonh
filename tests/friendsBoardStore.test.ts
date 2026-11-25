@@ -16,9 +16,9 @@ function memoryStorage(initial: Record<string, string> = {}) {
 describe('board store', () => {
   it('validates stored data field by field', () => {
     expect(sanitizeBoardStore(null, () => TOKEN)).toEqual({ token: TOKEN, boards: [], lastBoard: null, posted: [] });
-    expect(sanitizeBoardStore({ token: 'short', boards: ['abcde', 'ABCDE', 'nope', 7], lastBoard: 'k7qpx', posted: ['2026-11-25', 'x', '2026-11-24'] }, () => TOKEN))
-      .toEqual({ token: TOKEN, boards: ['ABCDE'], lastBoard: 'K7QPX', posted: ['2026-11-24', '2026-11-25'] });
-    const many = Array.from({ length: 30 }, (_, i) => `ABCD${'EFGHJKMNPQRSTUVWXYZ23456789'[i % 27]}`);
+    expect(sanitizeBoardStore({ token: 'short', boards: ['abcdefgh', 'ABCDEFGH', 'ABCDE', 'nope', 7], lastBoard: 'k7qp-xw2m', posted: ['2026-11-25', 'x', '2026-11-24'] }, () => TOKEN))
+      .toEqual({ token: TOKEN, boards: ['ABCDEFGH'], lastBoard: 'K7QPXW2M', posted: ['2026-11-24', '2026-11-25'] });
+    const many = Array.from({ length: 30 }, (_, i) => `ABCDEFG${'HJKMNPQRSTUVWXYZ23456789AB'[i % 26]}`);
     expect(sanitizeBoardStore({ token: TOKEN, boards: many }).boards).toHaveLength(FRIENDS_BOARD.maxBoardsPerPlayer);
   });
 
@@ -37,16 +37,16 @@ describe('board store', () => {
     expect(store.load().token).toBe(TOKEN);
     expect(make).toHaveBeenCalledTimes(1);
     expect(storage.map.size).toBe(0); // a player who never uses boards gets no key
-    store.save({ ...store.load(), boards: ['ABCDE'] });
-    expect(JSON.parse(storage.map.get(BOARD_STORE_KEY)!)).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
-    expect(localBoardStore(storage, () => 'b'.repeat(32)).load()).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
+    store.save({ ...store.load(), boards: ['ABCDEFGH'] });
+    expect(JSON.parse(storage.map.get(BOARD_STORE_KEY)!)).toMatchObject({ token: TOKEN, boards: ['ABCDEFGH'] });
+    expect(localBoardStore(storage, () => 'b'.repeat(32)).load()).toMatchObject({ token: TOKEN, boards: ['ABCDEFGH'] });
   });
 
   it('replaces a damaged stored token once and keeps the replacement', () => {
-    const storage = memoryStorage({ [BOARD_STORE_KEY]: JSON.stringify({ token: 'bad', boards: ['ABCDE'] }) });
+    const storage = memoryStorage({ [BOARD_STORE_KEY]: JSON.stringify({ token: 'bad', boards: ['ABCDEFGH'] }) });
     let n = 0;
     const store = localBoardStore(storage, () => (n++ === 0 ? TOKEN : 'b'.repeat(32)));
-    expect(store.load()).toMatchObject({ token: TOKEN, boards: ['ABCDE'] });
+    expect(store.load()).toMatchObject({ token: TOKEN, boards: ['ABCDEFGH'] });
     expect(store.load().token).toBe(TOKEN);
   });
 
@@ -56,8 +56,8 @@ describe('board store', () => {
     const store = localBoardStore(broken, () => (n++ === 0 ? TOKEN : 'b'.repeat(32)));
     expect(store.load().token).toBe(TOKEN);
     expect(store.load().token).toBe(TOKEN);
-    store.save({ ...store.load(), boards: ['ABCDE'] });
-    expect(store.load().boards).toEqual(['ABCDE']);
+    store.save({ ...store.load(), boards: ['ABCDEFGH'] });
+    expect(store.load().boards).toEqual(['ABCDEFGH']);
   });
 });
 
@@ -66,24 +66,24 @@ describe('ConvexBoardBackend', () => {
     const calls: Array<[string, unknown]> = [];
     const record = (ref: FunctionReference<'query' | 'mutation'>, args: unknown) => { calls.push([getFunctionName(ref), args]); };
     const client = {
-      mutation: vi.fn(async (ref: FunctionReference<'mutation'>, args: unknown) => { record(ref, args); return 'K7QPX'; }),
+      mutation: vi.fn(async (ref: FunctionReference<'mutation'>, args: unknown) => { record(ref, args); return 'K7QPXW2M'; }),
       query: vi.fn(async (ref: FunctionReference<'query'>, args: unknown) => { record(ref, args); return []; }),
       onUpdate: vi.fn((ref: FunctionReference<'query'>, args: unknown) => { record(ref, args); return () => undefined; }),
     } as unknown as ConvexClient;
     const backend = new ConvexBoardBackend(client, TOKEN);
     await backend.createBoard('Sam');
-    await backend.joinBoard('ABCDE', 'Sam');
-    await backend.leaveBoard('ABCDE');
+    await backend.joinBoard('ABCDEFGH', 'Sam');
+    await backend.leaveBoard('ABCDEFGH');
     await backend.postResult({ day: 20_417, stars: 2, shots: 'mb', streak: 3 });
     await backend.myBoards();
-    backend.watchBoard('ABCDE', 20_417, () => undefined, () => undefined);
+    backend.watchBoard('ABCDEFGH', 20_417, () => undefined, () => undefined);
     expect(calls).toEqual([
       ['boards:createBoard', { token: TOKEN, name: 'Sam' }],
-      ['boards:joinBoard', { code: 'ABCDE', token: TOKEN, name: 'Sam' }],
-      ['boards:leaveBoard', { code: 'ABCDE', token: TOKEN }],
+      ['boards:joinBoard', { code: 'ABCDEFGH', token: TOKEN, name: 'Sam' }],
+      ['boards:leaveBoard', { code: 'ABCDEFGH', token: TOKEN }],
       ['boards:postResult', { token: TOKEN, day: 20_417, stars: 2, shots: 'mb', streak: 3 }],
       ['boards:myBoards', { token: TOKEN }],
-      ['boards:getBoard', { code: 'ABCDE', token: TOKEN, day: 20_417 }],
+      ['boards:getBoard', { code: 'ABCDEFGH', token: TOKEN, day: 20_417 }],
     ]);
   });
 });

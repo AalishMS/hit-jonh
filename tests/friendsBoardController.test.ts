@@ -31,7 +31,7 @@ function deferred<T>() {
 function fakeBackend() {
   const watchers: Array<{ code: string; day: number; update: (s: BoardSnapshot | null) => void; error: (e: unknown) => void; closed: boolean }> = [];
   const backend = {
-    createBoard: vi.fn(async (_name: string): Promise<string> => 'K7QPX'),
+    createBoard: vi.fn(async (_name: string): Promise<string> => 'K7QPXW2M'),
     joinBoard: vi.fn(async (_code: string, _name: string): Promise<void> => undefined),
     leaveBoard: vi.fn(async (_code: string): Promise<void> => undefined),
     postResult: vi.fn(async (_post: BoardPost): Promise<{ stored: boolean }> => ({ stored: true })),
@@ -108,7 +108,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it("posts the day's counted run once, then never again (replays included)", async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: PLAYED_TODAY });
     await t.ctl.syncPosts();
     expect(t.backend.postResult).toHaveBeenCalledWith({ day: TODAY, stars: 2, shots: 'mb', streak: 1 });
     expect(t.store.data.posted).toEqual([TODAY_KEY]);
@@ -118,7 +118,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it("posts yesterday's run late, then today's, with the streak as of each day", async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: { daily: { '2026-11-24': 3, [TODAY_KEY]: 0 }, dailyShots: { '2026-11-24': 'b', [TODAY_KEY]: 'mhm' } } });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: { daily: { '2026-11-24': 3, [TODAY_KEY]: 0 }, dailyShots: { '2026-11-24': 'b', [TODAY_KEY]: 'mhm' } } });
     await t.ctl.syncPosts();
     expect(t.backend.postResult.mock.calls.map(c => c[0])).toEqual([
       { day: TODAY - 1, stars: 3, shots: 'b', streak: 1 },
@@ -127,7 +127,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it('retries a network failure later (15 s, 60 s, then every 5 min) and never blocks', async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: PLAYED_TODAY });
     t.backend.postResult.mockRejectedValue(new Error('offline'));
     await t.ctl.syncPosts();
     expect(t.store.data.posted).toEqual([]);
@@ -147,7 +147,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it('treats a rate limit like a network failure, and a refused result as final', async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: PLAYED_TODAY });
     t.backend.postResult.mockRejectedValueOnce(rejection('RATE_LIMITED'));
     await t.ctl.syncPosts();
     expect(t.timers).toHaveLength(1);
@@ -159,7 +159,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it('stops without marking anything when the server says I am in no board', async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: PLAYED_TODAY });
     t.backend.postResult.mockRejectedValueOnce(rejection('NOT_MEMBER'));
     await t.ctl.syncPosts();
     expect(t.store.data.posted).toEqual([]);
@@ -167,7 +167,7 @@ describe('posting results (offline-first)', () => {
   });
 
   it('runs one sync at a time and catches up on a call made meanwhile', async () => {
-    const t = setup({ store: { boards: ['K7QPX'] }, progress: { daily: { '2026-11-24': 3 }, dailyShots: { '2026-11-24': 'b' } } });
+    const t = setup({ store: { boards: ['K7QPXW2M'] }, progress: { daily: { '2026-11-24': 3 }, dailyShots: { '2026-11-24': 'b' } } });
     const first = deferred<{ stored: boolean }>();
     t.backend.postResult.mockReturnValueOnce(first.promise);
     const running = t.ctl.syncPosts();
@@ -184,19 +184,19 @@ describe('posting results (offline-first)', () => {
 describe('entry and the hub', () => {
   it('opens the hub when I have no board, listing what the server says I am in', async () => {
     const t = setup();
-    t.backend.myBoards.mockResolvedValue([{ code: 'ABCDE', memberCount: 3, joinedAt: 1 }]);
+    t.backend.myBoards.mockResolvedValue([{ code: 'ABCDEFGH', memberCount: 3, joinedAt: 1 }]);
     t.ctl.open();
     expect(t.lastOf('hub')).toMatchObject({ name: 'Sam', boards: [], busy: null, error: null, canCreate: true });
     await flush();
-    expect(t.lastOf('hub').boards).toEqual([{ code: 'ABCDE', memberCount: 3 }]);
-    expect(t.store.data.boards).toEqual(['ABCDE']);
+    expect(t.lastOf('hub').boards).toEqual([{ code: 'ABCDEFGH', memberCount: 3 }]);
+    expect(t.store.data.boards).toEqual(['ABCDEFGH']);
   });
 
   it('opens my last board straight away, subscribed for my local today', () => {
-    const t = setup({ store: { boards: ['ABCDE', 'K7QPX'], lastBoard: 'K7QPX' } });
+    const t = setup({ store: { boards: ['ABCDEFGH', 'K7QPXW2M'], lastBoard: 'K7QPXW2M' } });
     t.ctl.open();
-    expect(t.live().map(w => [w.code, w.day])).toEqual([['K7QPX', TODAY]]);
-    expect(t.lastOf('board')).toMatchObject({ code: 'K7QPX', rows: null, summary: 'Loading the board…', offline: false });
+    expect(t.live().map(w => [w.code, w.day])).toEqual([['K7QPXW2M', TODAY]]);
+    expect(t.lastOf('board')).toMatchObject({ code: 'K7QPXW2M', rows: null, summary: 'Loading the board…', offline: false });
   });
 
   it('creates a board with my (cleaned, saved) name, opens it and posts my result to it', async () => {
@@ -207,10 +207,10 @@ describe('entry and the hub', () => {
     await flush();
     expect(t.backend.createBoard).toHaveBeenCalledWith('Sammy');
     expect(t.hooks.saveName).toHaveBeenCalledWith('Sammy');
-    expect(t.store.data).toMatchObject({ boards: ['K7QPX'], lastBoard: 'K7QPX', posted: [TODAY_KEY] });
-    expect(t.lastOf('board').code).toBe('K7QPX');
-    expect(t.lastOf('board').link).toBe('https://hit.example/?board=K7QPX');
-    expect(t.lastOf('board').inviteText).toContain('K7QPX');
+    expect(t.store.data).toMatchObject({ boards: ['K7QPXW2M'], lastBoard: 'K7QPXW2M', posted: [TODAY_KEY] });
+    expect(t.lastOf('board').code).toBe('K7QPXW2M');
+    expect(t.lastOf('board').link).toBe('https://hit.example/?board=K7QPXW2M');
+    expect(t.lastOf('board').inviteText).toContain('K7QPXW2M');
   });
 
   it('shows why a create or join failed and stays on the hub', async () => {
@@ -225,9 +225,9 @@ describe('entry and the hub', () => {
     ];
     for (const [error, text] of cases) {
       t.backend.joinBoard.mockRejectedValueOnce(error);
-      t.lastOf('hub').onJoin('Sam', 'ABCDE');
+      t.lastOf('hub').onJoin('Sam', 'ABCDEFGH');
       await flush();
-      expect(t.lastOf('hub')).toMatchObject({ error: text, busy: null, code: 'ABCDE' });
+      expect(t.lastOf('hub')).toMatchObject({ error: text, busy: null, code: 'ABCDEFGH' });
     }
     t.backend.createBoard.mockRejectedValueOnce(rejection('TOO_MANY_BOARDS'));
     t.lastOf('hub').onCreate('Sam');
@@ -239,11 +239,11 @@ describe('entry and the hub', () => {
   it('joins by code from the hub and opens that board', async () => {
     const t = setup();
     t.ctl.open();
-    t.lastOf('hub').onJoin('Sam', 'ABCDE');
+    t.lastOf('hub').onJoin('Sam', 'ABCDEFGH');
     await flush();
-    expect(t.backend.joinBoard).toHaveBeenCalledWith('ABCDE', 'Sam');
-    expect(t.live().map(w => w.code)).toEqual(['ABCDE']);
-    expect(t.store.data.boards).toEqual(['ABCDE']);
+    expect(t.backend.joinBoard).toHaveBeenCalledWith('ABCDEFGH', 'Sam');
+    expect(t.live().map(w => w.code)).toEqual(['ABCDEFGH']);
+    expect(t.store.data.boards).toEqual(['ABCDEFGH']);
   });
 
   it('ignores a reply that lands after the player has left the hub', async () => {
@@ -271,9 +271,9 @@ describe('entry and the hub', () => {
 
 describe('the live board', () => {
   it('ranks today, marks me, offers Play when I have not played, and announces the day once', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
-    t.live()[0]!.update(joined('ABCDE', [
+    t.live()[0]!.update(joined('ABCDEFGH', [
       member('m1', 'Ann', { day: TODAY, stars: 1, shots: 'mmb', streak: 1 }),
       member('m2', 'Sam', null, { mine: true }),
       member('m3', 'Bo', { day: TODAY, stars: 3, shots: 't', streak: 5 }),
@@ -285,13 +285,13 @@ describe('the live board', () => {
   });
 
   it('announces friends whose result just arrived, and switches to yesterday', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' }, progress: PLAYED_TODAY });
     t.ctl.open();
     const w = t.live()[0]!;
     const me = member('m2', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true });
     const annYesterday = { day: TODAY - 1, stars: 3, shots: 'b', streak: 1 };
-    w.update(joined('ABCDE', [member('m1', 'Ann', null, { yesterday: annYesterday }), me]));
-    w.update(joined('ABCDE', [member('m1', 'Ann', { day: TODAY, stars: 1, shots: 'hmt', streak: 2 }, { yesterday: annYesterday }), me]));
+    w.update(joined('ABCDEFGH', [member('m1', 'Ann', null, { yesterday: annYesterday }), me]));
+    w.update(joined('ABCDEFGH', [member('m1', 'Ann', { day: TODAY, stars: 1, shots: 'hmt', streak: 2 }, { yesterday: annYesterday }), me]));
     expect(t.announced.at(-1)).toBe('Ann posted today: 1 of 3 stars, hat then miss then trick hit');
     expect(t.lastOf('board').playedToday).toBe(true);
     t.lastOf('board').onTab('yesterday');
@@ -301,18 +301,18 @@ describe('the live board', () => {
   });
 
   it('keeps what it had and says so when the subscription fails', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
-    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true })]));
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', null, { mine: true })]));
     t.live()[0]!.error(new Error('socket closed'));
     expect(t.lastOf('board')).toMatchObject({ offline: true });
     expect(t.lastOf('board').rows).toHaveLength(1);
   });
 
   it('leaves after a confirmation, forgets the board and returns to the hub', async () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
-    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true })]));
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', null, { mine: true })]));
     t.lastOf('board').onLeave();
     expect(t.lastOf('board').confirmLeave).toBe(true);
     t.lastOf('board').onCancelLeave();
@@ -324,14 +324,14 @@ describe('the live board', () => {
     expect(t.lastOf('board').error).toContain("Couldn't leave");
     t.lastOf('board').onConfirmLeave();
     await flush();
-    expect(t.backend.leaveBoard).toHaveBeenCalledWith('ABCDE');
+    expect(t.backend.leaveBoard).toHaveBeenCalledWith('ABCDEFGH');
     expect(t.store.data).toMatchObject({ boards: [], lastBoard: null });
     expect(t.last().kind).toBe('hub');
     expect(t.live()).toEqual([]);
   });
 
   it('Play starts the Daily and Back returns to the Daily screen, both closing the subscription', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
     t.lastOf('board').onPlay();
     expect(t.hooks.playDaily).toHaveBeenCalled();
@@ -342,7 +342,7 @@ describe('the live board', () => {
     expect(t.live()).toEqual([]);
     // a snapshot for a closed screen does nothing
     const shownBefore = t.shown.length;
-    t.watchers[1]!.update(joined('ABCDE', []));
+    t.watchers[1]!.update(joined('ABCDEFGH', []));
     expect(t.shown).toHaveLength(shownBefore);
   });
 });
@@ -350,23 +350,23 @@ describe('the live board', () => {
 describe('invite links', () => {
   it('offers to join when I am not on the board, then shows it once the server agrees', async () => {
     const t = setup({ progress: PLAYED_TODAY });
-    t.ctl.openFromLink('abcde');
-    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 4 });
-    expect(t.lastOf('join')).toMatchObject({ code: 'ABCDE', memberCount: 4, full: false, name: 'Sam', busy: false });
+    t.ctl.openFromLink('abcd-efgh');
+    t.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: 4 });
+    expect(t.lastOf('join')).toMatchObject({ code: 'ABCDEFGH', memberCount: 4, full: false, name: 'Sam', busy: false });
     t.lastOf('join').onJoin('Sam');
     expect(t.lastOf('join').busy).toBe(true);
     await flush();
-    expect(t.backend.joinBoard).toHaveBeenCalledWith('ABCDE', 'Sam');
+    expect(t.backend.joinBoard).toHaveBeenCalledWith('ABCDEFGH', 'Sam');
     expect(t.backend.postResult).toHaveBeenCalledTimes(1); // today's run reaches the board I just joined
-    t.live()[0]!.update(joined('ABCDE', [member('m9', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true })]));
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m9', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true })]));
     expect(t.last().kind).toBe('board');
-    expect(t.store.data).toMatchObject({ boards: ['ABCDE'], lastBoard: 'ABCDE' });
+    expect(t.store.data).toMatchObject({ boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' });
   });
 
   it('says a full board is full, and shows join errors', async () => {
     const t = setup();
-    t.ctl.openFromLink('ABCDE');
-    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: FRIENDS_BOARD.maxMembers });
+    t.ctl.openFromLink('ABCDEFGH');
+    t.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: FRIENDS_BOARD.maxMembers });
     expect(t.lastOf('join').full).toBe(true);
     t.backend.joinBoard.mockRejectedValueOnce(rejection('FULL'));
     t.lastOf('join').onJoin('Sam');
@@ -377,7 +377,7 @@ describe('invite links', () => {
   });
 
   it('a board that no longer exists is forgotten, with a reason on the hub', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
     t.live()[0]!.update(null);
     expect(t.lastOf('hub').error).toContain('No board with that code');
@@ -385,9 +385,9 @@ describe('invite links', () => {
   });
 
   it('a board I was removed from (left on another device) is forgotten and offered again', () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
-    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 2 });
+    t.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: 2 });
     expect(t.last().kind).toBe('join');
     expect(t.store.data.boards).toEqual([]);
   });
@@ -395,9 +395,9 @@ describe('invite links', () => {
 
 describe('review fixes', () => {
   it('posts today again after leaving my last board and joining another (the server dropped my results)', async () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE', posted: [TODAY_KEY] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH', posted: [TODAY_KEY] }, progress: PLAYED_TODAY });
     t.ctl.open();
-    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true })]));
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', { day: TODAY, stars: 2, shots: 'mb', streak: 1 }, { mine: true })]));
     t.lastOf('board').onLeave();
     t.lastOf('board').onConfirmLeave();
     await flush();
@@ -415,24 +415,24 @@ describe('review fixes', () => {
     t.ctl.open();
     t.lastOf('hub').onNameInput('Samantha');
     t.lastOf('hub').onCodeInput('K7Q');
-    list.resolve([{ code: 'ABCDE', memberCount: 2, joinedAt: 1 }]);
+    list.resolve([{ code: 'ABCDEFGH', memberCount: 2, joinedAt: 1 }]);
     await flush();
-    expect(t.lastOf('hub')).toMatchObject({ name: 'Samantha', code: 'K7Q', boards: [{ code: 'ABCDE', memberCount: 2 }] });
+    expect(t.lastOf('hub')).toMatchObject({ name: 'Samantha', code: 'K7Q', boards: [{ code: 'ABCDEFGH', memberCount: 2 }] });
   });
 
   it('keeps the typed name on the join screen across member-count updates', () => {
     const t = setup();
-    t.ctl.openFromLink('ABCDE');
-    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 2 });
+    t.ctl.openFromLink('ABCDEFGH');
+    t.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: 2 });
     t.lastOf('join').onNameInput('Bo');
-    t.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 3 });
+    t.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: 3 });
     expect(t.lastOf('join')).toMatchObject({ name: 'Bo', memberCount: 3 });
   });
 
   it('leaving as the last member goes to the hub without a "no board" error', async () => {
-    const t = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     t.ctl.open();
-    t.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true })]));
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', null, { mine: true })]));
     const leaving = deferred<void>();
     t.backend.leaveBoard.mockReturnValueOnce(leaving.promise);
     t.lastOf('board').onLeave();
@@ -443,13 +443,13 @@ describe('review fixes', () => {
     await flush();
     expect(t.lastOf('hub').error).toBeNull();
     // and a non-last leaver never flashes "Join this board?"
-    const u = setup({ store: { boards: ['ABCDE'], lastBoard: 'ABCDE' } });
+    const u = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
     u.ctl.open();
-    u.live()[0]!.update(joined('ABCDE', [member('m2', 'Sam', null, { mine: true }), member('m1', 'Ann', null)]));
+    u.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', null, { mine: true }), member('m1', 'Ann', null)]));
     u.backend.leaveBoard.mockReturnValueOnce(new Promise<void>(() => undefined));
     u.lastOf('board').onLeave();
     u.lastOf('board').onConfirmLeave();
-    u.live()[0]!.update({ code: 'ABCDE', joined: false, memberCount: 1 });
+    u.live()[0]!.update({ code: 'ABCDEFGH', joined: false, memberCount: 1 });
     expect(u.last().kind).toBe('board');
   });
 
@@ -458,15 +458,15 @@ describe('review fixes', () => {
     const list = deferred<MyBoardEntry[]>();
     t.backend.myBoards.mockReturnValueOnce(list.promise);
     t.ctl.open();
-    t.lastOf('hub').onJoin('Sam', 'ABCDE');
+    t.lastOf('hub').onJoin('Sam', 'ABCDEFGH');
     await flush();
     list.resolve([]);
     await flush();
-    expect(t.store.data).toMatchObject({ boards: ['ABCDE'], lastBoard: 'ABCDE' });
+    expect(t.store.data).toMatchObject({ boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' });
   });
 
   it('schedules no retry once destroyed', async () => {
-    const t = setup({ store: { boards: ['ABCDE'] }, progress: PLAYED_TODAY });
+    const t = setup({ store: { boards: ['ABCDEFGH'] }, progress: PLAYED_TODAY });
     const post = deferred<{ stored: boolean }>();
     t.backend.postResult.mockReturnValueOnce(post.promise);
     const running = t.ctl.syncPosts();
@@ -477,9 +477,33 @@ describe('review fixes', () => {
   });
 });
 
+describe('another screen takes over', () => {
+  it('a live board replaced by another view (a save-link prompt, a game) stops watching and never draws over it', () => {
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
+    t.ctl.open();
+    t.live()[0]!.update(joined('ABCDEFGH', [member('m2', 'Sam', null, { mine: true })]));
+    const drawn = t.shown.length;
+    const watcher = t.live()[0]!;
+    t.menu.view = 'save_link';
+    watcher.update(joined('ABCDEFGH', [member('m1', 'Ann', { day: TODAY, stars: 3, shots: 'b', streak: 1 }), member('m2', 'Sam', null, { mine: true })]));
+    expect(t.shown.length).toBe(drawn);
+    expect(t.live()).toHaveLength(0);
+    expect(t.menu.view).toBe('save_link');
+  });
+
+  it('close() stops the board at once, and opening again starts afresh', () => {
+    const t = setup({ store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' } });
+    t.ctl.open();
+    t.ctl.close();
+    expect(t.live()).toHaveLength(0);
+    t.ctl.open();
+    expect(t.live()).toHaveLength(1);
+  });
+});
+
 describe('without a backend', () => {
   it('shows the board as offline instead of throwing, and never posts', async () => {
-    const t = setup({ noBackend: true, store: { boards: ['ABCDE'], lastBoard: 'ABCDE' }, progress: PLAYED_TODAY });
+    const t = setup({ noBackend: true, store: { boards: ['ABCDEFGH'], lastBoard: 'ABCDEFGH' }, progress: PLAYED_TODAY });
     t.ctl.open();
     await flush();
     expect(t.lastOf('board').offline).toBe(true);

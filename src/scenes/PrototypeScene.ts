@@ -45,7 +45,7 @@ import { SceneryRenderer } from '../render/sceneryRenderer';
 import { asPreviousTrail, type TrailData, TrailRenderer } from '../render/trailRenderer';
 import { PlayerHistory } from '../rules/playerHistory';
 import { classifyShotOutcome, JonhReactionSelector, type ReactionContext } from '../rules/reactions';
-import { SharedLines } from '../rules/sharedLines';
+import { SharedLines, type LinePicker } from '../rules/sharedLines';
 import { HeckleTimer } from '../rules/heckleTimer';
 import { SessionCoordinator } from '../rules/sessionCoordinator';
 import { ShotAttemptMachine } from '../rules/shotAttempt';
@@ -541,8 +541,9 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   /**
-   * A save link (`#save=…`) from another device: clears the fragment (so a reload doesn't ask again) and, at
-   * Home, asks before loading it. Also runs when such a link is opened in a tab that is already open.
+   * A save link (`#save=…`) from another device: clears the fragment (so a reload doesn't ask again) and asks
+   * before loading it, at once outside a game or else the next time Home shows. Also runs when such a link is
+   * opened in a tab that is already open.
    */
   private takeSaveLink(): boolean {
     const code = saveCodeFromHash(window.location.hash);
@@ -550,7 +551,9 @@ export class PrototypeScene extends Phaser.Scene {
     const url = new URL(window.location.href);
     url.hash = '';
     window.history.replaceState(null, '', url);
-    if (this.activeMode !== 'none' || this.online?.inRoom) return false; // never interrupt a game
+    // Never interrupt a game or a room: ask the next time Home shows.
+    if (this.activeMode !== 'none' || this.online?.inRoom) { this.menuOverlay.queueSaveLink(code); return false; }
+    this.boards?.close(); // a live friends board must not redraw over the prompt
     this.menuOverlay.showSaveLink(code);
     return true;
   }
@@ -1210,7 +1213,7 @@ export class PrototypeScene extends Phaser.Scene {
   }
 
   /** Jonh's line picker. Online it is seeded by the match and the moment, so every screen shows the same line. */
-  private lines(moment: 'shot' | 'moved' | 'arrival' | 'winning'): JonhReactionSelector {
+  private lines(moment: 'shot' | 'moved' | 'arrival' | 'winning'): LinePicker {
     const shared = this.online?.inMatch ? this.online.lineMoment(moment) : null;
     return shared ? this.sharedLines.at(shared.match, shared.moment) : this.reactionSelector;
   }
@@ -2468,10 +2471,12 @@ export class PrototypeScene extends Phaser.Scene {
     }
     const local = this.onlineLocal;
     this.onlineLocal = null;
-    const label = local && local.outcome === outcome ? local.label : OFFICIAL_LABELS[outcome];
+    // The local line only fits when this screen saw the same outcome as the official one.
+    const agreed = local !== null && local.outcome === outcome ? local : null;
+    const label = agreed ? agreed.label : OFFICIAL_LABELS[outcome];
     const scored = outcome !== 'miss';
     this.htmlControls.setFeedback(scored ? `${label}  +${OUTCOME_POINTS[outcome]}` : label, scored ? 'hit' : 'miss',
-      local ? `Jonh: “${local.quote}”` : '');
+      agreed ? `Jonh: “${agreed.quote}”` : '');
     if (mine) this.recordOnlineProgress(outcome);
     this.htmlControls.setResetLabel('Next now ↵');
     this.autoAdvance.schedule('shot', local?.resultSeconds ?? FLOW.shotResultSeconds);

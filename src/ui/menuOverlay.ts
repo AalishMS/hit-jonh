@@ -128,6 +128,7 @@ export class MenuOverlay {
   private content: HTMLElement;
   private clickAbortController: AbortController | null = null;
   private currentView: MenuOverlayView = 'none';
+  private pendingSaveLink: string | null = null;
   /** The online match result's live parts (see updateMPMatchOnline). */
   private onlineResult: { box: HTMLElement; rematch: HTMLButtonElement; leave: HTMLButtonElement } | null = null;
   /** Scroll offset to restore once a refreshed view has been rebuilt. */
@@ -214,7 +215,16 @@ export class MenuOverlay {
     return b;
   }
 
+  /** A save link that arrived during a game: asked about the next time Home would show. */
+  queueSaveLink(code: string): void { this.pendingSaveLink = code; }
+
   showHome(): void {
+    const pending = this.pendingSaveLink;
+    if (pending !== null) {
+      this.pendingSaveLink = null;
+      this.showSaveLink(pending);
+      return;
+    }
     const signal = this.open('home');
     this.content.innerHTML = `
       <div class="logo" aria-label="Hit Jonh"><span class="hit">Hit</span><span class="jonh">Jonh!</span><span class="bonk">BONK!</span></div>
@@ -403,13 +413,16 @@ export class MenuOverlay {
     const qrBox = el('div', 'save-code-qr');
     qrBox.id = 'save-code-qr-box';
     qrBox.hidden = true;
+    let qrPending = false;
     const qrBtn = this.button('Show QR code', '', () => {
+      if (qrPending) return; // a second tap while the code is being made
       const showing = !qrBox.hidden;
       qrBox.hidden = true;
       qrBox.replaceChildren();
       qrBtn.textContent = 'Show QR code';
       qrBtn.setAttribute('aria-expanded', 'false');
       if (showing) return;
+      qrPending = true;
       void exportSaveCode().then(code => {
         if (signal.aborted) return;
         const figure = qrFigure(saveLink(code, window.location.href), 'QR code of a link to your progress');
@@ -418,7 +431,7 @@ export class MenuOverlay {
         qrBox.hidden = false;
         qrBtn.textContent = 'Hide QR code';
         qrBtn.setAttribute('aria-expanded', 'true');
-      }).catch(() => say("Couldn't make a save code on this device.", true));
+      }).catch(() => say("Couldn't make a save code on this device.", true)).finally(() => { qrPending = false; });
     }, signal, actions);
     qrBtn.id = 'save-code-qr';
     qrBtn.setAttribute('aria-expanded', 'false');
@@ -475,19 +488,20 @@ export class MenuOverlay {
           + 'Loading keeps the best of both, so nothing here is lost.';
         const load = this.button('Load progress', 'btn-primary', () => {
           load.disabled = true;
+          notNow.disabled = true;
           void importSaveCode(code).then(result => {
+            // Stored is stored: the game must pick it up even if this prompt was closed meanwhile, or its older
+            // in-memory progress would be written back over the merge on the next save.
+            if (result.ok) this.callbacks.onSaveImported?.();
             if (signal.aborted) return;
             actions.replaceChildren();
-            if (result.ok) {
-              note.textContent = `Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${plural(result.hits, 'hit')}.`;
-              this.callbacks.onSaveImported?.();
-            } else {
-              note.textContent = result.message;
-            }
+            note.textContent = result.ok
+              ? `Loaded. This device now has ${result.stars} / ${result.maxStars} stars and ${plural(result.hits, 'hit')}.`
+              : result.message;
             this.button('OK', 'btn-primary', done, signal, actions).focus();
-          }).catch(() => { if (!signal.aborted) { note.textContent = "That link couldn't be loaded."; load.disabled = false; } });
+          }).catch(() => { if (!signal.aborted) { note.textContent = "That link couldn't be loaded."; load.disabled = false; notNow.disabled = false; } });
         }, signal, actions);
-        this.button('Not now', '', done, signal, actions);
+        const notNow = this.button('Not now', '', done, signal, actions);
         load.focus();
       }).catch(() => {
         if (signal.aborted) return;

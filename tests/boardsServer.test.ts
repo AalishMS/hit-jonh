@@ -47,10 +47,11 @@ const members = (snap: BoardSnapshot | null) => {
 };
 
 describe('createBoard', () => {
-  it('makes a board with a room-style code and the creator as its only member', async () => {
+  it('makes a board with a long room-alphabet code and the creator as its only member', async () => {
     const w = world();
     const code = await w.create(ANN, '  Ann  ');
-    expect(code).toMatch(new RegExp(`^[${ONLINE.codeAlphabet}]{${ONLINE.codeLength}}$`));
+    expect(code).toMatch(new RegExp(`^[${ONLINE.codeAlphabet}]{${FRIENDS_BOARD.codeLength}}$`));
+    expect(FRIENDS_BOARD.codeLength).toBeGreaterThanOrEqual(8);
     expect(w.rows('boards')).toHaveLength(1);
     expect(w.rows('boardMembers')).toHaveLength(1);
     expect(w.rows('boardPlayers')[0]).toMatchObject({ token: ANN, name: 'Ann' });
@@ -104,7 +105,10 @@ describe('joinBoard', () => {
   it('refuses an unknown code and a malformed token', async () => {
     const w = world();
     const code = await w.create(ANN);
-    expect(await codeOf(w.join('ZZZZZ', BO))).toBe('NOT_FOUND');
+    expect(await codeOf(w.join('ZZZZZZZZ', BO))).toBe('NOT_FOUND');
+    // A short (room-length) or lower-case code is never looked up.
+    expect(await codeOf(w.join(code.slice(0, 5), BO))).toBe('NOT_FOUND');
+    expect(await codeOf(w.join(code.toLowerCase(), BO))).toBe('NOT_FOUND');
     expect(await codeOf(w.join(code, 'B'))).toBe('NOT_MEMBER');
     expect(w.rows('boardMembers')).toHaveLength(1);
     expect(w.rows('boardPlayers')).toHaveLength(1); // a refused join leaves no player row behind

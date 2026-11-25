@@ -50,6 +50,27 @@ describe('shared online Jonh lines', () => {
     expect(c).not.toEqual(a);
   });
 
+  it('a pick only one client made (a shot refused at the deadline, a re-shown arrival) does not change later lines', () => {
+    const plain = new SharedLines();
+    const extra = new SharedLines();
+    const m = 'K7QPX/123/1';
+    const run = (lines: SharedLines, refused: boolean) => {
+      const out: string[] = [];
+      for (let seq = 0; seq < 20; seq++) {
+        if (refused && seq === 4) {
+          // This client fired shot 4 itself at the turn deadline; the server refused it and resynced.
+          lines.at(m, 'shot:4').selectReaction('overhead', { missStreak: 3 });
+          lines.at(m, 'shot:4').selectReaction('miss', { missStreak: 3 });
+          lines.at(m, 'arrival:4').selectArrival('backyard');
+        }
+        out.push(lines.at(m, `shot:${seq}`).selectReaction(seq % 3 === 0 ? 'hit' : 'short', { mapId: 'backyard' }));
+        if (seq % 3 === 0) out.push(lines.at(m, `moved:${seq + 1}`).selectReaction('moved'));
+      }
+      return out;
+    };
+    expect(run(extra, true)).toEqual(run(plain, false));
+  });
+
   it('still avoids repeating a recent line within the match', () => {
     const lines = new SharedLines();
     const picks = Array.from({ length: 6 }, (_, i) => lines.at('K7QPX/1/1', `shot:${i}`).selectReaction('short'));
