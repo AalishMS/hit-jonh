@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../audio/audioManager';
 import { FootstepTracker } from '../audio/footsteps';
-import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, SHOT, WORLD } from '../config/tuning';
+import { AIM, CLIP, COACH, FLOW, FX, LOOK, MULTIPLAYER, PHYSICS, PROJECTILE, RAMP, SHOT, WORLD } from '../config/tuning';
 import { CameraRig } from '../render/cameraRig';
 import { setPlayerPalette } from '../art/palette';
 import { ReplayBuffer, ReplayDirector, type ReplayFrame } from '../fx/replay';
@@ -54,6 +54,7 @@ import { SoloCoordinator } from '../rules/soloCoordinator';
 import { MultiplayerMatchMachine, OUTCOME_POINTS, type MPPlayerSetup } from '../rules/multiplayerMatch';
 import { MultiCoordinator } from '../rules/multiCoordinator';
 import { matchStakes, shotsLeftPerPlayer, suddenDeathStakes, tauntFor, type Stakes } from '../rules/matchStakes';
+import { arcShape, closestOnArc } from '../sim/arc';
 import { ShotClassifier, type ClassifiedOutcome } from '../sim/classification';
 import { FixedStepper } from '../sim/fixedStep';
 import {
@@ -101,7 +102,7 @@ type Unlock = { kind: 'hat'; id: HatName } | { kind: 'outfit'; id: OutfitId } | 
 const aimKeys = (k: KeyBindings): string[] => [k.angleDown, k.angleUp, k.powerDown, k.powerUp];
 
 /** Impact sound per obstacle material; anything hard and unlisted clunks like concrete. */
-const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
+const SURFACE_SOUNDS: Partial<Record<string, SurfaceSound>> = { wood: 'wood', plywood: 'wood', rubber: 'rubber', trampoline: 'rubber', leaves: 'ground', glass: 'glass', velvet: 'ground' };
 
 /** Runs `fn` when the main thread is idle (Safari has no requestIdleCallback: a short timer stands in). */
 function whenIdle(fn: () => void): void {
@@ -1128,6 +1129,10 @@ export class PrototypeScene extends Phaser.Scene {
     this.drawBall(reactionSeconds, reduced, replayFrameNow);
     const flying = this.attemptMachine.state === 'simulating' && this.lastProjectileState && !this.impactTimeline.isHolding;
     this.audioManager.setFlightWhoosh(flying ? this.lastProjectileState!.speedMs / 20 : null);
+    // Skate ramp: a plywood rumble while the ball rolls along the curve.
+    const rolling = flying && this.lastProjectileState!.rampRolling !== null;
+    this.audioManager.setRampRumble(rolling
+      ? clamp01((this.lastProjectileState!.speedMs - RAMP.rumbleFromMs) / (RAMP.rumbleFullMs - RAMP.rumbleFromMs)) : null);
     this.audioManager.setWindBed(this.showcaseWind !== undefined ? this.showcaseWind : this.currentLevel.wind?.accelerationMs2 ?? null);
     this.updateCamera(dtSeconds, reduced, replayFrameNow);
 
@@ -1167,7 +1172,8 @@ export class PrototypeScene extends Phaser.Scene {
     // [mechanics] A smashed pane or a portal plays its own effects and sound; it is not a bounce.
     // It always runs (even during Skip) so the renderer's broken panes and spent hoops stay right.
     const mechanicsEvent = this.sceneryRenderer.mechanics.onStep(state, reduced, this.audioManager);
-    if (quiet || mechanicsEvent) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
+    // Rolling along a ramp's curve turns the velocity every step; that is not a bounce either.
+    if (quiet || mechanicsEvent || state.rampRolling !== null) this.prevVelocity = { vx: state.vxSim, vy: state.vySim };
     else this.detectBounce(state, reduced);
     this.lastProjectileState = state;
     const ppmNow = WORLD.pixelsPerMetre;
@@ -1239,6 +1245,7 @@ export class PrototypeScene extends Phaser.Scene {
       speedMs: p.speedMs,
       distanceToJonhMetres: distanceToBox(p.xSim, p.ySim, this.physicsAdapter.jonhBodyBox(this.currentLevel)),
       impactActive: this.impactTimeline.isHolding || this.contact !== null || p.hitJonh,
+      onRamp: p.rampRolling !== null,
     });
   }
 
@@ -1833,6 +1840,10 @@ export class PrototypeScene extends Phaser.Scene {
 
   private surfaceAt(x: number, y: number): SurfaceSound {
     const r = PROJECTILE.radiusMetres + 0.15;
+    // Skate ramps are plywood.
+    for (const ramp of this.currentLevel.ramps ?? []) {
+      if (closestOnArc(arcShape(ramp), { x, y }).distance <= r) return SURFACE_SOUNDS[ramp.material] ?? 'wood';
+    }
     for (const o of this.currentLevel.obstacles) {
       const b = o.box;
       if (x >= b.minX - r && x <= b.maxX + r && y >= b.minY - r && y <= b.maxY + r) {
@@ -1898,6 +1909,7 @@ export class PrototypeScene extends Phaser.Scene {
 
   private resetEffects(): void {
     this.audioManager?.setFlightWhoosh(null);
+    this.audioManager?.setRampRumble(null);
     this.impactTimeline.reset();
     this.settleClock.reset();
     this.replay = null;

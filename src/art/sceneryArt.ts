@@ -1,6 +1,7 @@
 import type { LevelData, ObstacleData } from '../levels/types';
 import { mechanicArt, mechanicObstacleBody } from './mechanicArt';
 import { PAL } from './palette';
+import { rampArt, rampObstacleBody } from './rampArt';
 import { INK, ink, svgDoc, type ArtDef } from './svgKit';
 
 /** Per-map light: sky gradient, haze and far-layer tones (docs/art-direction.md). */
@@ -46,6 +47,8 @@ export const THEMES: Record<string, Theme> = {
   /** Late afternoon, long shadows: Jonh's daily stroll. */
   stroll: { id: 'stroll', skyTop: '#62B4E6', skyLow: '#FFD7A0', far: '#B0D8B6', farDetail: '#94C59E', mid: '#8ACB70', midDark: '#5FA352', sunY: 150, sun: '#FFC54A', skyline: 'village' },
   magic: { id: 'magic', skyTop: '#5B67C4', skyLow: '#FFB88E', far: '#B6A3D4', farDetail: '#9A86C0', mid: '#8FB77A', midDark: '#679257', sunY: 64, sun: '#FFB44A', skyline: 'park' },
+  /** A hot afternoon at the skate park: bright town sky, warm haze. */
+  skatepark: { id: 'skatepark', skyTop: '#55B9EC', skyLow: '#FFDCA0', far: '#B8C6DE', farDetail: '#9DADC9', mid: '#93C27A', midDark: '#6A9E58', sunY: 120, sun: '#FFCF4A', skyline: 'town' },
   /** A blustery washing day: scrubbed pale sky, tall thin clouds. */
   washday: { id: 'washday', skyTop: '#6FC6EE', skyLow: '#F2F9FF', far: '#B2DCCB', farDetail: '#97CBB5', mid: '#8CCB78', midDark: '#62A855', sunY: 100, sun: '#FFE08A', skyline: 'village' },
 };
@@ -371,7 +374,7 @@ function hedge(w: number, h: number): string {
 }
 
 function obstacleBody(obs: ObstacleData, w: number, h: number): string {
-  const mechanic = mechanicObstacleBody(obs, w, h);
+  const mechanic = mechanicObstacleBody(obs, w, h) ?? rampObstacleBody(obs, w, h);
   if (mechanic !== null) return mechanic;
   if (obs.id === 'garden-shed') return shed(w, h);
   if (obs.id.includes('trunk')) return trunk(w, h);
@@ -411,5 +414,5 @@ export function obstacleArt(levels: readonly LevelData[], ppm: number): ArtDef[]
 
 export function sceneryArt(levels: readonly LevelData[], ppm: number): ArtDef[] {
   const themes = [...new Set(levels.map(l => themeFor(l.id)))];
-  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm), ...mechanicArt(levels, ppm, obstacleKey)];
+  return [...themes.flatMap(themeArt), ...clouds, ...props, ...obstacleArt(levels, ppm), ...mechanicArt(levels, ppm, obstacleKey), ...rampArt(levels, ppm)];
 }

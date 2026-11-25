@@ -17,7 +17,7 @@ export interface SolutionMap {
   hitFraction: number;
   /** Body hits that bounced off a ricochet surface first. */
   ricochetHits: number;
-  /** Body hits that smashed a breakable prop or went through a portal first. */
+  /** Body hits that smashed a breakable prop, went through a portal or used a ramp (rolled or bounced) first. */
   mechanicHits: number;
   /** Longest run of adjacent grid hits along either axis. */
   widestRun: number;
@@ -31,9 +31,9 @@ export interface SolutionMap {
 
 const isHit = (o: ClassifiedOutcome) => o === 'body' || o === 'ricochet_body';
 
-/** Whether a map has breakable props or portals (its hits are worth splitting by mechanic use). */
+/** Whether a map has breakable props, portals or ramps (its hits are worth splitting by mechanic use). */
 export function hasMechanics(level: LevelData): boolean {
-  return level.obstacles.some(o => o.breakable) || (level.portals?.length ?? 0) > 0;
+  return level.obstacles.some(o => o.breakable) || (level.portals?.length ?? 0) > 0 || (level.ramps?.length ?? 0) > 0;
 }
 
 export function solutionMap(level: LevelData, angleStep: number, powerStep: number): SolutionMap {
@@ -48,13 +48,13 @@ export function solutionMap(level: LevelData, angleStep: number, powerStep: numb
   for (const angle of angles) {
     const row: boolean[] = [];
     for (const power of powers) {
-      const { outcome, brokenObstacleIds, portalsUsed } = runHeadlessShot(level, angle, power);
+      const { outcome, brokenObstacleIds, portalsUsed, rampsTouched } = runHeadlessShot(level, angle, power);
       const hit = isHit(outcome);
       row.push(hit);
       if (hit) {
         hitAims.push({ angle, power, outcome });
         if (outcome === 'ricochet_body') ricochetHits++;
-        if (brokenObstacleIds.length > 0 || portalsUsed.length > 0) mechanicHits++;
+        if (brokenObstacleIds.length > 0 || portalsUsed.length > 0 || rampsTouched.length > 0) mechanicHits++;
       }
     }
     grid.push(row);

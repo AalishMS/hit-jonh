@@ -30,6 +30,8 @@ declare module '@matter-js' {
   export const Bodies: {
     rectangle(x: number, y: number, width: number, height: number, options?: unknown): MatterJS.BodyType;
     circle(x: number, y: number, radius: number, options?: unknown): MatterJS.BodyType;
+    /** A convex polygon (any vertex order) whose centre of mass is placed at (x, y). */
+    fromVertices(x: number, y: number, vertexSets: Array<{ x: number; y: number }>, options?: unknown): MatterJS.BodyType;
   };
   /** The contact solver; its tuning constants (`_restingThresh`, …) are module globals. */
   export const Resolver: Record<string, unknown>;

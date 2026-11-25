@@ -22,7 +22,7 @@ export function validMaps(maps: readonly string[]): boolean {
 /** A trick shot is possible on this map: it has a ricochet surface or a portal hoop (SPEC §7.1). */
 export function mapHasTrick(mapId: string): boolean {
   const map = MAPS.find(m => m.id === mapId);
-  return map !== undefined && (map.obstacles.some(o => o.ricochet) || (map.portals?.length ?? 0) > 0);
+  return map !== undefined && (map.obstacles.some(o => o.ricochet) || (map.ramps?.some(r => r.ricochet) ?? false) || (map.portals?.length ?? 0) > 0);
 }
 
 function isValidAim(angle: number, power: number): boolean {

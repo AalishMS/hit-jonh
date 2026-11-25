@@ -278,10 +278,10 @@ export const DIFFICULTY = {
    */
   minTrickShare: { bankshot: 1, trampoline: 0.9 } as Readonly<Record<string, number>>,
   /**
-   * Mechanic maps: the least share of hits that must smash a breakable prop or go through a portal
-   * first (coarse grid, every target position).
+   * Mechanic maps: the least share of hits that must smash a breakable prop, go through a portal or
+   * use a ramp first (coarse grid, every target position).
    */
-  minMechanicShare: { greenhouse: 1, magic: 1 } as Readonly<Record<string, number>>,
+  minMechanicShare: { greenhouse: 1, magic: 1, skatepark: 1 } as Readonly<Record<string, number>>,
 } as const;
 
 export interface MaterialProps {
@@ -289,7 +289,35 @@ export interface MaterialProps {
   friction: number;
   /** Ground only: per-step horizontal speed kept while rolling; PHYSICS.groundRollingDamping when omitted. */
   rollingDamping?: number;
+  /**
+   * Curved ramps only: rolling-resistance coefficient, the drag on a ball rolling along the curve as a
+   * share of the normal load (gravity's pressing part plus v²/ρ); RAMP.rollingResistance when omitted.
+   */
+  rollingResistance?: number;
 }
+
+/**
+ * Curved skate ramps [PROPOSED 2026-11-25][TUNE] (levels/types.ts RampData, sim/arc.ts). The swept guard
+ * owns every ramp contact; Matter carries the ramp as static sensor pieces (debug draw, queries) so its
+ * polygon joints never snag a rolling ball.
+ */
+export const RAMP = {
+  /** Drag coefficient for a ball rolling on a ramp whose material sets none. */
+  rollingResistance: 0.03,
+  /**
+   * Drag × this while a ball is trapped (too slow to reach either end of the arc even without drag):
+   * it can only rock and settle, so its outcome is already decided; this ends the rocking in a few
+   * swings instead of most of the 15 s timeout.
+   */
+  trappedDragScale: 6,
+  /** Tightest riding radius a level may use (metres): a fast ball turns ≤ 0.2 rad per fixed step. */
+  minRadiusMetres: 1,
+  /** Matter sensor pieces approximate the arc in segments of at most this many degrees. */
+  matterSegmentDeg: 4,
+  /** A ball rolling faster than this (m/s) rumbles; the rumble is loudest at `rumbleFullMs`. */
+  rumbleFromMs: 0.6,
+  rumbleFullMs: 10,
+} as const;
 
 export const MATERIALS = {
   grass: { restitution: 0.2, friction: 0.8 },
@@ -311,6 +339,8 @@ export const MATERIALS = {
   /** Mechanic maps [PROPOSED][TUNE]: unbroken glass is hard and slick; velvet drapes swallow a ball. */
   glass: { restitution: 0.35, friction: 0.2 },
   velvet: { restitution: 0.1, friction: 0.9, rollingDamping: 0.88 },
+  /** Skate ramp [PROPOSED 2026-11-25][TUNE]: varnished plywood; a lively bounce and a long roll. */
+  plywood: { restitution: 0.3, friction: 0.5, rollingResistance: 0.03 },
   jonhBody: { restitution: 0.3, friction: 0.6 },
   cannonball: { restitution: 0.25, friction: 0.5 },
 } as const satisfies Record<string, MaterialProps>;
