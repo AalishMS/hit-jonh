@@ -2138,14 +2138,19 @@ export class PrototypeScene extends Phaser.Scene {
         const audio = this.audioManager.captureStream();
         const format = clipFormat(audio !== null);
         if (!format) { this.audioManager.releaseCaptureStream(); return null; }
-        return new ClipRecorder({
-          source: this.game.canvas, caption, garden: level.name, audio, format,
-          releaseAudio: () => this.audioManager.releaseCaptureStream(),
-          subscribeFrames: callback => {
-            this.game.events.on(Phaser.Core.Events.POST_RENDER, callback);
-            return () => { this.game.events.off(Phaser.Core.Events.POST_RENDER, callback); };
-          },
-        });
+        try {
+          return new ClipRecorder({
+            source: this.game.canvas, caption, garden: level.name, audio, format,
+            releaseAudio: () => this.audioManager.releaseCaptureStream(),
+            subscribeFrames: callback => {
+              this.game.events.on(Phaser.Core.Events.POST_RENDER, callback);
+              return () => { this.game.events.off(Phaser.Core.Events.POST_RENDER, callback); };
+            },
+          });
+        } catch (error) {
+          this.audioManager.releaseCaptureStream();
+          throw error;
+        }
       },
       startReplay: hooks => {
         if (this.scene.isActive('ShowcaseScene') || this.showcaseState === 'playing') return null;

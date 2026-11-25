@@ -47,8 +47,14 @@ export class ClipDirector {
   record(): Promise<ClipResult> {
     if (this.active) return Promise.resolve({ ok: false, reason: 'busy' });
     if (this.deps.tabHidden()) return Promise.resolve({ ok: false, reason: 'hidden' });
-    const recorder = this.deps.createRecorder();
+    let recorder: RecorderLike | null;
+    try {
+      recorder = this.deps.createRecorder();
+    } catch (error) {
+      return Promise.resolve({ ok: false, reason: 'failed', message: error instanceof Error && error.message ? error.message : 'the browser refused to set up recording' });
+    }
     if (!recorder) return Promise.resolve({ ok: false, reason: 'failed', message: 'this browser cannot record video' });
+    const rec = recorder;
 
     return new Promise<ClipResult>(resolve => {
       let settled = false;
@@ -64,7 +70,7 @@ export class ClipDirector {
         resolve(result);
       };
       const fail = (message: string): void => {
-        recorder.cancel();
+        rec.cancel();
         settle({ ok: false, reason: 'failed', message });
         run?.stop();
       };
@@ -72,7 +78,7 @@ export class ClipDirector {
         onRecordStart: () => {
           if (settled || recording) return;
           try {
-            recorder.begin();
+            rec.begin();
             recording = true;
           } catch (error) {
             fail(error instanceof Error && error.message ? error.message : 'the browser refused to start recording');
@@ -81,11 +87,11 @@ export class ClipDirector {
         onEnd: completed => {
           if (settled) return;
           if (!completed || !recording) {
-            recorder.cancel();
+            rec.cancel();
             settle({ ok: false, reason: hidden ? 'hidden' : 'cancelled' });
             return;
           }
-          recorder.finish().then(
+          rec.finish().then(
             clip => settle(clip && clip.blob.size > 0 ? { ok: true, clip } : { ok: false, reason: 'failed', message: 'the recording was empty' }),
             () => settle({ ok: false, reason: 'failed' }),
           );

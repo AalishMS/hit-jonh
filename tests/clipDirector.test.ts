@@ -119,6 +119,17 @@ describe('ClipDirector', () => {
     expect(await pending).toMatchObject({ ok: false, reason: 'failed' });
   });
 
+  it('fails (without throwing) when the recorder cannot even be set up', async () => {
+    const director = new ClipDirector({
+      createRecorder: () => { throw new Error('no 2D canvas'); },
+      startReplay: () => { throw new Error('must not start'); },
+      tabHidden: () => false,
+      onTabHidden: () => () => undefined,
+    });
+    expect(await director.record()).toEqual({ ok: false, reason: 'failed', message: 'no 2D canvas' });
+    expect(director.busy).toBe(false);
+  });
+
   it('fails when unsupported or there is nothing to replay, and a replay that ends before the window records nothing', async () => {
     expect(await rig({ supported: false }).director.record()).toMatchObject({ ok: false, reason: 'failed' });
     const none = rig({ replay: false });
