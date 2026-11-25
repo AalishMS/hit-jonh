@@ -64,6 +64,12 @@ Every filled foreground shape gets **one** flat cel shadow (the dark tone of its
 - **Portal hoops** are a brass ring around a turning purple swirl, with slow twinkling sparkles. The entry hoop is face-on (a circle: anything through the middle disappears). The exit hoop is side-on (squashed along its heading) with a brass chevron pointing the way the ball comes out. A used hoop's swirl dims until the next attempt. Hoops float: no stand is drawn, because nothing that looks solid may lack a collider.
 - **Interiors** (greenhouse glass, tent curtain) are flat background with no ink, so they never read as surfaces.
 
+## Skate ramp (2026-11-25) [PROPOSED]
+
+- The **half-pipe** is varnished plywood (`wood` side panel with darker studs, `woodLight` riding skin), drawn from the very arc its collider uses: one SVG arc for the riding face with a heavy ink line, the skin as deep as the collider is thick, and the solid side panel down to the lawn (the space under the curve is closed off by the curve, its deck and the lawn, so it is honest to draw it solid). Steel coping (`ironLight` in ink) sits inside each end face. A `pow` band and a `zap` lightning flash are the skate park's only decoration; both are painted on the panel, not separate props.
+- **Jonh's shelter** is a brick side wall and a stone roof slab with gravel on top. The roof's face carries a cream board reading "NO BALL GAMES" in Nunito 900, `pow` red; it is live text so it stays crisp, and it sits inside the slab's collider.
+- The deck behind the tall wall is a plywood box with cross-bracing and a plank top flush with the wall's coping.
+
 ## Typography
 
 | Role | Face | Rules |
